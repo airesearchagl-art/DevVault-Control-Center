@@ -6,7 +6,7 @@ const REVIEW_ID = /^rv-\d{8}-[a-z0-9]{6}$/;
 /** Mirrors `is_allowed_review_file` in Rust, using the shared round limit. */
 export function isAllowedReviewFile(file: string): boolean {
   if (file === "session.json" || file === "checkpoint.md" || file === "events.jsonl") return true;
-  const match = /^(request|result)-r([1-9]\d{0,9})(-previous-\d{1,20})?\.md$/.exec(file);
+  const match = /^(request|result)-r([1-9]\d{0,9})(-previous-\d{1,20}(?:-[1-9]\d{0,2})?)?\.md$/.exec(file);
   if (!match) return false;
   if (match[3] !== undefined && match[1] !== "result") return false;
   return Number(match[2]) <= MAX_REVIEW_ROUNDS;

@@ -19,22 +19,36 @@ export interface RoundRecord {
   verdictNote: string | null;
   /**
    * Earlier results of this round kept when a result was replaced (F-6), oldest first:
-   * `result-r<N>-previous-<capture time in ms>.md`. `result-r<N>.md` is always the latest.
+   * `result-r<N>-previous-<capture time in ms>.md`, or `...-<ms>-<n>.md` when that name was
+   * already taken (E-2). `result-r<N>.md` is always the latest.
    */
   archivedResults: string[];
 }
 
-const ARCHIVED_RESULT_PATTERN = /^result-r([1-9]\d*)-previous-(\d{1,20})\.md$/;
+const ARCHIVED_RESULT_PATTERN = /^result-r([1-9]\d*)-previous-(\d{1,20})(?:-([1-9]\d{0,2}))?\.md$/;
 
-/** Deterministic archive name for the result captured at `capturedAt` in `round`. */
-export function archivedResultFileName(round: number, capturedAt: string): string {
-  return `result-r${round}-previous-${Date.parse(capturedAt)}.md`;
+/** Candidate archive names per replaced result: the base name, then `-1` .. `-999`. */
+export const ARCHIVE_CANDIDATES = 1000;
+
+/**
+ * Archive name for the result captured at `capturedAt` in `round`. `attempt` 0 is the base name;
+ * later attempts add a numeric suffix so an interrupted capture never blocks a retry (E-2).
+ */
+export function archivedResultFileName(round: number, capturedAt: string, attempt = 0): string {
+  const suffix = attempt === 0 ? "" : `-${attempt}`;
+  return `result-r${round}-previous-${Date.parse(capturedAt)}${suffix}.md`;
 }
 
 export function isArchivedResultFileName(name: unknown, round: number): name is string {
   if (typeof name !== "string") return false;
   const match = ARCHIVED_RESULT_PATTERN.exec(name);
   return match !== null && Number(match[1]) === round;
+}
+
+/** True when `name` is one of the candidate archive names for the result captured at `capturedAt`. */
+export function isArchiveCandidateFor(name: string, round: number, capturedAt: string): boolean {
+  const match = ARCHIVED_RESULT_PATTERN.exec(name);
+  return match !== null && Number(match[1]) === round && match[2] === String(Date.parse(capturedAt));
 }
 
 export interface ReviewSession {

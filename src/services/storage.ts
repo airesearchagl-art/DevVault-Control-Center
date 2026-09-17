@@ -42,6 +42,11 @@ export interface StorageBackend {
   quarantine(target: StorageTarget, options?: { backup?: boolean }): Promise<string>;
   /** Restores a missing JSON primary from its `.bak`; the backup is kept. */
   restoreBackup(target: StorageTarget): Promise<void>;
+  /**
+   * Throws `CONFLICT` when `target` no longer holds the content this backend last read or wrote
+   * (E-3). Optional: a backend that does not track content has nothing to compare against.
+   */
+  assertUnchanged?(target: StorageTarget): Promise<void>;
 }
 
 export const PROJECTS_TARGET: StorageTarget = { kind: "projects" };

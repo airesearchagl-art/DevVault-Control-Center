@@ -13,7 +13,7 @@ import {
   saveNewReview,
   saveReviewRequest,
 } from "./reviewService";
-import { StorageError } from "./storage";
+import { StorageError, type StorageBackend } from "./storage";
 
 const HEAD = "0123456789abcdef0123456789abcdef01234567";
 const ALPHA_ID = "rv-20260101-alpha1";
@@ -488,13 +488,91 @@ describe("re-capture preserves the previous result (F-6)", () => {
     expect(events.filter((e) => e.type === "result_captured").at(-1)?.note).toContain(secondArchive);
   });
 
-  it("never overwrites an existing archive file or a result that changed on disk", async () => {
+  it("never overwrites an unrecorded archive file; records it and keeps the result under the next free name (E-2)", async () => {
     const alpha = await capturedAlpha();
-    const archive = `reviews/${ALPHA_ID}/result-r1-previous-${Date.parse(alpha.rounds[0].resultCapturedAt!)}.md`;
-    storage.files.set(archive, "someone else's archive");
-    await expect(captureReviewResult(storage, alpha, "second result", null, true, now())).rejects.toMatchObject({ code: "CONFLICT" });
-    expect(storage.files.get(archive)).toBe("someone else's archive");
+    const base = `result-r1-previous-${Date.parse(alpha.rounds[0].resultCapturedAt!)}`;
+    storage.files.set(`reviews/${ALPHA_ID}/${base}.md`, "someone else's archive");
+    const out = unwrap(await captureReviewResult(storage, alpha, "second result", null, true, now()));
+    expect(out.archivedAs).toBe(`${base}-1.md`);
+    expect(out.session.rounds[0].archivedResults).toEqual([`${base}.md`, `${base}-1.md`]);
+    expect(storage.files.get(`reviews/${ALPHA_ID}/${base}.md`)).toBe("someone else's archive");
+    expect(storage.files.get(`reviews/${ALPHA_ID}/${base}-1.md`)).toBe("first result\n");
+    expect(storage.files.get(resultPath)).toBe("second result\n");
+  });
+
+  it("refuses to replace a result that changed between reading and writing it (E-6)", async () => {
+    const alpha = await capturedAlpha();
+    const sessionPath = `reviews/${ALPHA_ID}/session.json`;
+    const sessionBefore = storage.files.get(sessionPath);
+    // Another writer edits result-r1.md right after the archive is written.
+    const interleaved: StorageBackend = {
+      info: () => storage.info(),
+      read: (target, options) => storage.read(target, options),
+      write: async (target, content, precondition) => {
+        await storage.write(target, content, precondition);
+        if (target.kind === "review" && target.file.startsWith("result-r1-previous-")) {
+          storage.files.set(resultPath, "edited externally\n");
+        }
+      },
+      appendLine: (target, line) => storage.appendLine(target, line),
+      listReviews: () => storage.listReviews(),
+      quarantine: (target, options) => storage.quarantine(target, options),
+      restoreBackup: (target) => storage.restoreBackup(target),
+    };
+    await expect(captureReviewResult(interleaved, alpha, "second result", null, true, now())).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(storage.files.get(resultPath)).toBe("edited externally\n");
+    expect(storage.files.get(sessionPath)).toBe(sessionBefore);
+  });
+
+  it("can retry after the session write failed: the unrecorded archive is recorded, nothing is lost (E-2)", async () => {
+    const alpha = await capturedAlpha();
+    const base = `result-r1-previous-${Date.parse(alpha.rounds[0].resultCapturedAt!)}`;
+    const sessionPath = `reviews/${ALPHA_ID}/session.json`;
+    storage.failingWrites.add(sessionPath);
+    await expect(captureReviewResult(storage, alpha, "second result", null, true, now())).rejects.toMatchObject({ code: "WRITE_FAILED" });
+    storage.failingWrites.delete(sessionPath);
+    expect(storage.files.get(`reviews/${ALPHA_ID}/${base}.md`)).toBe("first result\n");
+    expect(storage.files.get(resultPath)).toBe("second result\n");
+
+    const reloaded = (await loadAll(storage)).reviews.find((r) => r.reviewId === ALPHA_ID)!.session!;
+    expect(reloaded.rounds[0].archivedResults).toEqual([]);
+    const out = unwrap(await captureReviewResult(storage, reloaded, "third result", null, true, now()));
+    expect(out.session.rounds[0].archivedResults).toEqual([`${base}.md`, `${base}-1.md`]);
+    expect(storage.files.get(`reviews/${ALPHA_ID}/${base}.md`)).toBe("first result\n");
+    expect(storage.files.get(`reviews/${ALPHA_ID}/${base}-1.md`)).toBe("second result\n");
+    expect(storage.files.get(resultPath)).toBe("third result\n");
+  });
+
+  it("can retry after the result write failed: the archive already holding the text is reused (E-2)", async () => {
+    const alpha = await capturedAlpha();
+    const base = `result-r1-previous-${Date.parse(alpha.rounds[0].resultCapturedAt!)}`;
+    storage.failingWrites.add(resultPath);
+    await expect(captureReviewResult(storage, alpha, "second result", null, true, now())).rejects.toMatchObject({ code: "WRITE_FAILED" });
+    storage.failingWrites.delete(resultPath);
     expect(storage.files.get(resultPath)).toBe("first result\n");
+
+    const out = unwrap(await captureReviewResult(storage, alpha, "second result", null, true, now()));
+    expect(out.archivedAs).toBe(`${base}.md`);
+    expect(out.session.rounds[0].archivedResults).toEqual([`${base}.md`]);
+    expect(storage.files.has(`reviews/${ALPHA_ID}/${base}-1.md`)).toBe(false);
+    expect(storage.files.get(`reviews/${ALPHA_ID}/${base}.md`)).toBe("first result\n");
+    expect(storage.files.get(resultPath)).toBe("second result\n");
+  });
+
+  it("can capture again after session.json went back to an older state (e.g. restored from .bak) (E-2)", async () => {
+    const alpha = await capturedAlpha();
+    const base = `result-r1-previous-${Date.parse(alpha.rounds[0].resultCapturedAt!)}`;
+    const sessionPath = `reviews/${ALPHA_ID}/session.json`;
+    const older = storage.files.get(sessionPath)!;
+    unwrap(await captureReviewResult(storage, alpha, "second result", null, true, now()));
+    storage.files.set(sessionPath, older);
+
+    const restored = (await loadAll(storage)).reviews.find((r) => r.reviewId === ALPHA_ID)!.session!;
+    const out = unwrap(await captureReviewResult(storage, restored, "third result", null, true, now()));
+    expect(out.session.rounds[0].archivedResults).toEqual([`${base}.md`, `${base}-1.md`]);
+    expect(storage.files.get(`reviews/${ALPHA_ID}/${base}.md`)).toBe("first result\n");
+    expect(storage.files.get(`reviews/${ALPHA_ID}/${base}-1.md`)).toBe("second result\n");
+    expect(storage.files.get(resultPath)).toBe("third result\n");
   });
 
   it("archives an orphan result file (written but never recorded) instead of overwriting it", async () => {

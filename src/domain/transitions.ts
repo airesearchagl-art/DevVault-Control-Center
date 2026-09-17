@@ -1,7 +1,7 @@
 import type { ReviewEvent, ReviewEventType, StateChange } from "./events";
 import {
-  archivedResultFileName,
   currentRound,
+  isArchiveCandidateFor,
   isArchivedResultFileName,
   type ReviewMetadata,
   type ReviewSession,
@@ -30,8 +30,12 @@ export type ReviewAction =
       reviewedHead: string | null;
       /** Required (literal true) when the round already has a saved result that will be replaced (F-6). */
       replaceConfirmedByHuman?: true;
-      /** Archive file holding the replaced result; must be the deterministic name for that result. */
-      archivedResultFile?: string | null;
+      /**
+       * Archive files to record, oldest first: archives left unrecorded by an interrupted capture,
+       * then the one holding the replaced result (E-2). For a recorded result every name must be a
+       * candidate name of that result's capture time.
+       */
+      archivedResultFiles?: readonly string[];
     }
   | { type: "confirmVerdict"; verdict: "FIX_REQUIRED" | "REVIEW_PASS"; note: string | null; confirmedByHuman: true }
   | { type: "block"; reason: string; confirmedByHuman: true }
@@ -188,19 +192,22 @@ export function applyReviewAction(session: ReviewSession, action: ReviewAction, 
     case "captureResult": {
       if (action.reviewedHead !== null && !isValidHead(action.reviewedHead)) return err("Reviewed HEAD is not a valid SHA");
       const round = currentRound(session);
-      const archived = action.archivedResultFile ?? null;
+      const archived = action.archivedResultFiles ?? [];
       if (round.resultCapturedAt !== null && action.replaceConfirmedByHuman !== true) {
         return err(`R${round.round} already has a saved result; replacing it requires explicit Human confirmation`);
       }
-      if (archived !== null) {
-        if (!isArchivedResultFileName(archived, round.round)) return err("Archive file name does not match this round");
-        // A committed result is archived under its own capture time; an orphan result file
+      for (const [index, name] of archived.entries()) {
+        if (!isArchivedResultFileName(name, round.round)) return err("Archive file name does not match this round");
+        // A recorded result is archived under its own capture time; an orphan result file
         // (written but never recorded, e.g. after a crash) may use any valid archive name.
-        if (round.resultCapturedAt !== null && archived !== archivedResultFileName(round.round, round.resultCapturedAt)) {
+        if (round.resultCapturedAt !== null && !isArchiveCandidateFor(name, round.round, round.resultCapturedAt)) {
           return err("Archive file name does not match the replaced result");
         }
-        if (round.archivedResults.includes(archived)) return err("Archive file name is already recorded");
+        if (round.archivedResults.includes(name) || archived.indexOf(name) !== index) {
+          return err("Archive file name is already recorded");
+        }
       }
+      const kept = archived.length === 0 ? "" : ` (previous result kept as ${archived.join(", ")})`;
       return ok(
         build(
           session,
@@ -209,12 +216,12 @@ export function applyReviewAction(session: ReviewSession, action: ReviewAction, 
             rounds: withCurrentRound(session, {
               resultCapturedAt: now,
               reviewedHead: action.reviewedHead,
-              archivedResults: archived === null ? round.archivedResults : [...round.archivedResults, archived],
+              archivedResults: [...round.archivedResults, ...archived],
             }),
           },
           "result_captured",
           now,
-          archived === null ? `result-r${session.reviewRound}.md` : `result-r${session.reviewRound}.md (previous result kept as ${archived})`,
+          `result-r${session.reviewRound}.md${kept}`,
         ),
       );
     }

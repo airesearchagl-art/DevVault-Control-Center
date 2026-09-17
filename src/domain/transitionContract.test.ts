@@ -51,7 +51,7 @@ function actionFor(row: ContractRow, session: ReviewSession): ReviewAction {
     case "captureResult":
       // sessionIn() has a recorded result captured at T0: replacing it needs confirmation and the
       // deterministic archive name result-r1-previous-<T0 ms>.md (F-6).
-      return { type: "captureResult", reviewedHead: HEAD, replaceConfirmedByHuman: true, archivedResultFile: "result-r1-previous-1767225600000.md" };
+      return { type: "captureResult", reviewedHead: HEAD, replaceConfirmedByHuman: true, archivedResultFiles: ["result-r1-previous-1767225600000.md"] };
     case "setResource":
       return { type: "setResource", resourceState: session.resourceState === "HOT" ? "COLD" : "HOT" };
     case "setNextAction":
@@ -185,8 +185,8 @@ describe("re-capture contract (F-6)", () => {
     const first = applyReviewAction(sessionIn("REVIEWING", "WARM", false), { type: "captureResult", reviewedHead: null }, T1);
     expect(first.ok).toBe(true);
     const recorded = sessionIn("FIX_REQUIRED");
-    expect(applyReviewAction(recorded, { type: "captureResult", reviewedHead: null, archivedResultFile: "result-r1-previous-1767225600000.md" }, T1).ok).toBe(false);
-    const unconfirmed = { type: "captureResult", reviewedHead: null, replaceConfirmedByHuman: false, archivedResultFile: "result-r1-previous-1767225600000.md" };
+    expect(applyReviewAction(recorded, { type: "captureResult", reviewedHead: null, archivedResultFiles: ["result-r1-previous-1767225600000.md"] }, T1).ok).toBe(false);
+    const unconfirmed = { type: "captureResult", reviewedHead: null, replaceConfirmedByHuman: false, archivedResultFiles: ["result-r1-previous-1767225600000.md"] };
     expect(applyReviewAction(recorded, unconfirmed as unknown as ReviewAction, T1).ok).toBe(false);
   });
 
@@ -194,7 +194,7 @@ describe("re-capture contract (F-6)", () => {
     const recorded = { ...sessionIn("FIX_REQUIRED"), rounds: [{ ...sessionIn("FIX_REQUIRED").rounds[0], verdict: "FIX_REQUIRED" as const }] };
     const result = applyReviewAction(
       recorded,
-      { type: "captureResult", reviewedHead: null, replaceConfirmedByHuman: true, archivedResultFile: "result-r1-previous-1767225600000.md" },
+      { type: "captureResult", reviewedHead: null, replaceConfirmedByHuman: true, archivedResultFiles: ["result-r1-previous-1767225600000.md"] },
       T1,
     );
     if (!result.ok) throw new Error(result.error);
@@ -209,9 +209,30 @@ describe("re-capture contract (F-6)", () => {
 
   it("rejects an archive name that does not belong to the replaced result", () => {
     const recorded = sessionIn("REVIEWING");
-    for (const archivedResultFile of ["result-r1-previous-1.md", "result-r2-previous-1767225600000.md", "result-r1.md", "../x.md"]) {
-      expect(applyReviewAction(recorded, { type: "captureResult", reviewedHead: null, replaceConfirmedByHuman: true, archivedResultFile }, T1).ok).toBe(false);
+    for (const name of [
+      "result-r1-previous-1.md",
+      "result-r2-previous-1767225600000.md",
+      "result-r1.md",
+      "../x.md",
+      "result-r1-previous-1767225600000-0.md",
+      "result-r1-previous-1767225600000-01.md",
+      "result-r1-previous-1767225600000-1000.md",
+    ]) {
+      const action = { type: "captureResult", reviewedHead: null, replaceConfirmedByHuman: true, archivedResultFiles: [name] } as const;
+      expect(applyReviewAction(recorded, action, T1).ok, name).toBe(false);
     }
+  });
+
+  it("records unrecorded archives of an interrupted capture before the new archive, each only once (E-2)", () => {
+    const recorded = sessionIn("REVIEWING");
+    const names = ["result-r1-previous-1767225600000.md", "result-r1-previous-1767225600000-1.md"];
+    const result = applyReviewAction(recorded, { type: "captureResult", reviewedHead: null, replaceConfirmedByHuman: true, archivedResultFiles: names }, T1);
+    if (!result.ok) throw new Error(result.error);
+    expect(currentRound(result.value.session).archivedResults).toEqual(names);
+    const duplicate = [names[0], names[0]];
+    expect(applyReviewAction(recorded, { type: "captureResult", reviewedHead: null, replaceConfirmedByHuman: true, archivedResultFiles: duplicate }, T1).ok).toBe(false);
+    const again = applyReviewAction(result.value.session, { type: "captureResult", reviewedHead: null, replaceConfirmedByHuman: true, archivedResultFiles: [names[1]] }, T1);
+    expect(again.ok).toBe(false);
   });
 });
 

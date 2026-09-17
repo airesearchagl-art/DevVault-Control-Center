@@ -1,4 +1,4 @@
-import type { StorageBackend, StorageInfo, StorageTarget, WritePrecondition } from "./storage";
+import { StorageError, type StorageBackend, type StorageInfo, type StorageTarget, type WritePrecondition } from "./storage";
 
 function keyOf(target: StorageTarget): string {
   return target.kind === "projects" ? "projects.json" : `reviews/${target.reviewId}/${target.file}`;
@@ -31,6 +31,20 @@ export class TrackedStorage implements StorageBackend {
     if (!this.known.has(key)) return undefined;
     const content = this.known.get(key) ?? null;
     return content === null ? { kind: "absent" } : { kind: "matches", content };
+  }
+
+  /**
+   * Lets a save that writes several files stop before its first write when a file it will write
+   * last was changed on disk (E-3). Nothing is known → nothing to compare → no refusal.
+   */
+  async assertUnchanged(target: StorageTarget): Promise<void> {
+    const precondition = this.preconditionFor(target);
+    if (precondition === undefined) return;
+    const current = await this.inner.read(target);
+    const expected = precondition.kind === "absent" ? null : precondition.content;
+    if (current !== expected) {
+      throw new StorageError("CONFLICT", `${keyOf(target)} was changed on disk since DVCC loaded it`);
+    }
   }
 
   async write(target: StorageTarget, content: string, precondition?: WritePrecondition): Promise<void> {

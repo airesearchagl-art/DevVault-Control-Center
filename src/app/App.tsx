@@ -44,7 +44,7 @@ type DialogState =
 function saveFailed(error: unknown): string {
   const storageError = toStorageError(error);
   if (storageError.code === "CONFLICT") {
-    return "Not saved: the file was changed on disk by another program since DVCC loaded it. Nothing was overwritten — use Reload to see the current data.";
+    return "Not saved: a file was changed on disk by another program since DVCC loaded it, and DVCC did not overwrite that change. Use Reload to see the current data.";
   }
   if (storageError.code === "RECOVERY_REQUIRED") {
     return "Not saved: the file is missing but its backup exists. Reload to restore it from the backup.";

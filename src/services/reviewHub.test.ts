@@ -118,6 +118,39 @@ describe("no silent overwrite of external changes (F-3)", () => {
     expect(disk).toMatchObject({ status: "ok", value: { resourceState: "COLD", nextAction: "edited in another process" } });
   });
 
+  it("checks session.json before replacing checkpoint.md when suspending (E-3)", async () => {
+    const memory = new MemoryStorage();
+    const { hub, reviewId } = await seededHub(memory);
+    unwrapOk(await hub.apply(reviewId, { type: "suspend", resourceState: "WARM", checkpoint: "first checkpoint" }));
+    unwrapOk(await hub.apply(reviewId, { type: "resume" }));
+    const checkpointPath = `reviews/${reviewId}/checkpoint.md`;
+    const sessionPath = `reviews/${reviewId}/session.json`;
+    const checkpointBefore = memory.files.get(checkpointPath);
+    const external = memory.files.get(sessionPath)!.replace('"nextAction": ""', '"nextAction": "edited in another process"');
+    memory.files.set(sessionPath, external);
+
+    await expect(
+      hub.apply(reviewId, { type: "suspend", resourceState: "COLD", checkpoint: "second checkpoint" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(memory.files.get(checkpointPath)).toBe(checkpointBefore);
+    expect(memory.files.get(sessionPath)).toBe(external);
+  });
+
+  it("checks session.json before writing the request or result files (E-3)", async () => {
+    const memory = new MemoryStorage();
+    const { hub, reviewId } = await seededHub(memory);
+    unwrapOk(await hub.apply(reviewId, { type: "markReady" }));
+    unwrapOk(await hub.apply(reviewId, { type: "startReview" }));
+    const sessionPath = `reviews/${reviewId}/session.json`;
+    const external = memory.files.get(sessionPath)!.replace('"nextAction": ""', '"nextAction": "edited in another process"');
+    memory.files.set(sessionPath, external);
+    const before = new Map(memory.files);
+
+    await expect(hub.saveRequest(reviewId)).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(hub.captureResult(reviewId, "result text", null, false)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(memory.files).toEqual(before);
+  });
+
   it("refuses to overwrite projects.json changed by another process", async () => {
     const memory = new MemoryStorage();
     const { hub } = await seededHub(memory);
