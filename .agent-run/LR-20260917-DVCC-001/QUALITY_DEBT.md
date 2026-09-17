@@ -85,6 +85,36 @@ were repaired under Task Packet revision 2 (see EVIDENCE.md "Repair campaign").
   required_resolution: "Add component tests if a DOM test runner is introduced."
   evidence: "transitionContract.test.ts verdict prerequisites; E2E phase 1."
   status: open
+- id: QD-009
+  source_wave: repair round 2 (rev 2)
+  type: behaviour_limitation
+  description: "E-8: Copy review prompt again in the same round regenerates request-r<N>.md and replaces the previous request text (latest-wins; the request is regenerated from the stored session and is not review history)."
+  why_deferred: "Info-level; documented behaviour; request text is reproducible from session data; result history (F-6) is unaffected."
+  risk: low
+  blocks_final_verify: false
+  required_resolution: "Keep previous request text (e.g. request-r<N>-previous-<ms>.md) if request history becomes a requirement."
+  evidence: "Independent Verification #2 E-8; docs/data-contract-v1.md Write rules table."
+  status: open
+- id: QD-010
+  source_wave: repair round 2 (rev 2)
+  type: environment_limitation
+  description: "E-10: debug and release builds share the app identifier and the instance mutex, so a running debug build prevents a release build from starting (and vice versa) although their data folders differ."
+  why_deferred: "Info-level; fails safe (no second writer); documented in README and data contract; changing the dev identity is a configuration decision outside the repair."
+  risk: low
+  blocks_final_verify: false
+  required_resolution: "Use a distinct identifier / mutex name for debug builds if parallel dev and release use is needed."
+  evidence: "Independent Verification #2 E-10; src-tauri/src/instance.rs INSTANCE_MUTEX_NAME."
+  status: open
+- id: QD-011
+  source_wave: repair round 2 (rev 2)
+  type: behaviour_limitation
+  description: "E-5 hardening is conservative: a link whose target is a volume GUID path (verbatim `Volume{GUID}` form, e.g. a folder mount point of another local volume) is refused with FOLDER_REJECTED even though the volume is local."
+  why_deferred: "Fails closed (the folder is simply not opened); rare setup; resolving volume GUID paths safely needs extra Windows APIs outside the repair."
+  risk: low
+  blocks_final_verify: false
+  required_resolution: "Map volume GUID targets to their drive type (GetVolumePathNamesForVolumeNameW + GetDriveTypeW) if mounted-volume project folders are needed."
+  evidence: "src-tauri/src/launcher.rs classifies_link_targets_without_opening_them."
+  status: open
 ```
 
 Open items are all low risk and non-blocking. No high-risk debt.

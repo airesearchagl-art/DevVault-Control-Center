@@ -3,14 +3,13 @@
 - Run ID: LR-20260917-DVCC-001
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — Full Convergence + Independent Verification #2 done; F-3 PARTIAL (E-1 simultaneous-start race, confirmed in plugin source) → repair round 2 within rev 2 scope; Data integrity hard check FAIL until E-1 is fixed and re-verified; no Draft PR
-- Next action (supersedes the section below): implement repair round 2 (E-1 own named mutex + data-folder lock, E-2, E-3, E-5, E-6, docs E-4 / E-9 / E-10), then targeted checks, Full Convergence re-run with spawn-race verification, Independent Verification #3
+- Current state: RUNNING — repair round 2 implemented (E-1 / E-2 / E-3 / E-5 / E-6, docs E-4 / E-9 / E-10) and targeted checks PASS; Data integrity hard check stays FAIL until the E-1 fix is verified at runtime (spawn race) and independently re-verified; no Draft PR
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/review-hub-v0.1
 - Base SHA: bbffea1177b80dfe46a0f6887a9fc05dd5e4f05d
-- Current head: repair checkpoint commit (parent 561c746)
-- Current wave: R7 checkpoint → Full Convergence
-- Last successful checkpoint: repair checkpoint (commit "chore(run): repair checkpoint after R1–R6 (Task Packet rev 2)")
+- Current head: repair round 2 checkpoint commit (parent 61949ed)
+- Current wave: R9 checkpoint → Full Convergence re-run
+- Last successful checkpoint: repair round 2 checkpoint (commit "chore(run): repair round 2 checkpoint (E-1..E-10)")
 - Task Packet ID: LRP-20260917-DVCC-001
 - Task Packet revision: 2
 - Task Packet snapshot path: .agent-run/LR-20260917-DVCC-001/TASK_PACKET_SNAPSHOT.rev2.md
@@ -23,82 +22,58 @@ Build DevVault Control Center — Review Hub v0.1 as a locally usable Windows de
 
 ## Acceptance Criteria
 
-Implementer evidence after R1–R6 (unit / service level); release E2E and Independent Verification pending.
+Independent Verification #2 reported AC-01..AC-20 PASS on `8231e58`. Round 2 changes touch AC-09 / AC-11 / AC-13 / AC-17 / AC-19 paths; all are re-run at the Full Convergence re-run and re-verified independently.
 
-- [ ] AC-01 — release launch to be re-run at Full Convergence
-- [x] AC-02 — PASS (service + earlier E2E); re-run pending
-- [x] AC-03 — PASS; re-run pending
-- [x] AC-04 — independent oracle resource-independence tests PASS
-- [x] AC-05 — independent oracle PASS; mutation probe 12 / 12 killed
-- [x] AC-06 — round-trip tests PASS
-- [x] AC-07 — F-1 fixed; round-trip table PASS
-- [x] AC-08 — per-round artifacts + archived results PASS
-- [ ] AC-09 — service-level PASS; release restart E2E pending
-- [ ] AC-10 — Rust tests PASS; release E2E pending
-- [ ] AC-11 — Rust tests incl. reparse / mapped-drive boundary PASS; release E2E pending
-- [x] AC-12 — service PASS; release clipboard E2E pending
-- [x] AC-13 — service PASS (incl. re-capture preservation)
-- [x] AC-14 — domain oracle PASS; release E2E pending
-- [x] AC-15 — unchanged; hygiene re-scan pending
-- [x] AC-16 — dependency set: + tauri-plugin-single-instance only (approved); no paid API
-- [x] AC-17 — recovery table tests PASS (F-2 fixed); app-level smoke pending
-- [x] AC-18 — F-1 fixed; round-trip PASS; release restart pending
-- [ ] AC-19 — tests / Rust checks PASS; Windows smoke + single-instance evidence pending
-- [ ] AC-20 — full diff review pending
+## Repair acceptance (rev 2)
 
-Repair acceptance (rev 2): R-F1 [x] · R-F2 [x] · R-F3 [x implementation; runtime single-instance evidence pending] · R-F4 [x] · R-F5 [x] · R-F6 [x] · R-F8 [x logic; UI smoke pending] · R-F9 [x reproduced → fixed → verified by tests + temporary mapping] · R-F11 [x]
+- R-F1, R-F2, R-F4, R-F5, R-F8, R-F11: RESOLVED (Verification #2)
+- R-F6: RESOLVED; residual E-2 repaired in round 2 (tests)
+- R-F9: RESOLVED (Verification #2); E-5 hardening in round 2 (tests)
+- R-F3: PARTIAL in Verification #2 (E-1) → repaired in round 2 (unit tests); runtime spawn-race evidence and Verification #3 pending
 
-## Hard Checks (implementer view; independent re-verification pending)
+## Hard Checks (implementer view)
 
-- Security: F-9 boundary fixed and verified by tests; pending Full Convergence + Independent Verification
-- Privacy: pending hygiene re-scan
+- Security: PASS in Verification #2; E-5 hardening added; re-verification pending
+- Privacy: PASS (E-7 reworded); hygiene re-scan pending
 - Authentication: no auth surface
-- Permission: capability unchanged (core:default + clipboard write); plugin added only in Rust; pending verification
-- Data integrity: F-1 / F-3 repaired; pending verification
-- Irreversible-data safety: F-2 repaired; pending verification
+- Permission: capability unchanged (core:default + clipboard write); no new plugin or permission in round 2
+- Data integrity: FAIL (E-1) until runtime race evidence + Verification #3
+- Irreversible-data safety: PASS in Verification #2; E-2 / E-3 notes repaired; re-verification pending
 
 ## Completed
 
-- Revision 1 waves; BLOCKED escalation; revision 2 binding; R1–R6 repairs; docs; targeted checks PASS.
-
-## Current implementation state
-
-Code head `561c746`. See EVIDENCE.md "Repair implementation R1–R6".
+- Revision 1 waves; BLOCKED escalation; revision 2 binding; R1–R6 repairs; docs; Full Convergence; Independent Verification #2; repair round 2 (`3833d4e`, `a03f67f`, `68af11d`, `61949ed`); targeted checks PASS.
 
 ## Checks
 
-Targeted after R1–R6: tsc PASS; vitest 413 PASS; build PASS; cargo check PASS; cargo test 33 PASS (+ mapped-drive ignored test PASS when run with a temporary mapping).
+Targeted after round 2: tsc PASS; vitest 420 PASS; build PASS; cargo fmt --check PASS; cargo check PASS; cargo clippy --all-targets no warnings; cargo test 38 passed / 1 ignored.
 
 ## Quality Debt
 
-Resolved: QD-001..QD-004. Open (low, non-blocking): QD-005 (F-7, Human-allowed), QD-006 (F-10, Human-allowed), QD-007 (F-12), QD-008 (no DOM component tests for AC-14 dialog).
+Resolved: QD-001..QD-004. Open (low, non-blocking): QD-005 (F-7, Human-allowed), QD-006 (F-10, Human-allowed), QD-007 (F-12), QD-008 (no DOM component tests for AC-14 dialog), QD-009 (E-8 request latest-wins), QD-010 (E-10 shared debug / release identity), QD-011 (volume GUID link targets refused).
 
 ## Explicit unverified items
 
-- Release no-bundle build, Windows launch smoke, restart E2E, app-level recovery smoke (missing primary / I/O error / unreadable), single-instance runtime evidence, launcher boundary runtime smoke, hygiene re-scan — Full Convergence.
-- Independent Verification of the repairs.
+- Runtime evidence for round 2: release rebuild, single-instance script incl. race phase, release E2E, recovery / conflict smoke, F-9 / E-5 runtime boundary, hygiene re-scan — Full Convergence re-run.
+- Independent Verification #3.
 - Default `%APPDATA%` data folder not exercised at runtime (protected); verified by code + dependency source.
 - Real Ctrl+V paste (automation uses value setter).
 
 ## Known failures
 
-none open.
+- E-1 (F-3 prevention sub-condition): fix implemented, runtime verification pending.
 
 ## Decisions
 
-See DECISIONS.md (D1–D3; R2-D1..R2-D3; L-001..L-022).
-
-## Files changed (repair)
-
-src/domain/{validation,review,schema,transitions,limits}.ts (+ tests roundTrip, transitionContract, limits), src/services/{storage,persistence,reviewService,reviewHub,trackedStorage,serialQueue}.ts (+ tests), src/app/{App.tsx,appState.ts} (+ test), src/features/reviews/{ReviewDetail,ReviewDialogs}.tsx, src/test/{memoryStorage,delayedStorage,transitionContract}.ts, src-tauri/{Cargo.toml,Cargo.lock,src/lib.rs,src/storage.rs,src/launcher.rs}, contract/limits.json, scripts/verify-single-instance.ps1, docs/data-contract-v1.md, README.md, .gitattributes, .agent-run/**.
+See DECISIONS.md (D1–D3; R2-D1..R2-D3; L-001..L-029).
 
 ## Remaining tasks
 
-Full Convergence → Independent Verification → Hard Checks → Draft PR (only if conditions hold) → STOP.
+Full Convergence re-run (incl. spawn-race verification) → Independent Verification #3 → Hard Checks → Draft PR only if all conditions hold → STOP.
 
 ## Next action
 
-Full Convergence: npm ci, tsc, vitest, build, cargo check, cargo test, no-bundle release build; release E2E (phases 1–2 restart + recapture), app-level recovery smoke (restored / missing primary / I/O error / unreadable + set-aside / unsupported / fatal), rapid-click and external-change conflict smoke, single-instance script, launcher boundary smoke (symlink → UNC rejected at runtime), hygiene scan, full diff review.
+Full Convergence re-run: npm ci, tsc, vitest, build, cargo check, cargo test (+ mapped-drive ignored test with a temporary loopback mapping), `npm run tauri build -- --no-bundle`; `scripts/verify-single-instance.ps1` (sequential + race rounds); release E2E (restart, recapture incl. retry, conflict incl. suspend pre-check, boundary); F-9 / E-5 runtime check; hygiene and scope scans; full diff review.
 
 ## Stop conditions status
 

@@ -269,3 +269,27 @@ New findings and Orchestrator decision:
 | E-8 | info | Regenerating `request-r<N>.md` in the same round replaces the previous request text. | Record as Quality Debt (documented latest-wins behaviour). |
 | E-9 | info | README / data contract "only one process" statement inaccurate given E-1. | Accept → update after the E-1 fix. |
 | E-10 | info (unconfirmed) | Debug and release builds share the identifier, so a dev instance blocks a release instance. | Accept as documented limitation (Quality Debt). |
+
+### Repair round 2 (rev 2 scope: F-3 / F-6 / F-9 residuals from Independent Verification #2)
+
+| Item | Implementation | Commit | Test / evidence |
+|---|---|---|---|
+| E-1 (F-3) | `instance.rs`: named mutex `Local\com.devvault.controlcenter.instance` created first in `run()`; a process that did not create it exits in `setup` (`cleanup_before_exit` + `exit(0)`) before the data root is resolved. `storage.rs`: `.dvcc.lock` opened with `share_mode(0)` for the process lifetime; failure → `DATA_DIR_IN_USE`, every storage command refused. | `a03f67f` | `second_creation_of_the_same_mutex_reports_a_running_instance`; `data_folder_lock_admits_only_one_owner_at_a_time` (second owner refused, no data file created, lock released on drop). Runtime race verification → Full Convergence re-run. |
+| E-2 (F-6) | Archive candidates `result-r<N>-previous-<ms>[-<n>].md`; unrecorded candidate with the replaced text reused, with other text recorded, else first free name; action payload `archivedResultFiles`; Rust / MemoryStorage names accept `-<n>` (1..999, no leading zero). | `a03f67f`, `68af11d` | Retry after session write failure, after result write failure, after session restored to an older state; unrecorded foreign archive kept and recorded; oracle rejects `-0`, `-01`, `-1000`, duplicates, non-candidates. |
+| E-3 | `TrackedStorage.assertUnchanged(session.json)` before the first write of Suspend / Copy review prompt / Capture result; CONFLICT message reworded ("DVCC did not overwrite that change"). | `68af11d` | Hub tests: external session change → suspend CONFLICT with `checkpoint.md` unchanged; saveRequest / captureResult CONFLICT with every file unchanged. |
+| E-4 | Data contract table of conditional writes; `request-r<N>.md` / `checkpoint.md` latest-wins unless read in this run. | `61949ed` | Doc review. |
+| E-5 (F-9 hardening) | `reject_network_links`: every link along the path read with `read_link` (not followed) and its target classified before `metadata` / `canonicalize`. | `a03f67f` | `rejects_link_to_unreachable_network_host_without_resolving_it` (EXECUTED; NETWORK_TARGET in 1.27 ms for a non-existent host, incl. sub folder and link chain), `relative_symlink_to_local_directory_is_accepted`, `classifies_link_targets_without_opening_them`; existing F-9 tests still pass. |
+| E-6 | Result replaced between read and write → CONFLICT. | `68af11d` | New persistence test. |
+| E-8 / E-10 | Quality Debt QD-009 / QD-010; documented. | `61949ed` | — |
+| E-9 | README / data contract describe the three layers (mutex, plugin, lock). | `61949ed` | Doc review. |
+| Formatting | `cargo fmt` of pre-existing Rust code in a separate formatting-only commit. | `3833d4e` | `cargo fmt --check` PASS. |
+
+Mutation checks of the new tests (source copy restored and byte-compared afterwards):
+
+| Mutation | Killed by |
+|---|---|
+| M-E3: `ensureSessionUnchanged` does nothing | 2 hub tests (E-3) |
+| M-C2: result write without precondition (the mutation that survived in Verification #2) | E-6 test |
+| M-E2: no reuse of an archive already holding the replaced text | "retry after the result write failed" test |
+
+Targeted checks after round 2: tsc PASS; vitest 420 PASS (13 files); `npm run build` PASS; `cargo fmt --check` PASS; `cargo check` PASS; `cargo clippy --all-targets` no warnings; `cargo test` 38 passed / 1 ignored (mapped-drive test needs a temporary mapping; run at Full Convergence).

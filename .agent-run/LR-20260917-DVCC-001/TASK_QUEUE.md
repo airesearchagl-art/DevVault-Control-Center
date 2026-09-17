@@ -22,7 +22,10 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 - [x] R5 F-6 / F-11 (`b527fbb`)
 - [x] R6 F-9 reproduced → fixed → verified (`e01b1ab`)
 - [x] Docs (`561c746`)
-- [~] R7 Targeted checks PASS → checkpoint (push)
-- [ ] R7 Full Convergence: tsc, vitest, build, cargo check, cargo test, no-bundle build, release launch, restart E2E, persistence / recovery smoke, single-instance evidence, launcher boundary smoke, hygiene
-- [ ] R8 Independent Verification (new context; focus F-1 / F-2 / F-3 / F-9)
-- [ ] R8 Hard Checks → Draft PR only if conditions hold → STOP
+- [x] R7 Targeted checks PASS → checkpoint (`8231e58`, pushed)
+- [x] R7 Full Convergence: all required checks + release E2E / recovery / conflict / single-instance script / F-9 runtime PASS
+- [x] R8 Independent Verification #2 → F-3 PARTIAL (E-1 spawn race), Data integrity FAIL; E-2..E-10 (`f8408c7`)
+- [x] R9 Repair round 2 (within rev 2 F-3 / F-6 / F-9 scope): E-1 own named mutex + data-folder lock; E-2 idempotent archive; E-3 suspend pre-check + accurate message; E-5 link targets checked without following; E-6 test; docs E-4 / E-9 / E-10 (`3833d4e`, `a03f67f`, `68af11d`, `61949ed`)
+- [x] R9 Targeted checks PASS → checkpoint
+- [ ] R9 Full Convergence re-run (incl. spawn-race verification)
+- [ ] R10 Independent Verification #3 → Hard Checks → Draft PR only if conditions hold → STOP
