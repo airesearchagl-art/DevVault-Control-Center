@@ -241,9 +241,11 @@ export async function writeSessionAndEvent(
   backend: StorageBackend,
   session: ReviewSession,
   event: ReviewEvent,
+  options?: { create?: boolean },
 ): Promise<string | null> {
   const id = session.reviewSessionId;
-  await backend.write(reviewTarget(id, "session.json"), serializeSession(session));
+  // A new review must not replace an existing session.json (e.g. an id collision).
+  await backend.write(reviewTarget(id, "session.json"), serializeSession(session), options?.create ? { kind: "absent" } : undefined);
   try {
     await backend.appendLine(reviewTarget(id, "events.jsonl"), serializeEvent(event));
     return null;

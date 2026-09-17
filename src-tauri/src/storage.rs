@@ -9,6 +9,8 @@ use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -38,16 +40,24 @@ pub struct ResolvedRoot {
     pub source: DataRootSource,
 }
 
-/// Managed state: the resolved data root, or the reason it could not be resolved.
-pub struct DataRoot(Result<ResolvedRoot, String>);
+/// Managed state: the resolved data root (or the reason it could not be resolved) plus the
+/// lock that serializes every storage operation of this process (F-3 / F-4): a read-compare-
+/// write sequence is never interleaved with another command.
+pub struct DataRoot {
+    resolved: Result<ResolvedRoot, String>,
+    lock: Mutex<()>,
+}
 
 impl DataRoot {
     pub fn new(resolved: Result<ResolvedRoot, String>) -> Self {
-        Self(resolved)
+        Self {
+            resolved,
+            lock: Mutex::new(()),
+        }
     }
 
     fn resolved(&self) -> Result<&ResolvedRoot, CommandError> {
-        self.0
+        self.resolved
             .as_ref()
             .map_err(|message| CommandError::new("DATA_DIR_UNAVAILABLE", message.clone()))
     }
@@ -55,6 +65,37 @@ impl DataRoot {
     pub fn path(&self) -> Result<&Path, CommandError> {
         Ok(&self.resolved()?.path)
     }
+
+    /// Runs `operation` while holding the storage lock.
+    pub fn exclusive<T>(
+        &self,
+        operation: impl FnOnce(&Path) -> Result<T, CommandError>,
+    ) -> Result<T, CommandError> {
+        let root = self.path()?;
+        // A poisoned lock only means an earlier operation panicked; the files themselves are
+        // still protected by atomic replacement, so continue with the inner guard.
+        let _guard = self.lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        operation(root)
+    }
+}
+
+/// Optional optimistic-concurrency precondition for a write: the target must be absent, or its
+/// current bytes must equal the content this process last read or wrote. A mismatch means
+/// another process or an editor changed the file, and the write is refused (`CONFLICT`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum WritePrecondition {
+    Absent,
+    Matches { content: String },
+}
+
+static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Unique sibling temp path (`<name>.<tag>-<pid>-<n>`): concurrent writers never share a temp
+/// file, and a temp file left by a crash is never read because reads address exact names.
+fn unique_temp_path(path: &Path, tag: &str) -> PathBuf {
+    let n = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    with_suffix(path, &format!(".{tag}-{}-{n}", std::process::id()))
 }
 
 /// `DVCC_DATA_DIR` (absolute) wins; otherwise `<user data dir>/DevVault-Control[-dev]`.
@@ -185,8 +226,9 @@ pub fn read_text(path: &Path) -> Result<Option<String>, CommandError> {
     }
 }
 
+/// Writes and syncs a brand-new file; fails if the path already exists (temp names are unique).
 fn write_synced(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    let mut file = File::create(path)?;
+    let mut file: File = OpenOptions::new().write(true).create_new(true).open(path)?;
     file.write_all(bytes)?;
     file.sync_all()
 }
@@ -206,7 +248,12 @@ fn path_exists(path: &Path) -> Result<bool, CommandError> {
 /// `<name>.bak`, and a missing primary whose `.bak` still exists is a recovery state
 /// (`RECOVERY_REQUIRED`): a normal write must not create a new primary that would later
 /// replace the only recoverable backup. `events.jsonl` is append-only and rejected here.
-pub fn write_atomic(path: &Path, content: &str) -> Result<(), CommandError> {
+/// With a `precondition`, the current bytes are compared first and a mismatch is `CONFLICT`.
+pub fn write_atomic(
+    path: &Path,
+    content: &str,
+    precondition: Option<&WritePrecondition>,
+) -> Result<(), CommandError> {
     if is_events_file(path) {
         return Err(CommandError::new(
             "APPEND_ONLY",
@@ -230,6 +277,22 @@ pub fn write_atomic(path: &Path, content: &str) -> Result<(), CommandError> {
         Err(error) if error.kind() == io::ErrorKind::NotFound => None,
         Err(error) => return Err(io_error("READ_FAILED", path, error)),
     };
+    let unchanged = match precondition {
+        None => true,
+        Some(WritePrecondition::Absent) => existing.is_none(),
+        Some(WritePrecondition::Matches { content: expected }) => {
+            existing.as_deref() == Some(expected.as_bytes())
+        }
+    };
+    if !unchanged {
+        return Err(CommandError::new(
+            "CONFLICT",
+            format!(
+                "{}: the file changed on disk since it was loaded; nothing was overwritten",
+                path.display()
+            ),
+        ));
+    }
     if json && existing.as_deref().is_some_and(|bytes| !parses_as_json(bytes)) {
         return Err(CommandError::new(
             "PRIMARY_UNREADABLE",
@@ -249,7 +312,7 @@ pub fn write_atomic(path: &Path, content: &str) -> Result<(), CommandError> {
         ));
     }
 
-    let tmp = with_suffix(path, ".tmp");
+    let tmp = unique_temp_path(path, "tmp");
     if let Err(error) = write_synced(&tmp, content.as_bytes()) {
         let _ = fs::remove_file(&tmp);
         return Err(io_error("WRITE_FAILED", &tmp, error));
@@ -258,7 +321,7 @@ pub fn write_atomic(path: &Path, content: &str) -> Result<(), CommandError> {
     if json {
         if let Some(previous) = &existing {
             let backup = with_suffix(path, ".bak");
-            let backup_tmp = with_suffix(path, ".bak.tmp");
+            let backup_tmp = unique_temp_path(&backup, "tmp");
             let backup_result = write_synced(&backup_tmp, previous)
                 .and_then(|_| fs::rename(&backup_tmp, &backup));
             if let Err(error) = backup_result {
@@ -359,7 +422,7 @@ pub fn restore_backup(path: &Path) -> Result<(), CommandError> {
             format!("{}: backup is not valid JSON", backup.display()),
         ));
     }
-    let tmp = with_suffix(path, ".tmp");
+    let tmp = unique_temp_path(path, "tmp");
     if let Err(error) = write_synced(&tmp, &bytes) {
         let _ = fs::remove_file(&tmp);
         return Err(io_error("WRITE_FAILED", &tmp, error));
@@ -451,9 +514,10 @@ pub struct StorageInfo {
 #[tauri::command]
 pub async fn storage_info(root: State<'_, DataRoot>) -> Result<StorageInfo, CommandError> {
     let resolved = root.resolved()?;
-    let reviews = resolved.path.join(REVIEWS_DIR);
-    fs::create_dir_all(&reviews)
-        .map_err(|error| io_error("DATA_DIR_UNAVAILABLE", &resolved.path, error))?;
+    root.exclusive(|path| {
+        fs::create_dir_all(path.join(REVIEWS_DIR))
+            .map_err(|error| io_error("DATA_DIR_UNAVAILABLE", path, error))
+    })?;
     Ok(StorageInfo {
         data_dir: resolved.path.display().to_string(),
         source: resolved.source,
@@ -461,14 +525,10 @@ pub async fn storage_info(root: State<'_, DataRoot>) -> Result<StorageInfo, Comm
     })
 }
 
-#[tauri::command]
-pub async fn storage_read(
-    root: State<'_, DataRoot>,
-    target: StorageTarget,
-    backup: Option<bool>,
-) -> Result<Option<String>, CommandError> {
-    let path = target_path(root.path()?, &target)?;
-    if backup.unwrap_or(false) {
+/// Reads a target (or its `.bak`). Shared by the command and tests.
+pub fn read_target(root: &Path, target: &StorageTarget, backup: bool) -> Result<Option<String>, CommandError> {
+    let path = target_path(root, target)?;
+    if backup {
         if !is_json_file(&path) {
             return Err(CommandError::new(
                 "INVALID_TARGET",
@@ -481,13 +541,22 @@ pub async fn storage_read(
 }
 
 #[tauri::command]
+pub async fn storage_read(
+    root: State<'_, DataRoot>,
+    target: StorageTarget,
+    backup: Option<bool>,
+) -> Result<Option<String>, CommandError> {
+    root.exclusive(|path| read_target(path, &target, backup.unwrap_or(false)))
+}
+
+#[tauri::command]
 pub async fn storage_write(
     root: State<'_, DataRoot>,
     target: StorageTarget,
     content: String,
+    precondition: Option<WritePrecondition>,
 ) -> Result<(), CommandError> {
-    let path = target_path(root.path()?, &target)?;
-    write_atomic(&path, &content)
+    root.exclusive(|path| write_atomic(&target_path(path, &target)?, &content, precondition.as_ref()))
 }
 
 #[tauri::command]
@@ -496,13 +565,12 @@ pub async fn storage_append_line(
     target: StorageTarget,
     line: String,
 ) -> Result<(), CommandError> {
-    let path = target_path(root.path()?, &target)?;
-    append_line(&path, &line)
+    root.exclusive(|path| append_line(&target_path(path, &target)?, &line))
 }
 
 #[tauri::command]
 pub async fn storage_list_reviews(root: State<'_, DataRoot>) -> Result<Vec<String>, CommandError> {
-    list_review_ids(root.path()?)
+    root.exclusive(list_review_ids)
 }
 
 #[tauri::command]
@@ -511,8 +579,7 @@ pub async fn storage_quarantine(
     target: StorageTarget,
     backup: Option<bool>,
 ) -> Result<String, CommandError> {
-    let path = target_path(root.path()?, &target)?;
-    quarantine(&path, backup.unwrap_or(false), unix_millis())
+    root.exclusive(|path| quarantine(&target_path(path, &target)?, backup.unwrap_or(false), unix_millis()))
 }
 
 #[tauri::command]
@@ -520,8 +587,7 @@ pub async fn storage_restore_backup(
     root: State<'_, DataRoot>,
     target: StorageTarget,
 ) -> Result<(), CommandError> {
-    let path = target_path(root.path()?, &target)?;
-    restore_backup(&path)
+    root.exclusive(|path| restore_backup(&target_path(path, &target)?))
 }
 
 #[cfg(test)]
@@ -561,6 +627,21 @@ pub(crate) mod tests {
     }
 
     const ID: &str = "rv-20260101-alpha1";
+
+    fn write(path: &Path, content: &str) -> Result<(), CommandError> {
+        write_atomic(path, content, None)
+    }
+
+    /// True when no temp file (`<name>.tmp-<pid>-<n>`) is left next to `dir` entries.
+    fn no_temp_files(dir: &Path) -> bool {
+        fs::read_dir(dir)
+            .map(|entries| {
+                entries
+                    .filter_map(Result::ok)
+                    .all(|entry| !entry.file_name().to_string_lossy().contains(".tmp-"))
+            })
+            .unwrap_or(true)
+    }
 
     #[test]
     fn data_root_prefers_absolute_env_override() {
@@ -684,25 +765,24 @@ pub(crate) mod tests {
     fn write_atomic_creates_file_and_keeps_previous_json_as_backup() {
         let dir = TempDir::new();
         let path = target_path(&dir.0, &review(ID, "session.json")).unwrap();
-        write_atomic(&path, "{\"v\":1}").unwrap();
+        write(&path, "{\"v\":1}").unwrap();
         assert_eq!(read_text(&path).unwrap().unwrap(), "{\"v\":1}");
         assert!(!with_suffix(&path, ".bak").exists());
 
-        write_atomic(&path, "{\"v\":2}").unwrap();
+        write(&path, "{\"v\":2}").unwrap();
         assert_eq!(read_text(&path).unwrap().unwrap(), "{\"v\":2}");
         assert_eq!(
             read_text(&with_suffix(&path, ".bak")).unwrap().unwrap(),
             "{\"v\":1}"
         );
-        assert!(!with_suffix(&path, ".tmp").exists());
-        assert!(!with_suffix(&path, ".bak.tmp").exists());
+        assert!(no_temp_files(path.parent().unwrap()));
     }
 
     #[test]
     fn write_atomic_rejects_invalid_json_content() {
         let dir = TempDir::new();
         let path = dir.0.join("projects.json");
-        let error = write_atomic(&path, "{not json").unwrap_err();
+        let error = write(&path, "{not json").unwrap_err();
         assert_eq!(error.code, "INVALID_CONTENT");
         assert!(!path.exists());
     }
@@ -712,24 +792,24 @@ pub(crate) mod tests {
         let dir = TempDir::new();
         let path = dir.0.join("projects.json");
         fs::write(&path, "{\"projects\": [trunc").unwrap();
-        let error = write_atomic(&path, "{\"schemaVersion\":1,\"projects\":[]}").unwrap_err();
+        let error = write(&path, "{\"schemaVersion\":1,\"projects\":[]}").unwrap_err();
         assert_eq!(error.code, "PRIMARY_UNREADABLE");
         assert_eq!(fs::read_to_string(&path).unwrap(), "{\"projects\": [trunc");
         assert!(!with_suffix(&path, ".bak").exists());
-        assert!(!with_suffix(&path, ".tmp").exists());
+        assert!(no_temp_files(&dir.0));
     }
 
     #[test]
     fn write_atomic_markdown_has_no_backup_and_events_are_append_only() {
         let dir = TempDir::new();
         let md = target_path(&dir.0, &review(ID, "result-r1.md")).unwrap();
-        write_atomic(&md, "first").unwrap();
-        write_atomic(&md, "second").unwrap();
+        write(&md, "first").unwrap();
+        write(&md, "second").unwrap();
         assert_eq!(read_text(&md).unwrap().unwrap(), "second");
         assert!(!with_suffix(&md, ".bak").exists());
 
         let events = target_path(&dir.0, &review(ID, "events.jsonl")).unwrap();
-        assert_eq!(write_atomic(&events, "{}").unwrap_err().code, "APPEND_ONLY");
+        assert_eq!(write(&events, "{}").unwrap_err().code, "APPEND_ONLY");
     }
 
     #[test]
@@ -801,6 +881,97 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn write_preconditions_refuse_silent_overwrite() {
+        let dir = TempDir::new();
+        let path = target_path(&dir.0, &review(ID, "session.json")).unwrap();
+        write_atomic(&path, "{\"v\":1}", Some(&WritePrecondition::Absent)).unwrap();
+        // Absent when the file exists → CONFLICT, file unchanged.
+        let error = write_atomic(&path, "{\"v\":2}", Some(&WritePrecondition::Absent)).unwrap_err();
+        assert_eq!(error.code, "CONFLICT");
+        assert_eq!(fs::read_to_string(&path).unwrap(), "{\"v\":1}");
+
+        // Another process / editor changes the file after this process loaded "{\"v\":1}".
+        fs::write(&path, "{\"v\":\"external\"}").unwrap();
+        let loaded = WritePrecondition::Matches { content: "{\"v\":1}".to_string() };
+        let error = write_atomic(&path, "{\"v\":2}", Some(&loaded)).unwrap_err();
+        assert_eq!(error.code, "CONFLICT");
+        assert_eq!(fs::read_to_string(&path).unwrap(), "{\"v\":\"external\"}");
+        assert!(!with_suffix(&path, ".bak").exists(), "a refused write must not rotate the backup");
+
+        // Matching content → write succeeds.
+        let current = WritePrecondition::Matches { content: "{\"v\":\"external\"}".to_string() };
+        write_atomic(&path, "{\"v\":3}", Some(&current)).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "{\"v\":3}");
+
+        // Markdown artifacts use the same contract.
+        let md = target_path(&dir.0, &review(ID, "result-r1.md")).unwrap();
+        write_atomic(&md, "first", Some(&WritePrecondition::Absent)).unwrap();
+        assert_eq!(
+            write_atomic(&md, "second", Some(&WritePrecondition::Absent)).unwrap_err().code,
+            "CONFLICT"
+        );
+        assert!(no_temp_files(path.parent().unwrap()));
+    }
+
+    #[test]
+    fn temp_paths_are_unique_and_stale_temp_files_are_ignored() {
+        let dir = TempDir::new();
+        let path = dir.0.join("projects.json");
+        let a = unique_temp_path(&path, "tmp");
+        let b = unique_temp_path(&path, "tmp");
+        assert_ne!(a, b);
+        assert!(a.file_name().unwrap().to_string_lossy().starts_with("projects.json.tmp-"));
+
+        // Leftovers from a crash (old fixed name and a unique-name temp) contain garbage.
+        fs::write(with_suffix(&path, ".tmp"), "garbage").unwrap();
+        fs::write(&a, "{\"stale\":true}").unwrap();
+        assert_eq!(read_text(&path).unwrap(), None, "temp files are never read as the primary");
+        write(&path, "{\"v\":1}").unwrap();
+        write(&path, "{\"v\":2}").unwrap();
+        assert_eq!(read_text(&path).unwrap().unwrap(), "{\"v\":2}");
+        assert_eq!(fs::read_to_string(&a).unwrap(), "{\"stale\":true}", "stale temp untouched");
+    }
+
+    #[test]
+    fn concurrent_writes_through_the_storage_lock_stay_consistent() {
+        use std::sync::Arc;
+        let dir = TempDir::new();
+        let root = Arc::new(DataRoot::new(Ok(ResolvedRoot {
+            path: dir.0.clone(),
+            source: DataRootSource::Env,
+        })));
+        let target = StorageTarget::Projects;
+        root.exclusive(|p| write_atomic(&target_path(p, &target)?, "{\"writer\":-1,\"i\":-1}", None))
+            .unwrap();
+
+        let threads: Vec<_> = (0..8)
+            .map(|writer| {
+                let root = Arc::clone(&root);
+                std::thread::spawn(move || {
+                    for i in 0..25 {
+                        let content = format!("{{\"writer\":{writer},\"i\":{i}}}");
+                        root.exclusive(|p| {
+                            let path = target_path(p, &StorageTarget::Projects)?;
+                            // read-compare-write under the lock never sees a CONFLICT
+                            let current = read_text(&path)?.unwrap();
+                            write_atomic(&path, &content, Some(&WritePrecondition::Matches { content: current }))
+                        })
+                        .unwrap();
+                    }
+                })
+            })
+            .collect();
+        for thread in threads {
+            thread.join().unwrap();
+        }
+        let path = dir.0.join("projects.json");
+        let final_text = read_text(&path).unwrap().unwrap();
+        assert!(parses_as_json(final_text.as_bytes()));
+        assert!(parses_as_json(fs::read(with_suffix(&path, ".bak")).unwrap().as_slice()));
+        assert!(no_temp_files(&dir.0));
+    }
+
+    #[test]
     fn missing_primary_with_backup_requires_recovery_and_protects_backup() {
         let dir = TempDir::new();
         let path = dir.0.join("projects.json");
@@ -808,7 +979,7 @@ pub(crate) mod tests {
         fs::write(&backup, "{\"only\":\"copy\"}").unwrap();
 
         // A normal write must not start a new primary next to the only recoverable backup.
-        let error = write_atomic(&path, "{\"new\":1}").unwrap_err();
+        let error = write(&path, "{\"new\":1}").unwrap_err();
         assert_eq!(error.code, "RECOVERY_REQUIRED");
         assert!(!path.exists());
         assert_eq!(fs::read_to_string(&backup).unwrap(), "{\"only\":\"copy\"}");
@@ -817,10 +988,10 @@ pub(crate) mod tests {
         restore_backup(&path).unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), "{\"only\":\"copy\"}");
         assert_eq!(fs::read_to_string(&backup).unwrap(), "{\"only\":\"copy\"}");
-        assert!(!with_suffix(&path, ".tmp").exists());
+        assert!(no_temp_files(&dir.0));
 
         // After restore, normal writes resume and the backup rotates to the restored content.
-        write_atomic(&path, "{\"new\":1}").unwrap();
+        write(&path, "{\"new\":1}").unwrap();
         assert_eq!(fs::read_to_string(&backup).unwrap(), "{\"only\":\"copy\"}");
         assert_eq!(restore_backup(&path).unwrap_err().code, "PRIMARY_EXISTS");
     }
@@ -839,7 +1010,7 @@ pub(crate) mod tests {
         );
         // Setting the invalid backup aside leaves a clean state where writes are allowed.
         quarantine(&path, true, 7).unwrap();
-        write_atomic(&path, "{\"fresh\":true}").unwrap();
+        write(&path, "{\"fresh\":true}").unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), "{\"fresh\":true}");
     }
 
@@ -864,9 +1035,9 @@ pub(crate) mod tests {
         let projects = "{\"schemaVersion\":1,\"projects\":[{\"projectId\":\"project-alpha\"}]}";
         let session = "{\"schemaVersion\":1,\"reviewSessionId\":\"rv-20260101-alpha1\",\"reviewState\":\"SUSPENDED\"}";
         {
-            write_atomic(&target_path(&dir.0, &StorageTarget::Projects).unwrap(), projects).unwrap();
-            write_atomic(&target_path(&dir.0, &review(ID, "session.json")).unwrap(), session).unwrap();
-            write_atomic(&target_path(&dir.0, &review(ID, "checkpoint.md")).unwrap(), "stopped here").unwrap();
+            write(&target_path(&dir.0, &StorageTarget::Projects).unwrap(), projects).unwrap();
+            write(&target_path(&dir.0, &review(ID, "session.json")).unwrap(), session).unwrap();
+            write(&target_path(&dir.0, &review(ID, "checkpoint.md")).unwrap(), "stopped here").unwrap();
             append_line(&target_path(&dir.0, &review(ID, "events.jsonl")).unwrap(), "{\"type\":\"suspended\"}").unwrap();
         }
         // "Restart": resolve everything again from disk only.

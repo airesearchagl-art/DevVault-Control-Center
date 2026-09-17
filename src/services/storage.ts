@@ -3,6 +3,13 @@ import { invoke } from "@tauri-apps/api/core";
 /** Mirrors `StorageTarget` in `src-tauri/src/storage.rs`. */
 export type StorageTarget = { kind: "projects" } | { kind: "review"; reviewId: string; file: string };
 
+/**
+ * Optimistic-concurrency precondition for a write (mirrors `WritePrecondition` in Rust): the
+ * file must be absent, or still contain exactly what this process last read / wrote.
+ * A mismatch is refused with code `CONFLICT` and nothing is overwritten.
+ */
+export type WritePrecondition = { kind: "absent" } | { kind: "matches"; content: string };
+
 export interface StorageInfo {
   dataDir: string;
   source: "env" | "default";
@@ -28,7 +35,7 @@ export interface StorageBackend {
   info(): Promise<StorageInfo>;
   /** Returns `null` when the file does not exist. `backup: true` reads `<file>.bak` (JSON only). */
   read(target: StorageTarget, options?: { backup?: boolean }): Promise<string | null>;
-  write(target: StorageTarget, content: string): Promise<void>;
+  write(target: StorageTarget, content: string, precondition?: WritePrecondition): Promise<void>;
   appendLine(target: StorageTarget, line: string): Promise<void>;
   listReviews(): Promise<string[]>;
   /** Renames a JSON file (or its `.bak` with `backup: true`) aside and returns the new file name. */
@@ -69,7 +76,7 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
 export const tauriStorage: StorageBackend = {
   info: () => call<StorageInfo>("storage_info"),
   read: (target, options) => call<string | null>("storage_read", { target, backup: options?.backup ?? false }),
-  write: (target, content) => call<void>("storage_write", { target, content }),
+  write: (target, content, precondition) => call<void>("storage_write", { target, content, precondition: precondition ?? null }),
   appendLine: (target, line) => call<void>("storage_append_line", { target, line }),
   listReviews: () => call<string[]>("storage_list_reviews"),
   quarantine: (target, options) => call<string>("storage_quarantine", { target, backup: options?.backup ?? false }),

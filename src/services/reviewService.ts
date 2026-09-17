@@ -75,7 +75,7 @@ export async function saveNewReview(
 ): Promise<Result<SaveOutcome, FieldErrors>> {
   const created = createReviewSession(input, new Set(projects.map((p) => p.projectId)), reviewId, now);
   if (!created.ok) return created;
-  const warning = await writeSessionAndEvent(backend, created.value.session, created.value.event);
+  const warning = await writeSessionAndEvent(backend, created.value.session, created.value.event, { create: true });
   return ok({ session: created.value.session, warning });
 }
 

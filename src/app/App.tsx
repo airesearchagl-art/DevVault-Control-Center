@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Banner, Toasts } from "../components/Banner";
 import { ConfirmDialog } from "../components/Dialog";
-import { emptyProjectForm, projectToForm, type Project, type ProjectFormInput } from "../domain/project";
+import { emptyProjectForm, projectToForm, type ProjectFormInput } from "../domain/project";
 import { buildQueue } from "../domain/queue";
 import {
   currentRound,
@@ -14,7 +14,7 @@ import {
 } from "../domain/review";
 import type { FieldErrors } from "../domain/result";
 import type { ReviewAction } from "../domain/transitions";
-import { generateReviewId, pullRequestUrl } from "../domain/validation";
+import { pullRequestUrl } from "../domain/validation";
 import { ProjectFormDialog } from "../features/projects/ProjectForm";
 import { ReviewDetail, type DetailDialog } from "../features/reviews/ReviewDetail";
 import { CaptureResultDialog, NextRoundDialog, SuspendDialog, VerdictDialog, type VerdictChoice } from "../features/reviews/ReviewDialogs";
@@ -22,22 +22,14 @@ import { CreateReviewDialog, EditReviewDialog } from "../features/reviews/Review
 import { ReviewQueue } from "../features/reviews/ReviewQueue";
 import { copyText } from "../services/clipboard";
 import { tauriLauncher } from "../services/launcher";
-import { describeHealthProblem, isWritable, loadAll, loadReviewArtifacts, setAsideProjectsFile } from "../services/persistence";
-import {
-  captureReviewResult,
-  performReviewAction,
-  saveEditedProject,
-  saveNewProject,
-  saveNewReview,
-  saveReviewRequest,
-  type SaveOutcome,
-} from "../services/reviewService";
-import { tauriStorage } from "../services/storage";
+import { describeHealthProblem, isWritable } from "../services/persistence";
+import { ReviewHub } from "../services/reviewHub";
+import type { SaveOutcome } from "../services/reviewService";
+import { tauriStorage, toStorageError } from "../services/storage";
 import { appReducer, initialAppState, type ToastKind } from "./appState";
-import { describeError, nowIso } from "./format";
+import { describeError } from "./format";
 import "./App.css";
 
-const backend = tauriStorage;
 const launcher = tauriLauncher;
 
 type DialogState =
@@ -48,25 +40,54 @@ type DialogState =
   | { kind: Exclude<DetailDialog, "editProject">; reviewId: string }
   | { kind: "setAsideProjects" };
 
+// User-facing text for a failed save; conflicts explain that nothing was overwritten.
+function saveFailed(error: unknown): string {
+  const storageError = toStorageError(error);
+  if (storageError.code === "CONFLICT") {
+    return "Not saved: the file was changed on disk by another program since DVCC loaded it. Nothing was overwritten — use Reload to see the current data.";
+  }
+  if (storageError.code === "RECOVERY_REQUIRED") {
+    return "Not saved: the file is missing but its backup exists. Reload to restore it from the backup.";
+  }
+  return `Save failed: ${describeError(error)}`;
+}
+
 export default function App() {
   const [state, dispatch] = useReducer(appReducer, initialAppState);
   const [dialog, setDialog] = useState<DialogState>(null);
-  const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState(0);
   const loadStarted = useRef(false);
+  const hubRef = useRef<ReviewHub | null>(null);
+  if (hubRef.current === null) hubRef.current = new ReviewHub(tauriStorage);
+  const hub = hubRef.current;
+  const busy = pending > 0;
 
   const notify = useCallback((kind: ToastKind, message: string) => dispatch({ type: "toast", kind, message }), []);
   const dismissToast = useCallback((id: number) => dispatch({ type: "dismissToast", id }), []);
   const closeDialog = useCallback(() => setDialog(null), []);
 
+  // The UI shows exactly the state the hub committed (F-4), in commit order.
+  useEffect(() => hub.subscribe((snapshot) => dispatch({ type: "hubCommitted", snapshot })), [hub]);
+
+  // Tracks in-flight operations for the busy indicator; correctness does not depend on it.
+  const track = useCallback(async <T,>(operation: Promise<T>): Promise<T> => {
+    setPending((n) => n + 1);
+    try {
+      return await operation;
+    } finally {
+      setPending((n) => n - 1);
+    }
+  }, []);
+
   const reload = useCallback(async () => {
     try {
-      const storage = await backend.info();
-      const data = await loadAll(backend);
+      const storage = await hub.info();
+      const data = await hub.load();
       dispatch({ type: "loaded", storage, data });
     } catch (error) {
       dispatch({ type: "fatal", message: describeError(error) });
     }
-  }, []);
+  }, [hub]);
 
   useEffect(() => {
     // Single initial load (StrictMode runs effects twice in development).
@@ -84,13 +105,17 @@ export default function App() {
   useEffect(() => {
     if (!selectedSession) return;
     let cancelled = false;
-    void loadReviewArtifacts(backend, selectedSession).then((artifacts) => {
-      if (!cancelled) dispatch({ type: "artifactsLoaded", reviewId: selectedSession.reviewSessionId, artifacts });
-    });
+    const reviewId = selectedSession.reviewSessionId;
+    void hub.loadArtifacts(reviewId).then(
+      (artifacts) => {
+        if (!cancelled && artifacts) dispatch({ type: "artifactsLoaded", reviewId, artifacts });
+      },
+      () => undefined,
+    );
     return () => {
       cancelled = true;
     };
-  }, [selectedSession]);
+  }, [hub, selectedSession]);
 
   const queue = useMemo(
     () =>
@@ -112,62 +137,52 @@ export default function App() {
 
   const findSession = (reviewId: string): ReviewSession | null => state.reviews.find((r) => r.reviewId === reviewId)?.session ?? null;
 
-  const applyOutcome = (outcome: SaveOutcome) => {
-    dispatch({ type: "reviewSaved", session: outcome.session });
+  const warnIfNeeded = (outcome: SaveOutcome) => {
     if (outcome.warning) notify("warning", outcome.warning);
   };
 
-  /** Persists a transition. Returns an error message (also toasted) or null on success. */
+  // Persists a transition through the hub. Only the review id is taken from `session`; the hub
+  // applies the action to its latest committed state. Returns an error message or null.
   const runAction = async (session: ReviewSession, action: ReviewAction, success?: string): Promise<string | null> => {
-    setBusy(true);
     try {
-      const result = await performReviewAction(backend, session, action, nowIso());
+      const result = await track(hub.apply(session.reviewSessionId, action));
       if (!result.ok) {
         notify("error", result.error);
         return result.error;
       }
-      applyOutcome(result.value);
+      warnIfNeeded(result.value);
       if (success) notify("info", success);
       return null;
     } catch (error) {
-      const message = `Save failed: ${describeError(error)}`;
+      const message = saveFailed(error);
       notify("error", message);
       return message;
-    } finally {
-      setBusy(false);
     }
   };
 
   const submitProject = async (input: ProjectFormInput, projectId?: string): Promise<FieldErrors | null> => {
     try {
-      const result = projectId
-        ? await saveEditedProject(backend, state.projects, state.projectsHealth, projectId, input, nowIso())
-        : await saveNewProject(backend, state.projects, state.projectsHealth, input, nowIso());
+      const result = await track(projectId ? hub.editProject(projectId, input) : hub.createProject(input));
       if (!result.ok) return result.error;
-      dispatch({ type: "projectsSaved", projects: result.value });
       setDialog(null);
       notify("info", projectId ? "Project saved" : `Project “${input.displayName.trim()}” created`);
       return null;
     } catch (error) {
-      return { _form: `Save failed: ${describeError(error)}` };
+      return { _form: saveFailed(error) };
     }
   };
 
   const submitReview = async (input: ReviewFormInput): Promise<FieldErrors | null> => {
-    const existing = new Set(state.reviews.map((r) => r.reviewId));
-    let reviewId = generateReviewId(new Date());
-    for (let attempt = 0; existing.has(reviewId) && attempt < 10; attempt += 1) reviewId = generateReviewId(new Date());
-    if (existing.has(reviewId)) return { _form: "Could not allocate a unique review id; try again" };
     try {
-      const result = await saveNewReview(backend, state.projects, input, reviewId, nowIso());
+      const result = await track(hub.createReview(input));
       if (!result.ok) return result.error;
-      applyOutcome(result.value);
-      dispatch({ type: "selectReview", reviewId });
+      warnIfNeeded(result.value);
+      dispatch({ type: "selectReview", reviewId: result.value.session.reviewSessionId });
       setDialog(null);
       notify("info", "Review created");
       return null;
     } catch (error) {
-      return { _form: `Save failed: ${describeError(error)}` };
+      return { _form: saveFailed(error) };
     }
   };
 
@@ -188,41 +203,37 @@ export default function App() {
     }
   };
 
-  const copyPrompt = async (session: ReviewSession, project: Project) => {
-    setBusy(true);
+  const copyPrompt = async (session: ReviewSession) => {
     try {
-      const result = await saveReviewRequest(backend, project, session, nowIso());
+      const result = await track(hub.saveRequest(session.reviewSessionId));
       if (!result.ok) {
         notify("error", result.error);
         return;
       }
-      applyOutcome(result.value);
+      warnIfNeeded(result.value);
+      const round = result.value.session.reviewRound;
       try {
         await copyText(result.value.text);
-        notify("info", `Review request saved as request-r${session.reviewRound}.md and copied to the clipboard`);
+        notify("info", `Review request saved as request-r${round}.md and copied to the clipboard`);
       } catch (error) {
-        notify("error", `Saved request-r${session.reviewRound}.md, but copying to the clipboard failed: ${describeError(error)}`);
+        notify("error", `Saved request-r${round}.md, but copying to the clipboard failed: ${describeError(error)}`);
       }
     } catch (error) {
-      notify("error", `Save failed: ${describeError(error)}`);
-    } finally {
-      setBusy(false);
+      notify("error", saveFailed(error));
     }
   };
 
   const submitCapture = async (session: ReviewSession, text: string, reviewedHead: string | null): Promise<string | null> => {
-    setBusy(true);
     try {
-      const result = await captureReviewResult(backend, session, text, reviewedHead, nowIso());
+      const result = await track(hub.captureResult(session.reviewSessionId, text, reviewedHead));
       if (!result.ok) return result.error;
-      applyOutcome(result.value);
-      notify("info", `Result saved as result-r${session.reviewRound}.md. The review state is unchanged until you confirm a verdict.`);
-      setDialog(result.value.session.reviewState === "REVIEWING" ? { kind: "verdict", reviewId: session.reviewSessionId } : null);
+      warnIfNeeded(result.value);
+      const saved = result.value.session;
+      notify("info", `Result saved as result-r${saved.reviewRound}.md. The review state is unchanged until you confirm a verdict.`);
+      setDialog(saved.reviewState === "REVIEWING" ? { kind: "verdict", reviewId: saved.reviewSessionId } : null);
       return null;
     } catch (error) {
-      return `Save failed: ${describeError(error)}`;
-    } finally {
-      setBusy(false);
+      return saveFailed(error);
     }
   };
 
@@ -244,13 +255,12 @@ export default function App() {
 
   const setAsideProjects = async (): Promise<string | null> => {
     try {
-      const kept = await setAsideProjectsFile(backend, state.projectsHealth);
-      dispatch({ type: "projectsSaved", projects: [], health: { status: "missing" } });
+      const kept = await track(hub.setAsideProjects());
       setDialog(null);
       notify("info", `Kept as ${kept.join(", ")}. Starting with an empty project list.`);
       return null;
     } catch (error) {
-      return `Could not set the file aside: ${describeError(error)}`;
+      return `Could not set the files aside: ${describeError(error)}`;
     }
   };
 
@@ -318,7 +328,7 @@ export default function App() {
           void launch(() => launcher.openProjectFolder(root), "Open project folder");
         }}
         onCopyPrompt={() => {
-          if (selectedProject) void copyPrompt(selectedSession, selectedProject);
+          void copyPrompt(selectedSession);
         }}
         onSaveNextAction={async (text) => (await runAction(selectedSession, { type: "setNextAction", nextAction: text }, "Next action saved")) === null}
       />
@@ -564,8 +574,8 @@ export default function App() {
           title="Set aside projects.json"
           message={
             <>
-              The unreadable <code>projects.json</code> is renamed to <code>projects.json.corrupt-…</code> in the data folder (not deleted), and DVCC starts with an
-              empty project list. Reviews are not affected.
+              The unusable <code>projects.json</code> (and its unusable backup, if any) is renamed to <code>….corrupt-…</code> in the data folder (not
+              deleted), and DVCC starts with an empty project list. Reviews are not affected.
             </>
           }
           confirmLabel="Set aside and start empty"

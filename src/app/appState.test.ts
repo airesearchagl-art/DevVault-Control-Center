@@ -44,23 +44,35 @@ describe("appReducer", () => {
     expect(loaded({ reviews: [] }, state).selectedReviewId).toBeNull();
   });
 
-  it("replaces an existing review or appends a new one on save", () => {
+  it("replaces data slices with the hub's committed snapshot and keeps UI state", () => {
     const a = session("rv-20260101-alpha1");
-    let state = loaded({ reviews: [{ reviewId: a.reviewSessionId, session: null, health: { status: "unreadable", reason: "x", setAside: [] } }] });
+    let state = loaded({
+      projectsHealth: { status: "restored_from_backup", cause: "corrupt_primary", quarantinedAs: "x" },
+      reviews: [{ reviewId: a.reviewSessionId, session: a, health: { status: "ok" } }],
+    });
+    state = appReducer(state, { type: "selectReview", reviewId: a.reviewSessionId });
+    state = appReducer(state, { type: "filterChanged", filter: { text: "alpha" } });
     const updated = { ...a, nextAction: "changed" };
-    state = appReducer(state, { type: "reviewSaved", session: updated });
-    expect(state.reviews).toEqual([{ reviewId: a.reviewSessionId, session: updated, health: { status: "ok" } }]);
     const b = session("rv-20260101-beta01");
-    state = appReducer(state, { type: "reviewSaved", session: b });
-    expect(state.reviews.map((r) => r.reviewId)).toEqual([a.reviewSessionId, b.reviewSessionId]);
-  });
+    const next = appReducer(state, {
+      type: "hubCommitted",
+      snapshot: {
+        projects: [],
+        projectsHealth: { status: "ok" },
+        reviews: [
+          { reviewId: a.reviewSessionId, session: updated, health: { status: "ok" } },
+          { reviewId: b.reviewSessionId, session: b, health: { status: "ok" } },
+        ],
+      },
+    });
+    expect(next.reviews.map((r) => r.session?.nextAction)).toEqual(["changed", ""]);
+    expect(next.projectsHealth).toEqual({ status: "ok" });
+    expect(next.selectedReviewId).toBe(a.reviewSessionId);
+    expect(next.filter.text).toBe("alpha");
+    expect(next.notices).toEqual(state.notices);
 
-  it("marks projects healthy after a successful save unless told otherwise", () => {
-    let state = loaded({ projectsHealth: { status: "restored_from_backup", cause: "corrupt_primary", quarantinedAs: "x" } });
-    state = appReducer(state, { type: "projectsSaved", projects: [] });
-    expect(state.projectsHealth).toEqual({ status: "ok" });
-    state = appReducer(state, { type: "projectsSaved", projects: [], health: { status: "missing" } });
-    expect(state.projectsHealth).toEqual({ status: "missing" });
+    const vanished = appReducer(next, { type: "hubCommitted", snapshot: { projects: [], projectsHealth: { status: "missing" }, reviews: [] } });
+    expect(vanished.selectedReviewId).toBeNull();
   });
 
   it("caps toasts and dismisses by id", () => {

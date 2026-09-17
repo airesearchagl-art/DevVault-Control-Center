@@ -1,4 +1,4 @@
-import { StorageError, type StorageBackend, type StorageInfo, type StorageTarget } from "../services/storage";
+import { StorageError, type StorageBackend, type StorageInfo, type StorageTarget, type WritePrecondition } from "../services/storage";
 
 const REVIEW_ID = /^rv-\d{8}-[a-z0-9]{6}$/;
 const REVIEW_FILE = /^(session\.json|checkpoint\.md|events\.jsonl|(request|result)-r[1-9]\d{0,2}\.md)$/;
@@ -49,13 +49,17 @@ export class MemoryStorage implements StorageBackend {
     return this.files.get(path) ?? null;
   }
 
-  async write(target: StorageTarget, content: string): Promise<void> {
+  async write(target: StorageTarget, content: string, precondition?: WritePrecondition): Promise<void> {
     const path = MemoryStorage.pathOf(target);
     if (path.endsWith("events.jsonl")) throw new StorageError("APPEND_ONLY", "events.jsonl can only be appended");
     if (this.failingWrites.has(path)) throw new StorageError("WRITE_FAILED", `${path}: injected write failure`);
     const json = path.endsWith(".json");
     if (json && !isJson(content)) throw new StorageError("INVALID_CONTENT", "not valid JSON");
     const existing = this.files.get(path);
+    const unchanged =
+      precondition === undefined ||
+      (precondition.kind === "absent" ? existing === undefined : existing === precondition.content);
+    if (!unchanged) throw new StorageError("CONFLICT", `${path}: the file changed on disk since it was loaded`);
     if (json && existing !== undefined) {
       if (!isJson(existing)) throw new StorageError("PRIMARY_UNREADABLE", `${path}: existing file is not valid JSON`);
       this.files.set(`${path}.bak`, existing);

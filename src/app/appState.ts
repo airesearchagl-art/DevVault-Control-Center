@@ -1,6 +1,5 @@
 import type { Project } from "../domain/project";
 import type { QueueFilter } from "../domain/queue";
-import type { ReviewSession } from "../domain/review";
 import type { FileHealth, LoadedData, LoadedReview, ReviewArtifacts } from "../services/persistence";
 import type { StorageInfo } from "../services/storage";
 
@@ -54,8 +53,7 @@ export type AppAction =
   | { type: "loaded"; storage: StorageInfo; data: LoadedData }
   | { type: "fatal"; message: string }
   | { type: "selectReview"; reviewId: string | null }
-  | { type: "projectsSaved"; projects: Project[]; health?: FileHealth }
-  | { type: "reviewSaved"; session: ReviewSession }
+  | { type: "hubCommitted"; snapshot: LoadedData }
   | { type: "artifactsLoaded"; reviewId: string; artifacts: ReviewArtifacts }
   | { type: "filterChanged"; filter: Partial<QueueFilter> }
   | { type: "dismissNotice"; id: string }
@@ -105,17 +103,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "selectReview":
       return { ...state, selectedReviewId: action.reviewId };
 
-    case "projectsSaved":
-      // A successful write means the file is healthy from now on.
-      return { ...state, projects: action.projects, projectsHealth: action.health ?? { status: "ok" } };
-
-    case "reviewSaved": {
-      const entry: LoadedReview = { reviewId: action.session.reviewSessionId, session: action.session, health: { status: "ok" } };
-      const exists = state.reviews.some((r) => r.reviewId === entry.reviewId);
-      return {
-        ...state,
-        reviews: exists ? state.reviews.map((r) => (r.reviewId === entry.reviewId ? entry : r)) : [...state.reviews, entry],
-      };
+    case "hubCommitted": {
+      // Committed state from the hub replaces the data slices; selection, filter, notices and
+      // artifacts are UI concerns and are kept (selection is dropped only if the review vanished).
+      const { projects, projectsHealth, reviews } = action.snapshot;
+      const keepSelection = state.selectedReviewId !== null && reviews.some((r) => r.reviewId === state.selectedReviewId);
+      return { ...state, projects, projectsHealth, reviews, selectedReviewId: keepSelection ? state.selectedReviewId : null };
     }
 
     case "artifactsLoaded":
