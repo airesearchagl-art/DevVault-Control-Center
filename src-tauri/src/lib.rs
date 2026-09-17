@@ -24,13 +24,15 @@ impl CommandError {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Decided before anything else so that of two processes started at the same moment exactly
-    // one continues (E-1). The mutex handle lives until this process exits.
-    let another_instance = instance::another_instance_running(instance::INSTANCE_MUTEX_NAME);
+    // DVCC processes build the app one at a time (E-1): the plugin set-up inside `build` either
+    // registers this process as the running instance or hands over to the one that registered
+    // before and exits, before any window exists. Released right after `build`, on this thread.
+    let startup =
+        instance::StartupLock::acquire(instance::STARTUP_MUTEX_NAME, instance::STARTUP_WAIT);
 
-    tauri::Builder::default()
-        // Must be registered first: when the running instance already has its window, a second
-        // DVCC process hands over to it (window is focused) and exits here (F-3).
+    let app = tauri::Builder::default()
+        // Must be registered first: a second DVCC process hands over to the running instance
+        // (its window is focused) and exits here (F-3).
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
@@ -40,19 +42,14 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .setup(move |app| {
-            if another_instance {
-                // The other process exists but has no window yet (the plugin could not hand over).
-                // Exit before touching any data instead of running a second writer.
-                app.handle().cleanup_before_exit();
-                std::process::exit(0);
-            }
+        .setup(|app| {
             let resolved = storage::resolve_data_root(
                 std::env::var_os(storage::DATA_DIR_ENV),
                 app.path().data_dir().ok(),
                 cfg!(debug_assertions),
             );
-            // Also takes the exclusive data-folder lock (defense in depth across sessions).
+            // Also takes the exclusive data-folder lock: a process that got past the start-up
+            // guard anyway (e.g. another Windows session) never reaches the data.
             app.manage(storage::DataRoot::new(resolved));
             Ok(())
         })
@@ -68,6 +65,10 @@ pub fn run() {
             launcher::open_project_folder,
             launcher::open_data_dir,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running DevVault Control Center");
+        .build(tauri::generate_context!())
+        .expect("error while building DevVault Control Center");
+
+    // The plugin set-up has run: this process now owns the single-instance registration.
+    drop(startup);
+    app.run(|_, _| {});
 }
