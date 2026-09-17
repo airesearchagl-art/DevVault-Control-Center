@@ -101,3 +101,55 @@ closed with `CloseMainWindow()` (graceful) between phases; "restart" = a new pro
 | Real data dirs | `%APPDATA%\DevVault-Control`, `...-dev` | False / False (untouched) |
 
 Screenshots reviewed (scratchpad, not committed): phase 1 detail, phase 2 before resume, phase 3 restored.
+
+Wave 3 checkpoint commit: `b2c3ae8` (pushed); Task Packet digest re-verified: match.
+
+## Final Convergence — 2026-09-17T14:27Z → HARD_GATE_FAILURE → BLOCKED
+
+### Required checks re-run at frozen code head `b2c3ae892e81178f742ad96423eb3d0a859e5ed6`
+
+| Check | Result |
+|---|---|
+| `npm ci` | PASS — 0 vulnerabilities |
+| `npx tsc --noEmit` | PASS |
+| `npx vitest run` | PASS — 8 files / 222 tests |
+| `npm run build` | PASS |
+| `cargo check` | PASS — no warnings |
+| `cargo test` | PASS — 22 tests |
+| `npm run tauri build -- --no-bundle` | PASS — release exe rebuilt (1m27s), no bundle dir |
+| Release launch smoke (fresh `DVCC_DATA_DIR`) | PASS — window "DevVault Control Center", empty state, data dir initialized, graceful close |
+
+### Independent Verification (separate-context verifier; read-only on repository)
+
+Verifier ran: tsc (PASS), vitest 222 (PASS), cargo test 22 (PASS), Task Packet digest (match), hygiene `git grep` (clean), `cargo tree` (direct deps only serde / serde_json / tauri / opener / clipboard-manager), verbatim-copied Rust validator boundary harness, TS validator boundary checks, release exe manifest (asInvoker), CDP-driven release app runs in its own `verifier/data-1..4` folders, 13 mutation probes against the TS test suite. It did not open real URLs / folders (forbidden by its brief).
+
+Verifier verdicts:
+
+- AC PASS: 01, 02, 03, 04, 05 (implementation; test validity issue F-5), 06, 07 (except F-1 input), 08 (note F-6), 09, 12, 13, 14 (runtime; no UI automated test), 15, 16, 19, 20.
+- AC INCONCLUSIVE: 10, 11 (success path not executed by the verifier; implementer evidence shows real opens), 17 (F-1 / F-2 counterexamples).
+- AC FAIL: 18 (F-1: an accepted repository URL does not survive restart).
+- Hard checks: Security PASS, Privacy PASS, Authentication PASS, Permission PASS, **Data integrity FAIL**, **Irreversible-data safety FAIL**.
+- Prohibited scope: no violation found.
+
+### Findings (verifier) and Orchestrator confirmation
+
+| ID | Severity | Summary | Orchestrator confirmation |
+|---|---|---|---|
+| F-1 | high | `normalizeRepositoryUrl` is not idempotent: `…/x.git.git` is stored as `…/x.git`; on restart `parseProjectsFile` requires `normalize(stored) === stored` → malformed → automatic rollback to `.bak` (latest project write lost from view, kept only in `.corrupt-*`) or UNREADABLE for all projects when both primary and backup contain it. Reproduced by verifier in release app (data-1, data-4). | **CONFIRMED** by code: `src/domain/validation.ts:52` strips one `.git`; `src/domain/schema.ts:121` requires the normalized value to equal the stored value. |
+| F-2 | medium (hard: irreversible-data safety) | Missing `projects.json` with a valid `projects.json.bak` is treated as "missing" (writable); the second save copies the new primary over `.bak`, silently destroying the only valid backup. Reachable e.g. when quarantine succeeds and the restore write fails, or after manual deletion. Reproduced by verifier (data-2). | **CONFIRMED** by code: `src/services/persistence.ts:90-91` returns `missing` without checking `.bak`; `src-tauri/src/storage.rs` copies an existing valid primary to `.bak` on the next write. |
+| F-3 | medium (hard: data integrity) | No single-instance guard and no write-conflict detection: two instances on the same data folder silently lose updates (Suspend overwritten; contradictory events). Fixed temp names (`<file>.tmp`, `<file>.bak.tmp`) make concurrent writes collide (corruption unconfirmed). Reproduced by verifier (data-3). | **CONFIRMED** by design: no instance lock in `src-tauri/src/lib.rs`; fixed temp names at `src-tauri/src/storage.rs:233` and `:242`. Previously treated as a deferred limitation; the verifier shows real silent state loss. |
+| F-4 | low | Two actions in the same tick use a stale session closure → UI / disk divergence (automation-only in practice). | Plausible from `src/app/App.tsx` `runAction` using the captured session; not independently re-run. |
+| F-5 | medium (test validity) | Transition guard test is self-referential (expects `ALLOWED_FROM`), so table mutations survive; no recovery test for a schema-invalid but JSON-valid primary; no automated UI test for AC-14. | CONFIRMED by reading `src/domain/transitions.test.ts` guard loop. |
+| F-6 | low | Re-capture in the same round (also after a confirmed verdict) overwrites `result-r<N>.md` without a copy; verdict ↔ evidence link lost. | CONFIRMED by design (warning shown, but no retention). |
+| F-7 | low / info | UTF-8 BOM JSON (hand-edited) is treated as corrupt and an older `.bak` is restored automatically. | Contract-conformant; recovery UX issue. |
+| F-8 | info | "Set aside and start empty" is offered for I/O-error unreadable too (`App.tsx` checks status only). | Plausible, unconfirmed. |
+| F-9 | info | Folder UNC rejection is string-based; a local junction to UNC would pass (unconfirmed). | Unconfirmed. |
+| F-10 | info | Hygiene test scans only `fixtures/` and `docs/`. | CONFIRMED. |
+| F-11 | info | `startNextRound` unbounded while file names allow r1–r999. | CONFIRMED (theoretical). |
+| F-12 | info | Lone surrogates → JSON write refused (no data loss). | Info. |
+
+Claims in earlier run artifacts corrected by this verification: "full guard table" test coverage (self-referential), AC-17 / AC-18 marked PASS in RUN_STATE (counterexamples F-1 / F-2), "Quality Debt: none" / "Known failures: none".
+
+### Transition
+
+Per Task Packet §7 / §12 and Long-Run Route "Hard-gate failure transition": Data integrity and Irreversible-data safety Hard Checks show real FAIL → `HARD_GATE_FAILURE` → **BLOCKED**. Implementation writes, Repair Waves, independent-task continuation and Draft PR creation are stopped. Only evidence and current state are saved (run artifacts). Human escalation required.

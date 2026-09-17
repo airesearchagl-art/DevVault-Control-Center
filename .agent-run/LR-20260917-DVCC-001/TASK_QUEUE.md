@@ -48,11 +48,13 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 - [x] Real launcher opens (folder, GitHub, ChatGPT) + clipboard write
 - [x] Repository hygiene scan + synthetic fixture verification
 - [x] Full diff review (scope / boundary grep)
-- [~] Checkpoint 3
+- [x] Checkpoint 3 (`b2c3ae8`, pushed)
 
 ## Final Convergence
 
-- [ ] Freeze, full diff, AC review, required checks re-run, hard checks, debt / unverified inventory
-- [ ] Independent Verifier
-- [ ] Final checkpoint + push
-- [ ] Draft PR → STOP / Human Gate
+- [x] Freeze (code head `b2c3ae8`), required checks re-run (all PASS), release launch smoke
+- [x] Independent Verifier → Data integrity FAIL, Irreversible-data safety FAIL (F-1, F-2, F-3)
+- [!] HARD_GATE_FAILURE → BLOCKED: evidence-only checkpoint + push; Human escalation
+- [!] Repair wave (F-1 / F-2 / F-3 + test validity) — awaiting Human authorization
+- [!] Re-run hard checks + Independent Verification after repair — blocked
+- [!] Draft PR → STOP / Human Gate — blocked (not created)
