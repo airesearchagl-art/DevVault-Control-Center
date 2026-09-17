@@ -166,7 +166,7 @@ Per Task Packet revision 1 §7 / §12 and Long-Run Route "Hard-gate failure tran
 | Code vs frozen head | `git diff --name-only b2c3ae8 HEAD` outside `.agent-run/` → 0 files | PASS |
 | Revision 1 digest | `4200048dd5535f596af25e588f0c572c4ca611464aff7bf221686c5759a1124b` | match |
 | App processes / real data dirs | 0 running; `%APPDATA%\DevVault-Control[-dev]` → False / False | PASS |
-| F-9 environment | Developer Mode enabled (symbolic links creatable without elevation); loopback admin share `\\localhost\C$` reachable; free drive letters available for a temporary loopback mapping. The user's existing network drive mappings exist and are **not accessed** (names / addresses intentionally not recorded). | recorded |
+| F-9 environment | Symbolic links creatable for test fixtures; loopback admin share `\\localhost\C$` reachable; a free drive letter available for a temporary loopback mapping. No other drive mappings or shares were listed or accessed. | recorded |
 
 ### Task Packet revision 2 initialization
 
@@ -196,3 +196,76 @@ Per Task Packet revision 1 §7 / §12 and Long-Run Route "Hard-gate failure tran
 | `cargo test` | PASS — 33 passed, 1 ignored (mapped-drive test, executed separately with a temporary mapping: PASS) |
 | Task Packet digests | rev 2 `624ef4d3…567b` match; rev 1 `4200048d…124b` match |
 | Real data dirs | `%APPDATA%\DevVault-Control[-dev]` → False / False |
+### Full Convergence (revision 2) — 2026-09-18
+
+Code frozen at `561c746` (HEAD `8231e58` adds run artifacts only). Release exe rebuilt from this head.
+All app runs use the release exe with `DVCC_DATA_DIR=<SCRATCHPAD>/…` and a localhost WebView2 debug port (smoke only); the app is closed with `CloseMainWindow()` between phases.
+
+#### Required checks
+
+| Check | Result |
+|---|---|
+| `npm ci` | PASS — 0 vulnerabilities |
+| `npx tsc --noEmit` | PASS |
+| `npx vitest run` | PASS — 13 files, 413 tests |
+| `npm run build` | PASS |
+| `cargo check` | PASS — no warnings |
+| `cargo test` | PASS — 33 passed, 1 ignored (mapped-drive test; executed separately with a temporary loopback mapping: PASS) |
+| `npm run tauri build -- --no-bundle` | PASS — release exe built (2m27s); no `bundle` directory |
+
+#### Release E2E / smoke
+
+| Scenario | Evidence | Result |
+|---|---|---|
+| Launch | process responding, title "DevVault Control Center", graceful close each phase | PASS |
+| Phase 1 (fresh data) | 2 projects (http URL rejected in form), 2 reviews, WARM independent of NEW / READY, Copy prompt (clipboard first line "# Independent Review Request — Project Alpha / R1"), REVIEWING, capture keeps REVIEWING, verdict needs selection + acknowledgement, FIX_REQUIRED + WARM, reviewed HEAD normalized, next action, Suspend WARM + checkpoint; Open project folder (Explorer window observed, then closed) and Open GitHub (public repository of this project) without error; runtime rejections for `javascript:`, `file:`, `http:`, userinfo host, non-allowlisted host, UNC, relative, file path, storage traversal | PASS |
+| Phase 2 (restart) | queue SUSPENDED / WARM restored, every metadata field, checkpoint, previous result; Resume → FIX_REQUIRED + HOT; Edit Project; disk FIX_REQUIRED / HOT | PASS |
+| F-6 re-capture | Replace confirmation shown, Replace disabled until checked; toast names `result-r1-previous-<ms>.md`; state stays FIX_REQUIRED; disk: `archivedResults` = [that file], archive contains the first result, `result-r1.md` contains the replacement | PASS |
+| F-4 rapid operations | same-tick resource clicks (first attempt: HOT→WARM, WARM→COLD recorded in order, disk COLD; smoke script then timed out on a busy-disabled save button — script fixed to wait for enabled); retry: resource + next action + resource in quick succession → UI resource HOT == disk HOT, UI next action == disk, resource event chain continuous (every `from` equals previous `to`) and last `to` == disk | PASS |
+| F-3 external change | while the app ran, `session.json` next action was edited by another program; clicking a resource in the app → error toast "changed on disk by another program … Nothing was overwritten"; UI kept committed state; disk still held the external edit; `events.jsonl` hash unchanged; Reload showed the external edit | PASS |
+| F-3 single instance | `scripts/verify-single-instance.ps1`: A started; B exited by itself (exit code 0); A still running and responding; 1 process remaining (A's PID); data folder fingerprint unchanged by B | PASS |
+| F-9 runtime | directory symlink in scratchpad → `\\localhost\C$\Windows` (created with Node, removed afterwards); `open_project_folder(link)` → `NETWORK_TARGET: the folder resolves to a network (UNC) location`; no Explorer window opened | PASS |
+| ChatGPT URL | `open_external_url https://chatgpt.com/` → OK | PASS |
+| Recovery: corrupt primary + valid backup, corrupt beta session | notice "could not be read and was restored"; both projects restored; beta row unreadable, alpha unaffected; disk: primary == previous `.bak`, corrupt copy kept byte-identical, beta session untouched | PASS |
+| Recovery: missing primary (F-2) | `projects.json` deleted with valid `.bak` → notice "was missing and was restored from its backup"; projects restored; disk: primary == backup, backup unchanged | PASS |
+| I/O error (F-8) | `projects.json` replaced by a directory → banner "cannot be accessed … access problem … not damaged data" (os error 5, READ_FAILED); no set-aside button; + Project disabled; fingerprint of every file unchanged | PASS |
+| Newer schema | banner explains schemaVersion 2 read-only; + Project disabled; no set-aside; file and backup unchanged | PASS |
+| Unreadable without backup | banner + set-aside; after confirmation primary renamed to `.corrupt-<ms>` with identical content; empty project list; + Project enabled | PASS |
+| Invalid data dir | relative `DVCC_DATA_DIR` → fatal screen `DATA_DIR_UNAVAILABLE`, nothing created | PASS |
+| Real data dirs | `%APPDATA%\DevVault-Control[-dev]` → False / False after all runs | PASS |
+
+#### Scope / hygiene at `8231e58`
+
+- Tracked-file scan (97 files, lockfiles / icons excluded): no user profile path, username, token / key, Notion URL, private IP, network share name, real ChatGPT thread URL (only intentional detector samples in `src/test/fixtureHygiene.test.ts`).
+- Production source scope grep: no fetch / XHR / WebSocket, no process spawning (`Command::new` only inside `#[cfg(test)]` of `launcher.rs` for `mklink` fixtures), no GitHub API client (`api.github.com` only as a rejected test input), no paid AI SDK, no SQLite / REST / MCP, no clipboard read, no webview opener permission, no admin manifest / perMachine.
+- Dependencies: npm `@tauri-apps/api`, `@tauri-apps/plugin-clipboard-manager`, `react`, `react-dom`; Rust `tauri`, `tauri-plugin-opener`, `tauri-plugin-clipboard-manager`, `tauri-plugin-single-instance` (Human-approved), `serde`, `serde_json`. Capability unchanged: `core:default` + `clipboard-manager:allow-write-text`.
+- Diff vs base excluding lockfiles: 95 files, +10,968 / −1.
+
+#### Independent Verification (revision 2, separate context) — findings accepted by the Orchestrator
+
+Verifier checks: tsc PASS; vitest 413 PASS; cargo test 33 PASS (F-9 tests executed); vite build PASS (copy); 26 TS mutations (25 killed, C2 survived) and 8 Rust mutations (8 killed) on copies; F-1 fuzz 10,703 accepted inputs idempotent and round-trip; release-app runs in its own data folders (lifecycle / restart, recovery, I/O error, CONFLICT, same-tick operations, single instance incl. spawn races, F-9 symlink / junction / temporary loopback mapping, data folder symlink to UNC, BOM, lone surrogates). No repository edits; temporary mapping removed; `git status` clean.
+
+| Item | Verifier status |
+|---|---|
+| F-1, F-2, F-4, F-5, F-8, F-9, F-11 | RESOLVED |
+| F-6 | RESOLVED (residual E-2) |
+| F-3 | **PARTIAL** — see E-1 |
+| F-7, F-10 | DEBT (Human-allowed) |
+| F-12 | NOT RESOLVED (outside rev 2 list, info) |
+| AC-01..AC-20 | PASS (AC-19 note: release rebuild not re-run by the verifier; implementer rebuilt it) |
+| Hard checks | Security PASS, Privacy PASS (info E-7), Authentication PASS, Permission PASS, **Data integrity FAIL (R-F3 prevention sub-condition, E-1)**, Irreversible-data safety PASS (low notes E-3 / E-4) |
+
+New findings and Orchestrator decision:
+
+| ID | Severity | Finding | Orchestrator confirmation / decision |
+|---|---|---|---|
+| E-1 | medium (data integrity, R-F3) | Two DVCC processes started at nearly the same time can both run (reproduced 1/6 different folders, 2/8 same folder). | **Confirmed** in `tauri-plugin-single-instance-2.4.4/src/platform_impl/windows.rs:72-96`: when the mutex already exists but `FindWindowW` finds no window yet, the second process continues as a normal instance. Part of the authorized F-3 repair → repair round 2 (not a new hard-gate category; no Draft PR yet). |
+| E-2 | low (F-6 liveness) | After a partial replacement (archive written, session not updated, or session restored from `.bak`), re-capture of that round stays CONFLICT. | Accept → repair round 2 (idempotent archive / free suffix). |
+| E-3 | low | Suspend writes `checkpoint.md` before `session.json`; on a session CONFLICT the checkpoint is already replaced and the toast says "Nothing was overwritten". | Accept → pre-check before writing the checkpoint; accurate message. |
+| E-4 | low / info | Targets not read by the current process (e.g. `request-r<N>.md` after restart) are written without precondition; docs overstate "writes carry a precondition". | Accept → document exactly which writes are conditional; regenerated artifacts are latest-wins by design. |
+| E-5 | info (unconfirmed) | Folder validation follows reparse points (`metadata` / `canonicalize`) before rejecting, so a planted link could trigger an SMB connection before `NETWORK_TARGET`. | Accept as hardening → check link targets without following them first. |
+| E-6 | info (test gap) | Mutation C2 (no precondition on the result write) survived. | Accept → add a test for a result changed between read and write. |
+| E-7 | info (privacy) | Evidence row mentioned the existence of the user's network drive mappings. | Accept → row reworded (no names / addresses were ever recorded). |
+| E-8 | info | Regenerating `request-r<N>.md` in the same round replaces the previous request text. | Record as Quality Debt (documented latest-wins behaviour). |
+| E-9 | info | README / data contract "only one process" statement inaccurate given E-1. | Accept → update after the E-1 fix. |
+| E-10 | info (unconfirmed) | Debug and release builds share the identifier, so a dev instance blocks a release instance. | Accept as documented limitation (Quality Debt). |

@@ -3,7 +3,8 @@
 - Run ID: LR-20260917-DVCC-001
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: CHECKPOINTED — repair implementation R1–R6 complete; Full Convergence next (hard checks not yet re-verified independently)
+- Current state: RUNNING — Full Convergence + Independent Verification #2 done; F-3 PARTIAL (E-1 simultaneous-start race, confirmed in plugin source) → repair round 2 within rev 2 scope; Data integrity hard check FAIL until E-1 is fixed and re-verified; no Draft PR
+- Next action (supersedes the section below): implement repair round 2 (E-1 own named mutex + data-folder lock, E-2, E-3, E-5, E-6, docs E-4 / E-9 / E-10), then targeted checks, Full Convergence re-run with spawn-race verification, Independent Verification #3
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/review-hub-v0.1
 - Base SHA: bbffea1177b80dfe46a0f6887a9fc05dd5e4f05d
