@@ -2,7 +2,8 @@
 
 This document describes the files DevVault Control Center (DVCC) Review Hub v0.1 writes on the
 local machine. The TypeScript validators in `src/domain/schema.ts` are the executable form of
-this contract; synthetic examples live in `fixtures/v1/`.
+this contract; synthetic examples live in `fixtures/v1/`. Shared numeric limits live in
+`contract/limits.json`.
 
 Runtime data is **never** stored in this repository.
 
@@ -18,24 +19,32 @@ The data root is resolved by Rust (`src-tauri/src/storage.rs`). The frontend nev
 paths; it addresses files through a validated target (`projects`, or `review` + review id +
 allowed file name).
 
+Only one DVCC process runs at a time (single-instance plugin): starting DVCC again brings the
+running window to the front instead of opening a second writer.
+
 ## Layout
 
 ```text
 <data root>/
   projects.json
   projects.json.bak                 previous valid projects.json (written automatically)
-  projects.json.corrupt-<n>         unreadable file set aside (kept, never deleted)
+  projects.json.corrupt-<ms>[-n]    unusable file set aside (kept, never deleted)
+  projects.json.bak.corrupt-<ms>    unusable backup set aside by a Human action (kept)
   reviews/
     <review-id>/                    rv-YYYYMMDD-xxxxxx (UTC date + 6 lowercase alphanumerics)
       session.json                  current state of the review (authoritative)
       session.json.bak
       checkpoint.md                 latest resume note written on Suspend
       request-r<N>.md               review request of round N (kept per round)
-      result-r<N>.md                Human-pasted review result of round N (kept per round)
+      result-r<N>.md                latest Human-pasted review result of round N (canonical)
+      result-r<N>-previous-<ms>.md  an earlier result of round N that was replaced (kept)
       events.jsonl                  append-only history
 ```
 
-`request.md` / `result.md` without a round number are not used: every round keeps its own files.
+- `request.md` / `result.md` without a round number are not used: every round keeps its own files.
+- `N` is `1..maxReviewRounds` from `contract/limits.json` (currently 999), without leading zeros.
+- Temporary files are named `<file>.tmp-<pid>-<n>`; they are never read as data. A leftover temp
+  file after a crash can be deleted by hand.
 
 ## projects.json
 
@@ -62,7 +71,7 @@ allowed file name).
 |---|---|
 | `projectId` | `^[a-z0-9][a-z0-9-]{1,63}$`, unique, immutable after creation |
 | `displayName` | non-empty |
-| `repositoryUrl` | `null` or normalized `https://github.com/<owner>/<repo>` |
+| `repositoryUrl` | `null` or the canonical `https://github.com/<owner>/<repo>`. Normalization is idempotent: every trailing `.git` is removed, trailing slashes are dropped, the host is lowercased; anything the app accepts is accepted again on load. |
 | `localRoot` | `null` or absolute drive path (`C:\...`); UNC paths are rejected |
 | `developmentIde` | `null` or a label; v0.1 does not launch IDEs |
 | `nextAction`, `notes` | strings |
@@ -93,7 +102,8 @@ allowed file name).
       "resultCapturedAt": "2026-01-01T11:00:00.000Z",
       "verdict": "FIX_REQUIRED",
       "verdictConfirmedAt": "2026-01-01T11:02:00.000Z",
-      "verdictNote": "Two required fixes"
+      "verdictNote": "Two required fixes",
+      "archivedResults": []
     }
   ],
   "createdAt": "2026-01-01T10:00:00.000Z",
@@ -105,15 +115,20 @@ allowed file name).
 |---|---|
 | `reviewSessionId` | must equal the folder name |
 | `prNumber` | `null` or positive integer |
-| `reviewRound` | equals `rounds.length`; `rounds[i].round === i + 1` |
+| `reviewRound` | equals `rounds.length` (≤ `maxReviewRounds`); `rounds[i].round === i + 1` |
 | `resourceState` | `HOT` / `WARM` / `COLD` — independent of `reviewState` |
 | `reviewState` | `NEW` / `READY_FOR_REVIEW` / `REVIEWING` / `FIX_REQUIRED` / `REVIEW_PASS` / `BLOCKED` / `SUSPENDED` / `CLOSED` |
 | `suspendedFrom` | non-null **only** while `SUSPENDED`; never `SUSPENDED` or `CLOSED` |
 | `chatgptThreadUrl` | `null` or `https://chatgpt.com/...` / `https://chat.openai.com/...` |
 | `rounds[].expectedHead`, `reviewedHead` | `null` or lowercase 7–40 hex SHA. These are **Human-recorded values**, not observed Git facts (Git / GitHub freshness is Phase 2). `null` means "not recorded" and is never filled by guessing. |
+| `rounds[].resultCapturedAt` | capture time of the canonical latest `result-r<N>.md` |
 | `rounds[].verdict` | `null` / `FIX_REQUIRED` / `REVIEW_PASS` / `BLOCKED`, set only by explicit Human confirmation |
+| `rounds[].archivedResults` | earlier results of the round kept when a result was replaced, oldest first (`result-r<N>-previous-<ms>.md`, `<ms>` = capture time of the replaced result). Missing in files written before this field existed → `[]`. |
 
 ### Review State transitions
+
+The independent, Human-approved form of this table used by the tests is
+`src/test/transitionContract.ts`.
 
 | Action | From | To | Conditions |
 |---|---|---|---|
@@ -121,10 +136,10 @@ allowed file name).
 | Start review | READY_FOR_REVIEW | REVIEWING | — |
 | Cancel review | REVIEWING | READY_FOR_REVIEW | — |
 | Copy review prompt | any except SUSPENDED / CLOSED | unchanged | writes `request-r<N>.md` |
-| Capture result | REVIEWING, FIX_REQUIRED, REVIEW_PASS, BLOCKED | unchanged | Human paste → `result-r<N>.md` |
+| Capture result | REVIEWING, FIX_REQUIRED, REVIEW_PASS, BLOCKED | unchanged | Human paste → `result-r<N>.md`. If the round already has a result: explicit Human replace confirmation, and the previous text is kept as `result-r<N>-previous-<ms>.md` first |
 | Confirm verdict | REVIEWING | FIX_REQUIRED / REVIEW_PASS | Human confirmation + captured result of the round |
 | Block | NEW, READY_FOR_REVIEW, REVIEWING, FIX_REQUIRED | BLOCKED | Human confirmation + reason (recorded as round verdict when blocked while reviewing) |
-| Start next round | FIX_REQUIRED, REVIEW_PASS | READY_FOR_REVIEW | round + 1 |
+| Start next round | FIX_REQUIRED, REVIEW_PASS | READY_FOR_REVIEW | round + 1, only while `reviewRound < maxReviewRounds` |
 | Suspend | any except SUSPENDED / CLOSED | SUSPENDED | checkpoint note required; `suspendedFrom` = previous state; Human picks resource WARM or COLD |
 | Resume | SUSPENDED, or any non-CLOSED state whose resource is not HOT | `suspendedFrom` (if suspended) | resource → HOT |
 | Close | any except CLOSED | CLOSED | Human confirmation |
@@ -145,21 +160,47 @@ Types: `review_created`, `review_ready`, `review_started`, `review_cancelled`, `
 `session.json` is authoritative. If appending an event fails, the state change is kept and a
 warning is shown. Broken or unknown lines are skipped with a warning; the file is never rewritten.
 
-## Write and recovery rules
+## Write rules
 
-- JSON files are replaced atomically: temp file → `sync_all` → copy the previous valid file to
-  `.bak` → rename over the primary.
-- A primary file that is not valid JSON is never overwritten.
-- On load:
+- All application operations run one at a time in the order they were requested, each starting
+  from the state committed by the previous one; the UI shows the committed state. Inside the
+  process, every storage command is serialized by one lock.
+- Files are replaced atomically: unique temp file (`create_new`) → `sync_all` → for JSON, copy the
+  previous valid file to `.bak` → rename over the primary.
+- Writes carry a precondition: the file must still be absent, or contain exactly what DVCC last
+  read or wrote. If another program changed it, the write is refused (`CONFLICT`), nothing is
+  overwritten, and the Human is asked to Reload.
+- A JSON primary that is not valid JSON is never overwritten (`PRIMARY_UNREADABLE`).
+- A missing JSON primary whose `.bak` exists cannot be recreated by a normal save
+  (`RECOVERY_REQUIRED`); only an explicit restore from the backup (or setting the backup aside) can
+  proceed, so the only recoverable copy is never replaced silently.
+
+## Recovery rules (on load)
 
 | Primary | Backup | Result |
 |---|---|---|
 | valid | — | used |
-| invalid (bad JSON, schema violation, invalid UTF-8) | valid | primary renamed to `.corrupt-<n>`, backup restored, warning shown |
-| invalid | missing / invalid | **UNREADABLE**: file untouched, writes to it refused; Human action required |
 | newer `schemaVersion` | — | **read-only / unsupported**: never overwritten or restored |
-| I/O error | — | UNREADABLE (no rename, no restore) |
+| I/O error (permission, lock, device, unknown) | — | **I/O error** state: nothing renamed or restored; no set-aside offered; Reload after fixing access |
+| missing | missing | empty (writable) |
+| missing | valid | **recovery**: backup restored to the primary (backup kept), warning shown |
+| missing | invalid | **UNREADABLE**: nothing written; Human may set the backup aside |
+| invalid (bad JSON, schema violation, invalid UTF-8) | valid | primary renamed to `.corrupt-<ms>`, backup restored, warning shown |
+| invalid | missing | **UNREADABLE**: file untouched, writes refused; Human may set it aside |
+| invalid | invalid | **UNREADABLE**: Human may set both aside |
+| any | newer `schemaVersion` | read-only / unsupported |
+| any | I/O error | I/O error state |
 
-- A problem in one review's `session.json` affects only that review.
-- For an unreadable `projects.json`, the Human may choose "Set aside and start empty": the file is
-  renamed to `.corrupt-<n>` (kept) and an empty project list is started.
+- If a restore write fails, the backup is untouched, writes stay blocked, and the next load retries.
+- A problem in one review's `session.json` affects only that review (read-only row).
+- For an unreadable `projects.json`, the Human may choose "Set aside and start empty": the unusable
+  primary and / or backup are renamed to `.corrupt-<ms>` (kept) and an empty project list starts.
+
+## Launcher boundary
+
+- URLs open only if they are `https` without credentials or explicit port on `github.com`,
+  `chatgpt.com` or `chat.openai.com` (decided by URL parsing).
+- Folders open only if the input is an absolute local drive path of an existing directory on a
+  non-network drive, and the final target after resolving symbolic links, junctions and mapped
+  drives is also on a local drive. UNC / network targets are refused (`NETWORK_TARGET`). The
+  resolved local path is what gets opened. No shell command is executed.

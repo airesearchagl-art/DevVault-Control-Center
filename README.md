@@ -27,7 +27,8 @@ restarting the app.
 - **Copy review prompt** — generates the round's review request, saves it as `request-r<N>.md`
   and copies it to the clipboard.
 - **Capture result** — you paste the reviewer's answer (Ctrl+V); it is saved as `result-r<N>.md`.
-  The review state changes only when you explicitly confirm a verdict.
+  The review state changes only when you explicitly confirm a verdict. Replacing a saved result
+  needs your confirmation and keeps the earlier text as `result-r<N>-previous-<ms>.md`.
 - **Open GitHub / ChatGPT / project folder** through a validated launcher.
 - **Attention-ordered queue** with filter, recovery banners and a readable history (`events.jsonl`).
 
@@ -38,9 +39,11 @@ restarting the app.
 - No paid API (OpenAI / Anthropic) is used or required. No network calls besides opening URLs in your browser.
 - The clipboard is **write-only** for DVCC (copy prompt). Results are pasted manually.
 - URLs open only if they are `https` on `github.com`, `chatgpt.com` or `chat.openai.com`
-  (checked by URL parsing). Folders open only if they are existing absolute local directories
-  (UNC and file paths are rejected). No shell commands are executed.
+  (checked by URL parsing). Folders open only if they are existing absolute local directories on
+  a local drive whose final target — after resolving symbolic links, junctions and mapped drives —
+  is also local; UNC / network locations are never opened. No shell commands are executed.
 - The app runs with normal user privileges (no administrator manifest).
+- Only one DVCC process runs at a time; starting it again focuses the running window.
 - Out of scope for v0.1: Git / GitHub freshness detection, GitHub API, Claude Code / Codex session
   discovery, terminal embedding, Notion / Vault sync, SQLite, REST / MCP, authentication,
   installers and releases.
@@ -56,8 +59,11 @@ Runtime data never lives in this repository.
 | Override (tests, smoke, experiments) | `DVCC_DATA_DIR` (absolute path) |
 
 The format is plain JSON / Markdown so you (or an IDE agent) can inspect it directly. Writes are
-atomic with a `.bak` of the previous valid JSON; unreadable files are never overwritten and are only
-renamed aside (`.corrupt-<n>`), never deleted. See [docs/data-contract-v1.md](docs/data-contract-v1.md).
+atomic with a `.bak` of the previous valid JSON and are refused (nothing overwritten) if another
+program changed the file since DVCC loaded it. Unreadable files are never overwritten and are only
+renamed aside (`.corrupt-<ms>`), never deleted; a missing file with a valid backup is restored from
+the backup. Access errors (permissions, locks) are reported without offering to discard anything.
+See [docs/data-contract-v1.md](docs/data-contract-v1.md).
 
 ## Development
 
@@ -77,6 +83,12 @@ cd src-tauri; cargo check; cargo test; cd ..
 
 # Release compile without an installer
 npm run tauri build -- --no-bundle
+
+# Evidence that a second process is refused (uses an isolated data folder)
+.\scripts\verify-single-instance.ps1 -Exe .\src-tauri\target\release\devvault-control-center.exe -DataDir D:\scratch\dvcc-si-data
+
+# Network-drive launcher boundary (needs a temporary mapping, e.g. net use W: \\localhost\C$ /persistent:no)
+$env:DVCC_TEST_MAPPED_DRIVE_DIR = "W:\Windows"; cd src-tauri; cargo test mapped_network_drive -- --ignored; cd ..
 ```
 
 To keep experiments away from your real data:
@@ -93,13 +105,17 @@ src/
   app/          App shell, UI state reducer, formatting
   components/   Dialog, banner / toast, state badges
   features/     projects/ and reviews/ UI
-  domain/       Pure domain: states, project, review rounds, transitions, schema v1, prompt, queue
-  services/     Storage port (Tauri commands), persistence + recovery, use cases, launcher, clipboard
-  test/         In-memory storage, fixture helpers, fixture hygiene test
+  domain/       Pure domain: states, limits, project, review rounds, transitions, schema v1, prompt, queue
+  services/     Storage port, tracked (conflict-checked) storage, persistence + recovery, use cases,
+                ReviewHub (serialized operations), launcher, clipboard
+  test/         In-memory / delayed storage, independent transition contract, fixture hygiene test
 src-tauri/
-  src/storage.rs   Data-root resolution, confined atomic storage, append-only events, quarantine
-  src/launcher.rs  Validated URL / folder launcher (opener plugin)
+  src/storage.rs   Data-root resolution, serialized atomic storage with preconditions, backups,
+                   append-only events, recovery restore, quarantine
+  src/launcher.rs  Validated URL / folder launcher (opener plugin; local final targets only)
   capabilities/    core:default + clipboard write only
+contract/       Shared limits (limits.json) used by TypeScript and Rust
+scripts/        Reproducible verification (single instance)
 docs/           Data contract
 fixtures/v1/    Synthetic fixtures only (Project Alpha / Beta / Gamma, example-org URLs)
 .agent-run/     Long-run development campaign artifacts (task packet, state, evidence)
