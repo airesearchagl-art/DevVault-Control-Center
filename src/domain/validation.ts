@@ -40,20 +40,35 @@ export function parseAllowedHttpsUrl(raw: string, allowedHosts: readonly string[
   return ok(url);
 }
 
-/** Normalizes to `https://github.com/<owner>/<repo>`. */
+const REPOSITORY_URL_SHAPE = "Repository URL must look like https://github.com/<owner>/<repo>";
+const GITHUB_OWNER_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+const GITHUB_REPO_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
+
+/**
+ * Normalizes to the canonical `https://github.com/<owner>/<repo>`.
+ *
+ * Idempotent by construction (`normalize(normalize(x)) === normalize(x)`): every trailing
+ * `.git` suffix is removed and the canonical form is re-checked, so the persisted value is
+ * always accepted again when the file is loaded (F-1).
+ */
 export function normalizeRepositoryUrl(raw: string): Result<string> {
   const parsed = parseAllowedHttpsUrl(raw, GITHUB_HOSTS);
   if (!parsed.ok) return parsed;
   const url = parsed.value;
   if (url.search !== "" || url.hash !== "") return err("Repository URL must not contain a query or fragment");
   const segments = url.pathname.split("/").filter((segment) => segment !== "");
-  if (segments.length !== 2) return err("Repository URL must look like https://github.com/<owner>/<repo>");
+  if (segments.length !== 2) return err(REPOSITORY_URL_SHAPE);
   const owner = segments[0];
-  const repo = segments[1].endsWith(".git") ? segments[1].slice(0, -4) : segments[1];
-  if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(owner) || !/^[A-Za-z0-9._-]{1,100}$/.test(repo)) {
-    return err("Repository URL must look like https://github.com/<owner>/<repo>");
+  let repo = segments[1];
+  while (repo.toLowerCase().endsWith(".git")) repo = repo.slice(0, -4);
+  if (!GITHUB_OWNER_PATTERN.test(owner) || !GITHUB_REPO_PATTERN.test(repo) || repo === "." || repo === "..") {
+    return err(REPOSITORY_URL_SHAPE);
   }
-  return ok(`https://github.com/${owner}/${repo}`);
+  const canonical = `https://github.com/${owner}/${repo}`;
+  // Defensive self-check: the canonical form must parse back to itself.
+  const reparsed = parseAllowedHttpsUrl(canonical, GITHUB_HOSTS);
+  if (!reparsed.ok || reparsed.value.pathname !== `/${owner}/${repo}`) return err(REPOSITORY_URL_SHAPE);
+  return ok(canonical);
 }
 
 export function normalizeChatgptThreadUrl(raw: string): Result<string> {
