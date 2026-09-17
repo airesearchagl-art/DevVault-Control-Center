@@ -353,3 +353,19 @@ Orchestrator analysis (source, not observed state): (1) the own mutex and the pl
 - Tracked-file scan (lockfiles / icons excluded): no user profile path, username, e-mail, token / key, Notion URL, private IP, real ChatGPT thread URL (only the intentional detector sample in `src/test/fixtureHygiene.test.ts`); UNC-like strings are test hosts (`localhost`, `server`, `example`, `dvcc-unreachable-host.invalid`) or escaped example paths.
 - Production scope: no fetch / XHR / WebSocket / clipboard read in `src` (non-test); `std::process::Command` only inside `launcher.rs` `mod tests`.
 - Capability unchanged (`core:default`, `clipboard-manager:allow-write-text`); dependencies unchanged (npm: `@tauri-apps/api`, `@tauri-apps/plugin-clipboard-manager`, `react`, `react-dom`; Rust: `tauri`, `tauri-plugin-opener`, `tauri-plugin-clipboard-manager`, `tauri-plugin-single-instance`, `serde`, `serde_json`); no custom manifest.
+
+### Resume #1 (Human "Memory-Aware Final Convergence") — 2026-09-18
+
+Resume contract verified before any work: repository `airesearchagl-art/DevVault-Control-Center`; branch `feat/review-hub-v0.1`; base `bbffea1177b80dfe46a0f6887a9fc05dd5e4f05d`; HEAD = `origin/feat/review-hub-v0.1` = resume checkpoint `793fa3e93a81baaf670a707874ca8b92a4bb45c0` (full SHA resolved locally, not guessed); working tree clean; `RUN_MANIFEST.md` active binding revision 2; digests recomputed — rev 2 `624ef4d3716e7490d035e2b5dc599fb3c3d59cacb60d0827f298dbc7a391567b` (match), retained rev 1 `4200048dd5535f596af25e588f0c572c4ca611464aff7bf221686c5759a1124b` (match).
+
+Resource preflight: available physical memory 14.88 GiB of 63.38 GiB (operator threshold 12 GiB met). One `cargo.exe` was running with a `hybrid-gauge.exe` child — an operator process, not this harness; left untouched. No DVCC process and no DVCC WebView2 child left from the previous suspension.
+
+Operator-disturbance measure: the race harness now starts every test process on an isolated Windows desktop (`CreateDesktopW` + `CreateProcessW` with `STARTUPINFO.lpDesktop`), so no test window appears on the operator desktop and a hand-over cannot steal focus. Round criteria: exactly one of the started processes alive, every other exit code 0 (read from the `CreateProcessW` handle via `GetExitCodeProcess`), exactly one DVCC process on the machine, `.dvcc.lock` held (the survivor reached storage), the survivor owning a visible window on the isolated desktop, and no data file changed. Scratch harness (`diag/race-desktop.ps1`), not committed; `scripts/verify-single-instance.ps1` stays the committed reproducible variant.
+
+| Run | Result |
+|---|---|
+| Harness calibration, 5 rounds, 2 processes, delays 0 / 100 / 300 / 0 / 500 ms | first attempt reported FAIL in round 1 **because of a harness measurement gap** (exit code of a process not started through .NET was unavailable); product observations in that same round were correct (1 survivor, 1 DVCC process, lock held, data unchanged). Not a single-instance failure, so §9 did not apply; the harness reads exit codes from the process handle since. |
+| Harness calibration after the fix, same 5 rounds | **5 / 5 PASS** (exits 0, lock held, survivor window on the isolated desktop, data unchanged) |
+| Strategy 3 staggered suites A (2 processes, 40 rounds) and B (3 processes, 40 rounds) | **NOT STARTED** — available memory fell to 9.89 GiB (below the 12 GiB operator threshold) while the operator's own applications (≈50 unrelated WebView2 processes ≈ 9.7 GB, Notion, Chrome, VS Code) held the memory. Per the resume authorization no operator process was closed and no heavy suite was started; run SUSPENDED with a checkpoint instead. |
+
+Round 2 comparison build: **NOT REQUIRED** (Human decision, resume authorization §7) — optional verification removed from scope, not a waiver of a Required Check.

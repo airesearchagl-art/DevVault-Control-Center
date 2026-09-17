@@ -3,13 +3,13 @@
 - Run ID: LR-20260917-DVCC-001
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: SUSPENDED — Full Convergence re-run in progress. Round-2 E-1 guard failed at runtime (1 / 20) → F-3 repair strategy 3 of 3 implemented (`7ef9c29`); strategy 3 evidence so far all PASS. The system stopped the background race run and the round-2 control build because the machine was low on memory; per session rules they are not restarted without Human instruction. Data integrity hard check still pending (runtime race evidence incomplete + Verification #3); no Draft PR
+- Current state: SUSPENDED (#2) — resumed under the Human "Memory-Aware Final Convergence" authorization; resume contract verified and the isolated-desktop race harness calibrated (5 / 5 PASS). Available memory then fell to 9.89 GiB, below the 12 GiB operator threshold, so the remaining staggered race suites were not started and no operator process was closed. Data integrity hard check still pending; no Draft PR
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/review-hub-v0.1
 - Base SHA: bbffea1177b80dfe46a0f6887a9fc05dd5e4f05d
-- Current head: suspension checkpoint commit (parent 0b884f6)
-- Current wave: R9 Full Convergence re-run (suspended)
-- Last successful checkpoint: suspension checkpoint (commit "chore(run): suspend during full convergence re-run (strategy 3, low memory)")
+- Current head: suspension #2 checkpoint commit (parent 793fa3e93a81baaf670a707874ca8b92a4bb45c0)
+- Current wave: R9 Full Convergence re-run (suspended before the staggered race suites)
+- Last successful checkpoint: suspension #2 checkpoint (commit "chore(run): suspend again before the staggered race suites (memory below threshold)")
 - Task Packet ID: LRP-20260917-DVCC-001
 - Task Packet revision: 2
 - Task Packet snapshot path: .agent-run/LR-20260917-DVCC-001/TASK_PACKET_SNAPSHOT.rev2.md
@@ -29,7 +29,7 @@ Independent Verification #2 reported AC-01..AC-20 PASS on `8231e58`. Round 2 cha
 - R-F1, R-F2, R-F4, R-F5, R-F8, R-F11: RESOLVED (Verification #2)
 - R-F6: RESOLVED; residual E-2 repaired in round 2 (tests)
 - R-F9: RESOLVED (Verification #2); E-5 hardening in round 2 (tests)
-- R-F3: PARTIAL in Verification #2 (E-1) → round 2 failed at runtime (1 / 20) → strategy 3 of 3 (start-up lock); unit tests + races 60 / 60, 60 / 60 (0 ms) and 14 / 14 (staggered, 3 processes) PASS so far; remaining staggered rounds and Verification #3 pending
+- R-F3: PARTIAL in Verification #2 (E-1) → round 2 failed at runtime (1 / 20) → strategy 3 of 3 (start-up lock); unit tests + races 60 / 60 and 60 / 60 (back to back, 2 processes), 14 / 14 (staggered, 3 processes) and 5 / 5 (isolated desktop, staggered, 2 processes) PASS so far; staggered suites A / B and Verification #3 pending
 
 ## Hard Checks (implementer view)
 
@@ -54,7 +54,7 @@ Resolved: QD-001..QD-004. Open (low, non-blocking): QD-005 (F-7, Human-allowed),
 
 ## Explicit unverified items
 
-- Remaining staggered-delay race rounds on the strategy 3 build (2 and 3 processes); optional round-2 control comparison with the same delays.
+- Staggered race suites A (2 processes, ~40 rounds) and B (3 processes, ~40 rounds) on the strategy 3 build. Round-2 comparison build: NOT REQUIRED (L-032, Human decision).
 - Full diff review of the final head; Independent Verification #3.
 - Default `%APPDATA%` data folder not exercised at runtime (protected); verified by code + dependency source.
 - Real Ctrl+V paste (automation uses value setter).
@@ -65,7 +65,7 @@ Resolved: QD-001..QD-004. Open (low, non-blocking): QD-005 (F-7, Human-allowed),
 
 ## Decisions
 
-See DECISIONS.md (D1–D3; R2-D1..R2-D3; L-001..L-031).
+See DECISIONS.md (D1–D3; R2-D1..R2-D3; L-001..L-033).
 
 ## Remaining tasks
 
@@ -73,11 +73,11 @@ Finish Full Convergence re-run (staggered races) → checkpoint → Independent 
 
 ## Next action
 
-On Human instruction to resume (and with enough free memory): run `scripts/verify-single-instance.ps1` on the strategy 3 release exe with `-RaceSize 2` and `-RaceSize 3` (default `-DelaysMs`, e.g. 40 rounds each), one run at a time and nothing else heavy in parallel; optionally rebuild the round-2 control exe (`CARGO_TARGET_DIR` = `src-tauri/target/control-r2`) and run the same delays for comparison; then checkpoint and launch Independent Verification #3.
+When the operator's available physical memory is at least 12 GiB again (their own applications currently hold it; nothing of theirs may be closed) and the Human resumes: run the scratch isolated-desktop harness `diag/race-desktop.ps1` on the strategy 3 release exe, suite A (`-Size 2 -Rounds 40`) first, then suite B (`-Size 3 -Rounds 40`), one at a time, verifying process cleanup and memory recovery between them; stop immediately and escalate (BLOCKED) on any single-instance failure (strategy 3 is the last allowed strategy). Then checkpoint, Independent Verification #3, full diff review, Required and Hard Checks, and the Draft PR decision.
 
 ## Stop conditions status
 
-No hard stop condition triggered. Runtime interruption (system low-memory stop of background work) → SUSPENDED with checkpoint (Task Packet §12).
+No hard stop condition triggered. Suspension #1: system low-memory stop of background work. Suspension #2: available memory below the 12 GiB operator threshold before the staggered race suites (resume authorization §3 / §10). Both with valid checkpoints; no automatic retry under the same memory condition.
 
 ## Resume instructions
 
