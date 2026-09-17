@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createReviewSession, currentRound, emptyReviewForm, type ReviewSession } from "./review";
 import { REVIEW_STATES, RESOURCE_STATES, type ResourceState, type ReviewState } from "./states";
-import { ALLOWED_FROM, applyReviewAction, guardAction, type ReviewAction, type ReviewActionType } from "./transitions";
+import { applyReviewAction, guardAction, type ReviewAction } from "./transitions";
+
+// The allowed / prohibited transition matrix is verified against the independent contract in
+// src/test/transitionContract.ts by transitionContract.test.ts (F-5). This file covers flows.
 
 const T0 = "2026-01-01T00:00:00.000Z";
 const T1 = "2026-01-01T01:00:00.000Z";
@@ -35,18 +38,7 @@ function apply(session: ReviewSession, action: ReviewAction, now = T1) {
   return result.value;
 }
 
-describe("guard table", () => {
-  const types = Object.keys(ALLOWED_FROM) as ReviewActionType[];
-  for (const type of types) {
-    for (const state of REVIEW_STATES) {
-      it(`${type} from ${state}`, () => {
-        const session = withState(state, "WARM");
-        const allowed = ALLOWED_FROM[type].includes(state);
-        expect(guardAction(session, type) === null).toBe(allowed);
-      });
-    }
-  }
-
+describe("resume guard", () => {
   it("resume is not allowed for an active HOT review that is not suspended", () => {
     expect(guardAction(withState("FIX_REQUIRED", "HOT"), "resume")).not.toBeNull();
     expect(guardAction(withState("FIX_REQUIRED", "WARM"), "resume")).toBeNull();

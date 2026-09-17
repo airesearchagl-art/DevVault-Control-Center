@@ -173,6 +173,19 @@ describe("malformed input safety (AC-17)", () => {
     expect(loaded.reviews.every((r) => r.health.status === "ok")).toBe(true);
   });
 
+  it("sets aside and restores a schema-invalid primary that is still valid JSON (F-5 test gap)", async () => {
+    const { projects } = await seed(storage);
+    storage.files.set("projects.json.bak", storage.files.get("projects.json")!);
+    const schemaInvalid = '{"schemaVersion":1,"projects":"not an array"}';
+    storage.files.set("projects.json", schemaInvalid);
+
+    const loaded = await loadAll(storage);
+    expect(loaded.projectsHealth).toEqual({ status: "restored_from_backup", cause: "corrupt_primary", quarantinedAs: "projects.json.corrupt-1" });
+    expect(loaded.projects).toEqual(projects);
+    expect(storage.files.get("projects.json.corrupt-1")).toBe(schemaInvalid);
+    expect(storage.files.get("projects.json")).toBe(storage.files.get("projects.json.bak"));
+  });
+
   it("marks projects.json unreadable without a valid backup and refuses writes", async () => {
     await seed(storage);
     storage.files.delete("projects.json.bak");
