@@ -21,17 +21,18 @@ allowed file name).
 
 One DVCC process per Windows session uses the data, enforced in three layers:
 
-1. **Named mutex** `Local\com.devvault.controlcenter.instance`, created as the very first step of
-   the process. A process that finds it already created exits in setup, before the data root is
-   resolved or any file is opened. Of two processes started at the same moment exactly one
-   continues.
-2. **Single-instance plugin**: when the running instance already has its window, a second launch
-   brings that window to the front and exits.
+1. **Start-up lock** (named mutex `Local\com.devvault.controlcenter.startup`): DVCC processes
+   build the app one at a time, and the single-instance plugin registers the running instance
+   during that build. A process started later, or at the same moment, therefore always finds a
+   fully registered instance.
+2. **Single-instance plugin**: such a process hands over to the registered instance (its window is
+   brought to the front) and exits inside the plugin set-up, before it creates any window or
+   resolves the data folder.
 3. **Data-folder lock** `.dvcc.lock`: the running process keeps this file open without sharing. A
    process that cannot open it (e.g. another Windows session using the same folder) performs no
    storage operation and shows `DATA_DIR_IN_USE`; close the other process, then start DVCC again.
 
-Debug and release builds share the app identifier and the mutex name, so a running debug build
+Debug and release builds share the app identifier and the mutex names, so a running debug build
 also stops a release build from starting (and vice versa), even though their data folders differ.
 
 ## Layout

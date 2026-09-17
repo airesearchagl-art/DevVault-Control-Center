@@ -3,12 +3,13 @@
 # Phase 1 (sequential): starts instance A with an isolated data folder, then instance B with the
 # same data folder, and checks that:
 #   - A holds the data-folder lock (.dvcc.lock cannot be opened by another process),
-#   - B exits by itself (named mutex / single-instance plugin),
+#   - B exits by itself (start-up lock + single-instance plugin hand-over),
 #   - A keeps running (same PID, still responding),
 #   - exactly one DVCC process remains,
 #   - B did not change any file in the data folder.
-# Phase 2 (race): -RaceRounds times, starts two processes back to back (no wait between the two
-# starts) and checks that exactly one survives, it is responding, and no data file changed.
+# Phase 2 (race): -RaceRounds times, starts -RaceSize processes back to back (no wait between the
+# starts) and checks that exactly one survives, it is responding, and no data file changed. A failed
+# round prints the state of both processes (window, responsiveness, threads, child processes).
 # Every instance is closed gracefully at the end. Never point -DataDir at real runtime data.
 #
 # Usage (PowerShell):
@@ -17,7 +18,8 @@ param(
   [Parameter(Mandatory = $true)][string] $Exe,
   [Parameter(Mandatory = $true)][string] $DataDir,
   [int] $TimeoutSeconds = 30,
-  [int] $RaceRounds = 10
+  [int] $RaceRounds = 10,
+  [ValidateRange(2, 8)][int] $RaceSize = 2
 )
 
 $ErrorActionPreference = "Stop"
@@ -78,6 +80,29 @@ function Start-Direct {
   return [System.Diagnostics.Process]::Start($info)
 }
 
+Add-Type -Namespace DvccDiag -Name Win -MemberDefinition @"
+[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowW(string cls, string name);
+[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+"@
+
+# Printed for a failed race round: state of both processes and the owner of the plugin event window.
+function Write-Diagnostics($group) {
+  for ($index = 0; $index -lt $group.Count; $index++) {
+    $process = $group[$index]
+    $process.Refresh()
+    $role = "#$($index + 1)"
+    if ($process.HasExited) { "  diag {0} pid={1} exited code={2}" -f $role, $process.Id, $process.ExitCode; continue }
+    $children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$($process.Id)" | ForEach-Object Name)
+    $states = ($process.Threads | Group-Object ThreadState | ForEach-Object { "$($_.Name)=$($_.Count)" }) -join ","
+    $waits = ($process.Threads | Where-Object { $_.ThreadState -eq 'Wait' } | Group-Object WaitReason | ForEach-Object { "$($_.Name)=$($_.Count)" }) -join ","
+    "  diag {0} pid={1} title='{2}' hwnd={3} responding={4} threads={5} [{6}] waits[{7}] cpu={8:n2}s children=[{9}]" -f $role, $process.Id, $process.MainWindowTitle, $process.MainWindowHandle, $process.Responding, $process.Threads.Count, $states, $waits, $process.TotalProcessorTime.TotalSeconds, ($children -join ",")
+  }
+  $hwnd = [DvccDiag.Win]::FindWindowW("com.devvault.controlcenter-sic", "com.devvault.controlcenter-siw")
+  $owner = 0
+  if ($hwnd -ne [IntPtr]::Zero) { [void][DvccDiag.Win]::GetWindowThreadProcessId($hwnd, [ref]$owner) }
+  "  diag plugin event window hwnd=$hwnd ownerPid=$owner"
+}
+
 if ((Get-DvccProcesses).Count -gt 0) {
   throw "A $processName process is already running; close it before verification."
 }
@@ -119,39 +144,37 @@ $results.GetEnumerator() | ForEach-Object { "{0}: {1}" -f $_.Key, $_.Value }
 "SEQUENTIAL: $(if ($sequentialPass) { 'PASS' } else { 'FAIL' })"
 if (-not (Wait-ForNoProcess 15)) { throw "a $processName process is still running after phase 1" }
 
-# Phase 2: two processes started back to back.
+# Phase 2: -RaceSize processes started back to back.
 $racePass = $true
 for ($round = 1; $round -le $RaceRounds; $round++) {
   $before = Get-DataFingerprint $dataRoot
-  $first = Start-Direct
-  $second = Start-Direct
-  $pair = @($first, $second)
+  $group = @(1..$RaceSize | ForEach-Object { Start-Direct })
   try {
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     do {
       Start-Sleep -Milliseconds 300
-      foreach ($process in $pair) { $process.Refresh() }
-      $alive = @($pair | Where-Object { -not $_.HasExited })
+      foreach ($process in $group) { $process.Refresh() }
+      $alive = @($group | Where-Object { -not $_.HasExited })
       $windowed = @($alive | Where-Object { -not [string]::IsNullOrEmpty($_.MainWindowTitle) })
     } while (($alive.Count -gt 1 -or $windowed.Count -lt 1) -and (Get-Date) -lt $deadline)
     # Give a late loser time to show a window or change data if the guard were broken.
     Start-Sleep -Seconds 3
-    foreach ($process in $pair) { $process.Refresh() }
-    $alive = @($pair | Where-Object { -not $_.HasExited })
-    $exited = @($pair | Where-Object { $_.HasExited })
+    foreach ($process in $group) { $process.Refresh() }
+    $alive = @($group | Where-Object { -not $_.HasExited })
+    $exited = @($group | Where-Object { $_.HasExited })
     $running = Get-DvccProcesses
     $after = Get-DataFingerprint $dataRoot
     $roundPass = $alive.Count -eq 1 -and $running.Count -eq 1 -and $running[0].Id -eq $alive[0].Id -and $alive[0].Responding -and ($before -eq $after)
-    $survivor = if ($alive.Count -eq 1) { if ($alive[0].Id -eq $first.Id) { "first" } else { "second" } } else { "count=$($alive.Count)" }
+    $survivor = if ($alive.Count -eq 1) { "#" + ([array]::IndexOf(@($group | ForEach-Object Id), $alive[0].Id) + 1) } else { "count=$($alive.Count)" }
     $loserExit = ($exited | ForEach-Object { $_.ExitCode }) -join ","
-    "race {0}: survivor={1} loserExitCode={2} processes={3} dataUnchanged={4} -> {5}" -f $round, $survivor, $loserExit, $running.Count, ($before -eq $after), $(if ($roundPass) { "PASS" } else { "FAIL" })
-    if (-not $roundPass) { $racePass = $false }
+    "race {0}: size={1} survivor={2} loserExitCodes={3} processes={4} dataUnchanged={5} -> {6}" -f $round, $RaceSize, $survivor, $loserExit, $running.Count, ($before -eq $after), $(if ($roundPass) { "PASS" } else { "FAIL" })
+    if (-not $roundPass) { $racePass = $false; Write-Diagnostics $group; Start-Sleep -Seconds 20; "  after 20 s more:"; Write-Diagnostics $group }
   }
   finally {
-    foreach ($process in $pair) { Stop-Gracefully $process }
+    foreach ($process in $group) { Stop-Gracefully $process }
   }
   if (-not (Wait-ForNoProcess 15)) { throw "a $processName process is still running after race round $round" }
 }
-"RACE ($RaceRounds rounds): $(if ($racePass) { 'PASS' } else { 'FAIL' })"
+"RACE ($RaceRounds rounds of $RaceSize): $(if ($racePass) { 'PASS' } else { 'FAIL' })"
 
 if ($sequentialPass -and $racePass) { "SINGLE INSTANCE: PASS" } else { "SINGLE INSTANCE: FAIL"; exit 1 }

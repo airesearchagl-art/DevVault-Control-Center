@@ -45,9 +45,10 @@ restarting the app.
   is also local; UNC / network locations are never opened, and links pointing to them are refused
   before they are followed. No shell commands are executed.
 - The app runs with normal user privileges (no administrator manifest).
-- One DVCC process per Windows session: a named mutex taken at startup makes any later (or
-  simultaneous) process exit before touching data, a second launch focuses the running window,
-  and the data folder is locked (`.dvcc.lock`) while DVCC runs. Debug and release builds share
+- One DVCC process per Windows session: processes start one at a time (start-up lock), so a later
+  or simultaneous launch hands over to the running instance (its window is focused) and exits
+  before creating a window or touching data; the data folder is also locked (`.dvcc.lock`) while
+  DVCC runs. Debug and release builds share
   this identity, so a running debug build also blocks a release build.
 - Out of scope for v0.1: Git / GitHub freshness detection, GitHub API, Claude Code / Codex session
   discovery, terminal embedding, Notion / Vault sync, SQLite, REST / MCP, authentication,
