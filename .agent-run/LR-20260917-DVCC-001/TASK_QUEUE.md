@@ -36,17 +36,19 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 - [x] Capture Result (paste textarea → result-r<N>.md) + Human verdict confirmation
 - [x] Empty states, error toasts, recovery / unreadable banners, set-aside flow
 - [x] Checks: tsc, vitest, vite build, cargo check, tauri dev launch (DVCC_DATA_DIR = scratch)
-- [~] Checkpoint 2 (commit + push)
+- [x] Checkpoint 2 (`bec4a7b`, pushed)
 
 ## Wave 3 — Convergence
 
-- [ ] Defect repair, README
-- [ ] Release no-bundle build
-- [ ] Windows launch smoke
-- [ ] E2E restart smoke (Create → Suspend → close → reopen → Resume) + event / checkpoint verification
-- [ ] Repository hygiene scan + synthetic fixture verification
-- [ ] Full diff review
-- [ ] Checkpoint 3
+- [x] Defect repair, README
+- [x] Release no-bundle build
+- [x] Windows launch smoke
+- [x] E2E restart smoke (Create → Suspend → close → reopen → Resume) + event / checkpoint verification
+- [x] App-level malformed recovery smoke (restored / unsupported / unreadable + set-aside / fatal data dir)
+- [x] Real launcher opens (folder, GitHub, ChatGPT) + clipboard write
+- [x] Repository hygiene scan + synthetic fixture verification
+- [x] Full diff review (scope / boundary grep)
+- [~] Checkpoint 3
 
 ## Final Convergence
 

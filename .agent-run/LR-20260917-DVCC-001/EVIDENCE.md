@@ -72,3 +72,32 @@ Wave 1 checkpoint commit: `fd733e1` (pushed); Task Packet digest re-verified: ma
 | Real data dirs | `Test-Path %APPDATA%\DevVault-Control[-dev]` | False / False |
 
 Defects found and fixed in Wave 2: grid layout when banners are empty (footer absorbed free space); toast auto-dismiss timers reset on every new toast (moved to per-toast effect); CDP harness DOM serialization (scratch script only).
+
+Wave 2 checkpoint commit: `bec4a7b` (pushed); Task Packet digest re-verified: match.
+
+## Wave 3 checkpoint — 2026-09-17 (release build, Windows smoke, E2E)
+
+All app runs below use the **release** exe `src-tauri/target/release/devvault-control-center.exe` with
+`DVCC_DATA_DIR=<SCRATCHPAD>/e2e-release-data` and WebView2 debug port 9334 (smoke only). The app is
+closed with `CloseMainWindow()` (graceful) between phases; "restart" = a new process.
+
+| Check | Evidence | Result |
+|---|---|---|
+| Release no-bundle build | `npm run tauri build -- --no-bundle` → "Built application at: src-tauri/target/release/devvault-control-center.exe" (4,707,840 bytes); `src-tauri/target/release/bundle` absent | PASS |
+| Execution level | Embedded manifest contains only the Common-Controls 6.0 dependency; no `trustInfo` / `requestedExecutionLevel` / `requireAdministrator` → default asInvoker | PASS |
+| Windows launch smoke | `Start-Process` → process responding with window title "DevVault Control Center"; closes gracefully | PASS (every phase) |
+| E2E phase 1 (fresh data) | `e2e-phase1.mjs … --open`: 2 projects (form rejects `http://` repository URL), 2 reviews, WARM independent of NEW / READY, copy prompt, REVIEWING, capture keeps REVIEWING, verdict requires selection + acknowledgement, FIX_REQUIRED + WARM, reviewed HEAD normalized, next action saved, Suspend WARM + checkpoint; runtime rejections (javascript:, file:, http:, userinfo host, non-allowlisted host, UNC, relative, file path, storage traversal) | PASS (first attempt failed on a smoke-script race — clicked while the UI was busy saving; script fixed to wait for the save toast; app unchanged) |
+| Real launcher opens | "Open project folder" → Explorer window for the project folder observed via `Shell.Application.Windows()` (then closed); "Open GitHub" on a project whose repository is this public repository → no error; `open_external_url https://chatgpt.com/` → OK | PASS |
+| Clipboard write | `Get-Clipboard` after "Copy review prompt" → "# Independent Review Request — Project Alpha / R1 …" | PASS |
+| Persisted files after close | `projects.json` + `.bak`; `reviews/<alpha>/{session.json, session.json.bak, checkpoint.md, request-r1.md, result-r1.md, events.jsonl}`; `reviews/<beta>/{session.json, events.jsonl}`; 0 `*.tmp`; session SUSPENDED / suspendedFrom FIX_REQUIRED / WARM / PR 45 / R1 expected = reviewed HEAD / verdict FIX_REQUIRED / thread title + URL / next action; UTF-8 content verified (`result-r1.md` contains 総評) | PASS |
+| E2E phase 2 (restart) | `e2e-phase2.mjs`: queue restored (alpha SUSPENDED / WARM, beta NEW / COLD), every metadata field, checkpoint and previous result restored; Resume → FIX_REQUIRED + HOT, suspendedFrom cleared, `resumed` event; Edit Project (ID read-only) saved. On disk after close: FIX_REQUIRED / HOT; events … suspended, resumed | PASS |
+| App-level recovery: restored | Corrupt `projects.json` (valid `.bak`) + corrupt beta `session.json` (no `.bak`) → notice "restored from its backup … kept as projects.json.corrupt-<ms>", both projects restored, beta row unreadable (read-only detail), alpha FIX_REQUIRED / HOT unaffected. Disk: `projects.json` == previous `.bak`; corrupt copy byte-identical to the injected content; beta `session.json` unchanged; no beta corrupt copy | PASS |
+| App-level: unsupported version | `schemaVersion: 2` → error banner "newer DVCC version … schemaVersion 2", + Project disabled, no set-aside offered. Disk: file and `.bak` unchanged | PASS |
+| App-level: unreadable without backup | garbage `projects.json`, `.bak` removed → error banner, + Project disabled, reviews still listed; Human "Set aside and start empty" → confirm dialog → file renamed to `projects.json.corrupt-<ms>` (content preserved), empty list, + Project enabled | PASS |
+| App-level: invalid data dir | `DVCC_DATA_DIR=relative\dvcc-data` → fatal screen "DVCC_DATA_DIR must be an absolute path (DATA_DIR_UNAVAILABLE)"; no relative folder created | PASS |
+| Scope / boundary grep | tracked `src`, `src-tauri/src`, manifests, capability: no fetch / WebSocket / XHR, no process spawn, no GitHub API client, no OpenAI / Anthropic SDK, no SQLite / REST / MCP, no clipboard read, no opener capability, no admin manifest (hits were rejection-test strings, `chat.openai.com` host, Rust `OpenerExt` import, storage `read_text`) | PASS |
+| Repository hygiene | all tracked files: no user profile path / username / token / key / Notion URL / real ChatGPT thread (only intentional detector samples in `fixtureHygiene.test.ts`) | PASS |
+| Diff vs base | 83 files, +15,044 / −1 (majority lockfiles); top-level: .agent-run, .gitattributes, .gitignore, README.md, docs, fixtures, index.html, package*.json, src, src-tauri, tsconfig*.json, vite.config.ts | within approved structure |
+| Real data dirs | `%APPDATA%\DevVault-Control`, `...-dev` | False / False (untouched) |
+
+Screenshots reviewed (scratchpad, not committed): phase 1 detail, phase 2 before resume, phase 3 restored.
