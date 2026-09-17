@@ -3,13 +3,13 @@
 - Run ID: LR-20260917-DVCC-001
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — repair round 2 implemented (E-1 / E-2 / E-3 / E-5 / E-6, docs E-4 / E-9 / E-10) and targeted checks PASS; Data integrity hard check stays FAIL until the E-1 fix is verified at runtime (spawn race) and independently re-verified; no Draft PR
+- Current state: SUSPENDED — Full Convergence re-run in progress. Round-2 E-1 guard failed at runtime (1 / 20) → F-3 repair strategy 3 of 3 implemented (`7ef9c29`); strategy 3 evidence so far all PASS. The system stopped the background race run and the round-2 control build because the machine was low on memory; per session rules they are not restarted without Human instruction. Data integrity hard check still pending (runtime race evidence incomplete + Verification #3); no Draft PR
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/review-hub-v0.1
 - Base SHA: bbffea1177b80dfe46a0f6887a9fc05dd5e4f05d
-- Current head: repair round 2 checkpoint commit (parent 61949ed)
-- Current wave: R9 checkpoint → Full Convergence re-run
-- Last successful checkpoint: repair round 2 checkpoint (commit "chore(run): repair round 2 checkpoint (E-1..E-10)")
+- Current head: suspension checkpoint commit (parent 0b884f6)
+- Current wave: R9 Full Convergence re-run (suspended)
+- Last successful checkpoint: suspension checkpoint (commit "chore(run): suspend during full convergence re-run (strategy 3, low memory)")
 - Task Packet ID: LRP-20260917-DVCC-001
 - Task Packet revision: 2
 - Task Packet snapshot path: .agent-run/LR-20260917-DVCC-001/TASK_PACKET_SNAPSHOT.rev2.md
@@ -29,55 +29,55 @@ Independent Verification #2 reported AC-01..AC-20 PASS on `8231e58`. Round 2 cha
 - R-F1, R-F2, R-F4, R-F5, R-F8, R-F11: RESOLVED (Verification #2)
 - R-F6: RESOLVED; residual E-2 repaired in round 2 (tests)
 - R-F9: RESOLVED (Verification #2); E-5 hardening in round 2 (tests)
-- R-F3: PARTIAL in Verification #2 (E-1) → repaired in round 2 (unit tests); runtime spawn-race evidence and Verification #3 pending
+- R-F3: PARTIAL in Verification #2 (E-1) → round 2 failed at runtime (1 / 20) → strategy 3 of 3 (start-up lock); unit tests + races 60 / 60, 60 / 60 (0 ms) and 14 / 14 (staggered, 3 processes) PASS so far; remaining staggered rounds and Verification #3 pending
 
 ## Hard Checks (implementer view)
 
-- Security: PASS in Verification #2; E-5 hardening added; re-verification pending
-- Privacy: PASS (E-7 reworded); hygiene re-scan pending
+- Security: PASS in Verification #2; E-5 hardening added; runtime F-9 / E-5 boundary PASS at the re-run; independent re-verification pending
+- Privacy: PASS (E-7 reworded); hygiene re-scan at `0b884f6` PASS
 - Authentication: no auth surface
 - Permission: capability unchanged (core:default + clipboard write); no new plugin or permission in round 2
-- Data integrity: FAIL (E-1) until runtime race evidence + Verification #3
-- Irreversible-data safety: PASS in Verification #2; E-2 / E-3 notes repaired; re-verification pending
+- Data integrity: not yet PASS — strategy 3 evidence PASS so far; remaining staggered race rounds + Verification #3 pending
+- Irreversible-data safety: PASS in Verification #2; E-2 / E-3 repaired, runtime E2E PASS; independent re-verification pending
 
 ## Completed
 
-- Revision 1 waves; BLOCKED escalation; revision 2 binding; R1–R6 repairs; docs; Full Convergence; Independent Verification #2; repair round 2 (`3833d4e`, `a03f67f`, `68af11d`, `61949ed`); targeted checks PASS.
+- Revision 1 waves; BLOCKED escalation; revision 2 binding; R1–R6 repairs; docs; Full Convergence; Independent Verification #2; repair round 2 (`3833d4e`, `a03f67f`, `68af11d`, `61949ed`); checkpoint `6610e4c`; Full Convergence re-run required checks PASS; strategy 3 (`7ef9c29`, `0b884f6`); release E2E 0 failures; hygiene PASS.
 
 ## Checks
 
-Targeted after round 2: tsc PASS; vitest 420 PASS; build PASS; cargo fmt --check PASS; cargo check PASS; cargo clippy --all-targets no warnings; cargo test 38 passed / 1 ignored.
+Round 2 (`6610e4c`): npm ci, tsc, vitest 420, build, cargo check, cargo test 38 / 1 ignored, release build — PASS. Strategy 3: cargo fmt / clippy clean, cargo test 39 / 1 ignored, mapped-drive test PASS, release build PASS, release E2E 0 failures, races as above. See EVIDENCE.md "Full Convergence re-run after repair round 2".
 
 ## Quality Debt
 
-Resolved: QD-001..QD-004. Open (low, non-blocking): QD-005 (F-7, Human-allowed), QD-006 (F-10, Human-allowed), QD-007 (F-12), QD-008 (no DOM component tests for AC-14 dialog), QD-009 (E-8 request latest-wins), QD-010 (E-10 shared debug / release identity), QD-011 (volume GUID link targets refused).
+Resolved: QD-001..QD-004. Open (low, non-blocking): QD-005 (F-7, Human-allowed), QD-006 (F-10, Human-allowed), QD-007 (F-12), QD-008 (no DOM component tests for AC-14 dialog), QD-009 (E-8 request latest-wins), QD-010 (E-10 shared debug / release identity), QD-011 (volume GUID link targets refused), QD-012 (hand-over waits on a hung running instance).
 
 ## Explicit unverified items
 
-- Runtime evidence for round 2: release rebuild, single-instance script incl. race phase, release E2E, recovery / conflict smoke, F-9 / E-5 runtime boundary, hygiene re-scan — Full Convergence re-run.
-- Independent Verification #3.
+- Remaining staggered-delay race rounds on the strategy 3 build (2 and 3 processes); optional round-2 control comparison with the same delays.
+- Full diff review of the final head; Independent Verification #3.
 - Default `%APPDATA%` data folder not exercised at runtime (protected); verified by code + dependency source.
 - Real Ctrl+V paste (automation uses value setter).
 
 ## Known failures
 
-- E-1 (F-3 prevention sub-condition): fix implemented, runtime verification pending.
+- E-1 round-2 guard: runtime race FAIL (1 / 20) — superseded by strategy 3; strategy 3 has no failure so far. Another F-3 failure would exhaust `repair_strategies_max: 3` → BLOCKED.
 
 ## Decisions
 
-See DECISIONS.md (D1–D3; R2-D1..R2-D3; L-001..L-029).
+See DECISIONS.md (D1–D3; R2-D1..R2-D3; L-001..L-031).
 
 ## Remaining tasks
 
-Full Convergence re-run (incl. spawn-race verification) → Independent Verification #3 → Hard Checks → Draft PR only if all conditions hold → STOP.
+Finish Full Convergence re-run (staggered races) → checkpoint → Independent Verification #3 → Hard Checks → Draft PR only if all conditions hold → STOP.
 
 ## Next action
 
-Full Convergence re-run: npm ci, tsc, vitest, build, cargo check, cargo test (+ mapped-drive ignored test with a temporary loopback mapping), `npm run tauri build -- --no-bundle`; `scripts/verify-single-instance.ps1` (sequential + race rounds); release E2E (restart, recapture incl. retry, conflict incl. suspend pre-check, boundary); F-9 / E-5 runtime check; hygiene and scope scans; full diff review.
+On Human instruction to resume (and with enough free memory): run `scripts/verify-single-instance.ps1` on the strategy 3 release exe with `-RaceSize 2` and `-RaceSize 3` (default `-DelaysMs`, e.g. 40 rounds each), one run at a time and nothing else heavy in parallel; optionally rebuild the round-2 control exe (`CARGO_TARGET_DIR` = `src-tauri/target/control-r2`) and run the same delays for comparison; then checkpoint and launch Independent Verification #3.
 
 ## Stop conditions status
 
-No stop condition triggered in the repair campaign.
+No hard stop condition triggered. Runtime interruption (system low-memory stop of background work) → SUSPENDED with checkpoint (Task Packet §12).
 
 ## Resume instructions
 

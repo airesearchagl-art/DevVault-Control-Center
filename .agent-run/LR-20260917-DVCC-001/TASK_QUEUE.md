@@ -27,5 +27,7 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 - [x] R8 Independent Verification #2 → F-3 PARTIAL (E-1 spawn race), Data integrity FAIL; E-2..E-10 (`f8408c7`)
 - [x] R9 Repair round 2 (within rev 2 F-3 / F-6 / F-9 scope): E-1 own named mutex + data-folder lock; E-2 idempotent archive; E-3 suspend pre-check + accurate message; E-5 link targets checked without following; E-6 test; docs E-4 / E-9 / E-10 (`3833d4e`, `a03f67f`, `68af11d`, `61949ed`)
 - [x] R9 Targeted checks PASS → checkpoint
-- [ ] R9 Full Convergence re-run (incl. spawn-race verification)
+- [~] R9 Full Convergence re-run (incl. spawn-race verification): required checks PASS; round-2 race FAIL 1 / 20 → strategy 3 (`7ef9c29`, `0b884f6`); strategy 3: unit tests, mapped-drive test, release E2E (0 failures), hygiene PASS; races 60 + 60 (0 ms, 2 processes) and 14 (staggered, 3 processes) PASS
+  - [!] SUSPENDED: background race run and round-2 control build stopped by the system (low memory); resume only on Human instruction
+  - [ ] Remaining: staggered-delay races (2 and 3 processes) on strategy 3; optional round-2 control comparison; checkpoint
 - [ ] R10 Independent Verification #3 → Hard Checks → Draft PR only if conditions hold → STOP

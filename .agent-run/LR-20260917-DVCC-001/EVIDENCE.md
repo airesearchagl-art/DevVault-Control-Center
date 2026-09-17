@@ -293,3 +293,63 @@ Mutation checks of the new tests (source copy restored and byte-compared afterwa
 | M-E2: no reuse of an archive already holding the replaced text | "retry after the result write failed" test |
 
 Targeted checks after round 2: tsc PASS; vitest 420 PASS (13 files); `npm run build` PASS; `cargo fmt --check` PASS; `cargo check` PASS; `cargo clippy --all-targets` no warnings; `cargo test` 38 passed / 1 ignored (mapped-drive test needs a temporary mapping; run at Full Convergence).
+
+### Full Convergence re-run after repair round 2 — 2026-09-18
+
+All app runs use the release exe with `DVCC_DATA_DIR=<SCRATCHPAD>/...` and a localhost WebView2 debug port (smoke only). Harness scripts stay in the scratchpad (L-012 / L-022) except `scripts/verify-single-instance.ps1`.
+
+#### Required checks at `6610e4c` (round 2)
+
+| Check | Result |
+|---|---|
+| `npm ci` | PASS — 0 vulnerabilities |
+| `npx tsc --noEmit` | PASS |
+| `npx vitest run` | PASS — 13 files, 420 tests |
+| `npm run build` | PASS |
+| `cargo check` | PASS |
+| `cargo test` | PASS — 38 passed, 1 ignored |
+| `npm run tauri build -- --no-bundle` | PASS — release exe built; no `bundle` directory |
+
+#### E-1 runtime verification of round 2 → FAIL, repaired (strategy 3)
+
+| Run | Build | Result |
+|---|---|---|
+| `verify-single-instance.ps1 -RaceRounds 20` | round 2 (`6610e4c`) | sequential PASS; data-folder lock held by A = True; race **FAIL 1 / 20** (round 6: both processes still alive after 33 s; state not captured) |
+| Diagnostic copy of the script, 30 rounds | round 2 | 30 / 30 PASS (failure not reproduced; diagnostics never triggered) |
+
+Orchestrator analysis (source, not observed state): (1) the own mutex and the plugin mutex (`{identifier}-sim`, created in the plugin set-up during `Builder::build`) can be won by different processes; (2) tauri 2.11.5 `app.rs` `setup()` creates the configured windows before the application setup hook, so a round-2 loser had already started a WebView2 window when it exited in the hook, and a process blocked in the plugin's `SendMessageW` to such a loser waits for it. Both gaps allow a stalled pair. Decision: F-3 repair strategy 3 of 3 (Task Packet §12 `repair_strategies_max: 3`): serialize start-up through the plugin registration (`7ef9c29`), see L-030.
+
+#### Strategy 3 (`7ef9c29`, docs / script `0b884f6`)
+
+| Check | Result |
+|---|---|
+| `cargo fmt --check`, `cargo clippy --all-targets` | PASS, no warnings |
+| `cargo test` | PASS — 39 passed, 1 ignored; new `a_second_starter_waits_until_the_first_releases`, `a_lock_left_by_an_ended_owner_is_taken_over` (repeated 3x) |
+| Mapped-drive boundary (temporary `W:` → `\\localhost\C$`, `/persistent:no`, removed afterwards; no other mapping listed or accessed) | `rejects_mapped_network_drive_directory` EXECUTED → `NETWORK_TARGET`; `W:` absent after cleanup |
+| `npm run tauri build -- --no-bundle` | PASS |
+| Diagnostic race script, 60 rounds (2 processes) | sequential PASS; race **60 / 60 PASS** (survivor first 59, second 1 — the lock serializes either order) |
+| `scripts/verify-single-instance.ps1` (`0b884f6`), `-RaceRounds 60 -RaceSize 2`, back-to-back starts | sequential PASS; race **60 / 60 PASS** (survivor #1: 56, #2: 4) |
+| Same script + `-DelaysMs` (0, 0, 10, 20, 50, 100, 200, 300, 500, 1000 ms between starts), `-RaceSize 3`, 40 rounds planned | sequential PASS; race **14 / 14 PASS** (every delay covered once, then 0 / 0 / 10 / 20); **run stopped by the system after round 14 because the machine was low on memory** (not a DVCC failure; no DVCC or DVCC WebView2 process left) |
+| Control build of round 2 (`6610e4c`, scratch sources, git-ignored target dir) for a staggered-delay comparison | **not completed**: first attempt failed in a dependency build script with a long target path; second attempt stopped by the system (low memory) |
+
+#### Release E2E at `7ef9c29` (scratch orchestrator, fresh data folder) — 0 failures
+
+| Scenario | Evidence | Result |
+|---|---|---|
+| Phase 1 (`--open`) | projects / reviews / prompt / capture / verdict / suspend; Open project folder (Explorer window then closed) and Open GitHub (public repository of this project) without error; runtime launcher / storage rejections | PASS |
+| Phase 2 (restart) | suspended review restored exactly; Resume; Edit Project | PASS |
+| F-6 re-capture | disk `archivedResults` = [`result-r1-previous-<ms>.md`]; archive = first result; `result-r1.md` = replacement | PASS |
+| F-4 rapid operations | disk resource == UI; disk next action == UI; resource event chain continuous, ends at disk state | PASS |
+| F-3 external change | CONFLICT toast; `events.jsonl` hash unchanged; `session.json` keeps the external edit; Reload shows it | PASS |
+| E-3 suspend after external change | toast "... DVCC did not overwrite that change ..."; `checkpoint.md` hash unchanged; `session.json` keeps the external edit; state not SUSPENDED | PASS |
+| E-2 retry after older session state | `session.json` replaced by its pre-re-capture content, app restarted, capture again → toast names `...-1.md`; disk `archivedResults` = [`<base>.md`, `<base>-1.md`] = first / second result; `result-r1.md` = third | PASS |
+| F-9 / E-5 runtime | symlink → `\\localhost\C$\Windows`: `NETWORK_TARGET` (link text) in 3 ms; symlink → unreachable `.invalid` host: `NETWORK_TARGET` in 2 ms; links removed | PASS |
+| Recovery: restored / missing primary / I/O error / newer schema / unreadable + set-aside / fatal relative data dir | same assertions and disk checks as the previous convergence | PASS |
+| E-1 layer 3 | `.dvcc.lock` held by another process → fatal screen `DATA_DIR_IN_USE`; no data file changed | PASS |
+| Real data folders | `%APPDATA%\DevVault-Control[-dev]` absent; no DVCC process left | PASS |
+
+#### Scope / hygiene at `0b884f6`
+
+- Tracked-file scan (lockfiles / icons excluded): no user profile path, username, e-mail, token / key, Notion URL, private IP, real ChatGPT thread URL (only the intentional detector sample in `src/test/fixtureHygiene.test.ts`); UNC-like strings are test hosts (`localhost`, `server`, `example`, `dvcc-unreachable-host.invalid`) or escaped example paths.
+- Production scope: no fetch / XHR / WebSocket / clipboard read in `src` (non-test); `std::process::Command` only inside `launcher.rs` `mod tests`.
+- Capability unchanged (`core:default`, `clipboard-manager:allow-write-text`); dependencies unchanged (npm: `@tauri-apps/api`, `@tauri-apps/plugin-clipboard-manager`, `react`, `react-dom`; Rust: `tauri`, `tauri-plugin-opener`, `tauri-plugin-clipboard-manager`, `tauri-plugin-single-instance`, `serde`, `serde_json`); no custom manifest.

@@ -98,12 +98,12 @@ were repaired under Task Packet revision 2 (see EVIDENCE.md "Repair campaign").
 - id: QD-010
   source_wave: repair round 2 (rev 2)
   type: environment_limitation
-  description: "E-10: debug and release builds share the app identifier and the instance mutex, so a running debug build prevents a release build from starting (and vice versa) although their data folders differ."
+  description: "E-10: debug and release builds share the app identifier and the start-up / plugin mutexes, so a running debug build prevents a release build from starting (and vice versa) although their data folders differ."
   why_deferred: "Info-level; fails safe (no second writer); documented in README and data contract; changing the dev identity is a configuration decision outside the repair."
   risk: low
   blocks_final_verify: false
   required_resolution: "Use a distinct identifier / mutex name for debug builds if parallel dev and release use is needed."
-  evidence: "Independent Verification #2 E-10; src-tauri/src/instance.rs INSTANCE_MUTEX_NAME."
+  evidence: "Independent Verification #2 E-10; src-tauri/src/instance.rs STARTUP_MUTEX_NAME; plugin mutex derived from the identifier."
   status: open
 - id: QD-011
   source_wave: repair round 2 (rev 2)
@@ -114,6 +114,16 @@ were repaired under Task Packet revision 2 (see EVIDENCE.md "Repair campaign").
   blocks_final_verify: false
   required_resolution: "Map volume GUID targets to their drive type (GetVolumePathNamesForVolumeNameW + GetDriveTypeW) if mounted-volume project folders are needed."
   evidence: "src-tauri/src/launcher.rs classifies_link_targets_without_opening_them."
+  status: open
+- id: QD-012
+  source_wave: repair round 3 (rev 2)
+  type: liveness_limitation
+  description: "If the running instance's UI thread is hung, a new launch waits: the plugin hand-over uses SendMessageW without a timeout (while holding the start-up lock), and further launches wait 15 s for the start-up lock and then block in the same hand-over; none of them opens the data folder."
+  why_deferred: "Fails safe (never a second writer); only when the running instance is already unresponsive; the plugin's hand-over call is outside DVCC code."
+  risk: low
+  blocks_final_verify: false
+  required_resolution: "Hand over with SendMessageTimeoutW (upstream plugin change or own hand-over) if hung-instance launches must return."
+  evidence: "tauri-plugin-single-instance 2.4.4 platform_impl/windows.rs (SendMessageW); src-tauri/src/instance.rs STARTUP_WAIT."
   status: open
 ```
 
