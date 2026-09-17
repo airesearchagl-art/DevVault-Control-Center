@@ -42,6 +42,7 @@ pub fn run() {
             storage::storage_append_line,
             storage::storage_list_reviews,
             storage::storage_quarantine,
+            storage::storage_restore_backup,
             launcher::open_external_url,
             launcher::open_project_folder,
             launcher::open_data_dir,

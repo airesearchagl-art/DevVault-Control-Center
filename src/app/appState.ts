@@ -62,21 +62,20 @@ export type AppAction =
   | { type: "toast"; kind: ToastKind; message: string }
   | { type: "dismissToast"; id: number };
 
+export function restoredMessage(label: string, health: FileHealth): string | null {
+  if (health.status !== "restored_from_backup") return null;
+  return health.cause === "missing_primary"
+    ? `${label} was missing and was restored from its backup (the backup was kept).`
+    : `${label} could not be read and was restored from its backup. The unreadable file was kept as ${health.quarantinedAs}.`;
+}
+
 function recoveryNotices(data: LoadedData): Notice[] {
   const notices: Notice[] = [];
-  if (data.projectsHealth.status === "restored_from_backup") {
-    notices.push({
-      id: "projects-restored",
-      message: `projects.json could not be read and was restored from its backup. The unreadable file was kept as ${data.projectsHealth.quarantinedAs}.`,
-    });
-  }
+  const projects = restoredMessage("projects.json", data.projectsHealth);
+  if (projects) notices.push({ id: "projects-restored", message: projects });
   for (const review of data.reviews) {
-    if (review.health.status === "restored_from_backup") {
-      notices.push({
-        id: `review-restored-${review.reviewId}`,
-        message: `Review ${review.reviewId}: session.json could not be read and was restored from its backup. The unreadable file was kept as ${review.health.quarantinedAs}.`,
-      });
-    }
+    const message = restoredMessage(`Review ${review.reviewId}: session.json`, review.health);
+    if (message) notices.push({ id: `review-restored-${review.reviewId}`, message });
   }
   return notices;
 }

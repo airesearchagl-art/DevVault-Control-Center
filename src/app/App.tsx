@@ -244,10 +244,10 @@ export default function App() {
 
   const setAsideProjects = async (): Promise<string | null> => {
     try {
-      const aside = await setAsideProjectsFile(backend);
+      const kept = await setAsideProjectsFile(backend, state.projectsHealth);
       dispatch({ type: "projectsSaved", projects: [], health: { status: "missing" } });
       setDialog(null);
-      notify("info", `projects.json was kept as ${aside}. Starting with an empty project list.`);
+      notify("info", `Kept as ${kept.join(", ")}. Starting with an empty project list.`);
       return null;
     } catch (error) {
       return `Could not set the file aside: ${describeError(error)}`;
@@ -325,13 +325,22 @@ export default function App() {
     );
   } else if (selected) {
     detail = (
-      <div className="empty-state" data-testid="detail-unreadable">
-        <h2>Review {selected.reviewId} cannot be read</h2>
+      <div className="empty-state" data-testid="detail-unreadable" data-health={selected.health.status}>
+        <h2>
+          Review {selected.reviewId} {selected.health.status === "io_error" ? "cannot be accessed" : "cannot be read"}
+        </h2>
         <p className="error-text">{describeHealthProblem(selected.health)}</p>
-        <p className="muted">
-          The file was left unchanged and this review is read-only. Fix or restore <code>reviews/{selected.reviewId}/session.json</code> in the data folder,
-          then reload. Other reviews are not affected.
-        </p>
+        {selected.health.status === "io_error" ? (
+          <p className="muted">
+            DVCC could not access <code>reviews/{selected.reviewId}/session.json</code> (for example permissions, a locked file or a device problem). This
+            is not treated as damaged data: nothing was changed. Resolve the access problem, then reload. Other reviews are not affected.
+          </p>
+        ) : (
+          <p className="muted">
+            The file was left unchanged and this review is read-only. Fix or restore <code>reviews/{selected.reviewId}/session.json</code> in the data
+            folder, then reload. Other reviews are not affected.
+          </p>
+        )}
         <div className="empty-actions">
           <button type="button" onClick={() => void launch(() => launcher.openDataDir(), "Open data folder")}>
             Open data folder
@@ -401,7 +410,7 @@ export default function App() {
         {projectsProblem && (
           <Banner
             kind="error"
-            testId="banner-projects-unreadable"
+            testId={state.projectsHealth.status === "io_error" ? "banner-projects-io-error" : "banner-projects-unreadable"}
             actions={
               <>
                 <button type="button" onClick={() => void launch(() => launcher.openDataDir(), "Open data folder")}>
@@ -410,7 +419,7 @@ export default function App() {
                 <button type="button" onClick={() => void reload()}>
                   Reload
                 </button>
-                {state.projectsHealth.status === "unreadable" && (
+                {state.projectsHealth.status === "unreadable" && state.projectsHealth.setAside.length > 0 && (
                   <button type="button" className="danger" onClick={() => setDialog({ kind: "setAsideProjects" })} data-testid="btn-set-aside-projects">
                     Set aside and start empty…
                   </button>
@@ -418,7 +427,16 @@ export default function App() {
               </>
             }
           >
-            <strong>projects.json cannot be used:</strong> {projectsProblem}. Project editing is disabled and the file has not been changed.
+            {state.projectsHealth.status === "io_error" ? (
+              <>
+                <strong>projects.json cannot be accessed:</strong> {projectsProblem}. This is an access problem (for example permissions, a locked file or a
+                device error), not damaged data. Nothing was changed; project editing is disabled until Reload succeeds.
+              </>
+            ) : (
+              <>
+                <strong>projects.json cannot be used:</strong> {projectsProblem}. Project editing is disabled and the file has not been changed.
+              </>
+            )}
           </Banner>
         )}
         {state.notices.map((notice) => (

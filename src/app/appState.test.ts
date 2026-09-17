@@ -23,15 +23,16 @@ function loaded(data: Partial<LoadedData>, from: AppState = initialAppState): Ap
 describe("appReducer", () => {
   it("enters ready state and builds recovery notices", () => {
     const state = loaded({
-      projectsHealth: { status: "restored_from_backup", quarantinedAs: "projects.json.corrupt-1" },
+      projectsHealth: { status: "restored_from_backup", cause: "corrupt_primary", quarantinedAs: "projects.json.corrupt-1" },
       reviews: [
-        { reviewId: "rv-20260101-alpha1", session: session("rv-20260101-alpha1"), health: { status: "restored_from_backup", quarantinedAs: "session.json.corrupt-2" } },
-        { reviewId: "rv-20260101-beta01", session: null, health: { status: "unreadable", reason: "bad" } },
+        { reviewId: "rv-20260101-alpha1", session: session("rv-20260101-alpha1"), health: { status: "restored_from_backup", cause: "missing_primary", quarantinedAs: null } },
+        { reviewId: "rv-20260101-beta01", session: null, health: { status: "unreadable", reason: "bad", setAside: [] } },
       ],
     });
     expect(state.phase).toBe("ready");
     expect(state.notices.map((n) => n.id)).toEqual(["projects-restored", "review-restored-rv-20260101-alpha1"]);
     expect(state.notices[0].message).toContain("projects.json.corrupt-1");
+    expect(state.notices[1].message).toContain("was missing and was restored from its backup");
     expect(appReducer(state, { type: "dismissNotice", id: "projects-restored" }).notices).toHaveLength(1);
   });
 
@@ -45,7 +46,7 @@ describe("appReducer", () => {
 
   it("replaces an existing review or appends a new one on save", () => {
     const a = session("rv-20260101-alpha1");
-    let state = loaded({ reviews: [{ reviewId: a.reviewSessionId, session: null, health: { status: "unreadable", reason: "x" } }] });
+    let state = loaded({ reviews: [{ reviewId: a.reviewSessionId, session: null, health: { status: "unreadable", reason: "x", setAside: [] } }] });
     const updated = { ...a, nextAction: "changed" };
     state = appReducer(state, { type: "reviewSaved", session: updated });
     expect(state.reviews).toEqual([{ reviewId: a.reviewSessionId, session: updated, health: { status: "ok" } }]);
@@ -55,7 +56,7 @@ describe("appReducer", () => {
   });
 
   it("marks projects healthy after a successful save unless told otherwise", () => {
-    let state = loaded({ projectsHealth: { status: "restored_from_backup", quarantinedAs: "x" } });
+    let state = loaded({ projectsHealth: { status: "restored_from_backup", cause: "corrupt_primary", quarantinedAs: "x" } });
     state = appReducer(state, { type: "projectsSaved", projects: [] });
     expect(state.projectsHealth).toEqual({ status: "ok" });
     state = appReducer(state, { type: "projectsSaved", projects: [], health: { status: "missing" } });

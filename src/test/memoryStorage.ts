@@ -60,7 +60,21 @@ export class MemoryStorage implements StorageBackend {
       if (!isJson(existing)) throw new StorageError("PRIMARY_UNREADABLE", `${path}: existing file is not valid JSON`);
       this.files.set(`${path}.bak`, existing);
     }
+    if (json && existing === undefined && this.files.has(`${path}.bak`)) {
+      throw new StorageError("RECOVERY_REQUIRED", `${path}: the file is missing but its backup exists`);
+    }
     this.files.set(path, content);
+  }
+
+  async restoreBackup(target: StorageTarget): Promise<void> {
+    const path = MemoryStorage.pathOf(target);
+    if (!path.endsWith(".json")) throw new StorageError("INVALID_TARGET", "backups exist only for JSON files");
+    if (this.files.has(path)) throw new StorageError("PRIMARY_EXISTS", `${path}: primary exists`);
+    const backup = this.files.get(`${path}.bak`);
+    if (backup === undefined) throw new StorageError("NOT_FOUND", `${path}.bak: backup does not exist`);
+    if (!isJson(backup)) throw new StorageError("BACKUP_INVALID", `${path}.bak: backup is not valid JSON`);
+    if (this.failingWrites.has(path)) throw new StorageError("WRITE_FAILED", `${path}: injected write failure`);
+    this.files.set(path, backup);
   }
 
   async appendLine(target: StorageTarget, line: string): Promise<void> {
@@ -82,9 +96,10 @@ export class MemoryStorage implements StorageBackend {
     return [...ids].sort();
   }
 
-  async quarantine(target: StorageTarget): Promise<string> {
-    const path = MemoryStorage.pathOf(target);
-    if (!path.endsWith(".json")) throw new StorageError("INVALID_TARGET", "only JSON files can be set aside");
+  async quarantine(target: StorageTarget, options?: { backup?: boolean }): Promise<string> {
+    const primary = MemoryStorage.pathOf(target);
+    if (!primary.endsWith(".json")) throw new StorageError("INVALID_TARGET", "only JSON files can be set aside");
+    const path = options?.backup ? `${primary}.bak` : primary;
     const content = this.files.get(path);
     if (content === undefined) throw new StorageError("NOT_FOUND", `${path}: file does not exist`);
     this.quarantineCounter += 1;

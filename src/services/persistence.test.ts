@@ -166,7 +166,7 @@ describe("malformed input safety (AC-17)", () => {
     storage.files.set("projects.json", fixture("malformed/projects.truncated.json"));
 
     const loaded = await loadAll(storage);
-    expect(loaded.projectsHealth).toEqual({ status: "restored_from_backup", quarantinedAs: "projects.json.corrupt-1" });
+    expect(loaded.projectsHealth).toEqual({ status: "restored_from_backup", cause: "corrupt_primary", quarantinedAs: "projects.json.corrupt-1" });
     expect(loaded.projects).toEqual(projects);
     expect(storage.files.get("projects.json.corrupt-1")).toBe(fixture("malformed/projects.truncated.json"));
     expect(storage.files.get("projects.json")).toBe(storage.files.get("projects.json.bak"));
@@ -198,7 +198,7 @@ describe("malformed input safety (AC-17)", () => {
     storage.files.set("projects.json", "{ broken");
     const loaded = await loadAll(storage);
     expect(loaded.projectsHealth.status).toBe("unreadable");
-    const aside = await setAsideProjectsFile(storage);
+    const [aside] = await setAsideProjectsFile(storage, loaded.projectsHealth);
     expect(storage.files.get(`${aside}`)).toBe("{ broken");
     const health: FileHealth = { status: "missing" };
     const saved = await saveNewProject(storage, [], health, projectForm("project-alpha", "Project Alpha"), now());
@@ -255,14 +255,14 @@ describe("malformed input safety (AC-17)", () => {
     storage.failingReads.set("projects.json", "READ_FAILED");
     const before = new Map(storage.files);
     loaded = await loadAll(storage);
-    expect(loaded.projectsHealth.status).toBe("unreadable");
+    expect(loaded.projectsHealth).toMatchObject({ status: "io_error", code: "READ_FAILED" });
     expect(storage.files).toEqual(before);
   });
 
   it("reports a review folder without session.json as unreadable", async () => {
     storage.files.set(`reviews/${ALPHA_ID}/checkpoint.md`, "orphan checkpoint");
     const loaded = await loadAll(storage);
-    expect(loaded.reviews).toEqual([{ reviewId: ALPHA_ID, session: null, health: { status: "unreadable", reason: "session.json is missing" } }]);
+    expect(loaded.reviews).toEqual([{ reviewId: ALPHA_ID, session: null, health: { status: "unreadable", reason: "session.json is missing", setAside: [] } }]);
     expect(loaded.projectsHealth).toEqual({ status: "missing" });
   });
 
@@ -279,6 +279,155 @@ describe("malformed input safety (AC-17)", () => {
     expect(lines[1]).toBe('{"v":1,"type":"trunc');
     expect(parseEventsFile(storage.files.get(path)!).events.map((e) => e.type)).toEqual(["review_created", "review_ready"]);
     expect(next.reviewState).toBe("READY_FOR_REVIEW");
+  });
+});
+
+describe("missing primary with a backup — RECOVERY REQUIRED (F-2)", () => {
+  const ids = (text: string | undefined) => (JSON.parse(text ?? "{}").projects ?? []).map((p: { projectId: string }) => p.projectId);
+
+  it("restores a missing projects.json from its valid backup and never loses the backup data on later saves", async () => {
+    const { projects } = await seed(storage);
+    storage.files.set("projects.json.bak", storage.files.get("projects.json")!);
+    storage.files.delete("projects.json");
+    const backup = storage.files.get("projects.json.bak");
+
+    const loaded = await loadAll(storage);
+    expect(loaded.projectsHealth).toEqual({ status: "restored_from_backup", cause: "missing_primary", quarantinedAs: null });
+    expect(loaded.projects).toEqual(projects);
+    expect(storage.files.get("projects.json")).toBe(backup);
+    expect(storage.files.get("projects.json.bak")).toBe(backup);
+
+    let current = loaded.projects;
+    current = unwrap(await saveNewProject(storage, current, loaded.projectsHealth, projectForm("project-gamma", "Project Gamma"), now()));
+    current = unwrap(await saveNewProject(storage, current, { status: "ok" }, projectForm("project-delta", "Project Delta"), now()));
+    expect(ids(storage.files.get("projects.json"))).toEqual(["project-alpha", "project-beta", "project-gamma", "project-delta"]);
+    expect(ids(storage.files.get("projects.json.bak"))).toEqual(["project-alpha", "project-beta", "project-gamma"]);
+  });
+
+  it("protects the only valid copy at the storage layer (normal write refused)", async () => {
+    storage.files.set("projects.json.bak", '{"schemaVersion":1,"projects":[]}');
+    await expect(storage.write({ kind: "projects" }, '{"schemaVersion":1,"projects":[]}')).rejects.toMatchObject({ code: "RECOVERY_REQUIRED" });
+    expect(storage.files.has("projects.json")).toBe(false);
+    expect(storage.files.get("projects.json.bak")).toBe('{"schemaVersion":1,"projects":[]}');
+  });
+
+  it("keeps the backup and blocks writes when the restore write fails, then recovers on the next load", async () => {
+    const { projects } = await seed(storage);
+    storage.files.set("projects.json.bak", storage.files.get("projects.json")!);
+    storage.files.delete("projects.json");
+    const backup = storage.files.get("projects.json.bak");
+    storage.failingWrites.add("projects.json");
+
+    const failed = await loadAll(storage);
+    expect(failed.projectsHealth).toMatchObject({ status: "io_error", code: "WRITE_FAILED" });
+    expect(isWritable(failed.projectsHealth)).toBe(false);
+    expect(storage.files.has("projects.json")).toBe(false);
+    expect(storage.files.get("projects.json.bak")).toBe(backup);
+    expect((await saveNewProject(storage, [], failed.projectsHealth, projectForm("project-x", "X"), now())).ok).toBe(false);
+    expect(storage.files.get("projects.json.bak")).toBe(backup);
+
+    storage.failingWrites.clear();
+    const retried = await loadAll(storage);
+    expect(retried.projectsHealth).toMatchObject({ status: "restored_from_backup", cause: "missing_primary" });
+    expect(retried.projects).toEqual(projects);
+  });
+
+  it("recovers across two loads when the primary was set aside but the restore write failed", async () => {
+    const { projects } = await seed(storage);
+    storage.files.set("projects.json.bak", storage.files.get("projects.json")!);
+    storage.files.set("projects.json", "{ corrupt");
+    storage.failingWrites.add("projects.json");
+
+    const first = await loadAll(storage);
+    expect(first.projectsHealth.status).toBe("io_error");
+    expect(storage.files.get("projects.json.corrupt-1")).toBe("{ corrupt");
+    expect(storage.files.has("projects.json")).toBe(false);
+
+    storage.failingWrites.clear();
+    const second = await loadAll(storage);
+    expect(second.projectsHealth).toMatchObject({ status: "restored_from_backup", cause: "missing_primary" });
+    expect(second.projects).toEqual(projects);
+    expect(storage.files.get("projects.json.corrupt-1")).toBe("{ corrupt");
+  });
+
+  it("restores a missing session.json from session.json.bak", async () => {
+    await seed(storage);
+    let alpha = (await loadAll(storage)).reviews[0].session!;
+    alpha = await act(storage, alpha, { type: "markReady" });
+    const path = `reviews/${ALPHA_ID}/session.json`;
+    storage.files.delete(path);
+    const entry = (await loadAll(storage)).reviews.find((r) => r.reviewId === ALPHA_ID)!;
+    expect(entry.health).toEqual({ status: "restored_from_backup", cause: "missing_primary", quarantinedAs: null });
+    expect(entry.session?.reviewState).toBe("NEW");
+    expect(storage.files.has(path)).toBe(true);
+  });
+
+  it("marks missing primary + invalid backup unreadable; set-aside keeps the backup and allows a fresh start", async () => {
+    storage.files.set("projects.json.bak", "{ truncated backup");
+    const loaded = await loadAll(storage);
+    expect(loaded.projectsHealth).toMatchObject({ status: "unreadable", setAside: ["backup"] });
+    expect((await saveNewProject(storage, [], loaded.projectsHealth, projectForm("project-alpha", "A"), now())).ok).toBe(false);
+    const kept = await setAsideProjectsFile(storage, loaded.projectsHealth);
+    expect(kept).toEqual(["projects.json.bak.corrupt-1"]);
+    expect(storage.files.get("projects.json.bak.corrupt-1")).toBe("{ truncated backup");
+    expect((await saveNewProject(storage, [], { status: "missing" }, projectForm("project-alpha", "A"), now())).ok).toBe(true);
+  });
+
+  it("sets aside both corrupt primary and corrupt backup when neither is usable", async () => {
+    storage.files.set("projects.json", "{ bad primary");
+    storage.files.set("projects.json.bak", "{ bad backup");
+    const loaded = await loadAll(storage);
+    expect(loaded.projectsHealth).toMatchObject({ status: "unreadable", setAside: ["primary", "backup"] });
+    const kept = await setAsideProjectsFile(storage, loaded.projectsHealth);
+    expect(kept).toEqual(["projects.json.corrupt-1", "projects.json.bak.corrupt-2"]);
+    expect(storage.files.get("projects.json.corrupt-1")).toBe("{ bad primary");
+    expect(storage.files.get("projects.json.bak.corrupt-2")).toBe("{ bad backup");
+    expect((await loadAll(storage)).projectsHealth).toEqual({ status: "missing" });
+  });
+
+  it("never restores a backup written by a newer schema version", async () => {
+    storage.files.set("projects.json.bak", fixture("malformed/projects.future-version.json"));
+    const loaded = await loadAll(storage);
+    expect(loaded.projectsHealth).toEqual({ status: "unsupported_version", version: 2 });
+    expect(storage.files.has("projects.json")).toBe(false);
+  });
+});
+
+describe("corrupt content vs ordinary I/O failure (F-8)", () => {
+  it("offers set-aside only for corrupt content, never for I/O errors", async () => {
+    await seed(storage);
+    storage.files.delete("projects.json.bak");
+    for (const code of ["READ_FAILED", "DATA_DIR_UNAVAILABLE", "UNKNOWN"]) {
+      storage.failingReads.set("projects.json", code);
+      const before = new Map(storage.files);
+      const loaded = await loadAll(storage);
+      expect(loaded.projectsHealth).toMatchObject({ status: "io_error", code });
+      expect(isWritable(loaded.projectsHealth)).toBe(false);
+      await expect(setAsideProjectsFile(storage, loaded.projectsHealth)).rejects.toMatchObject({ code: "NOT_RECOVERABLE" });
+      expect(storage.files).toEqual(before);
+    }
+    storage.failingReads.clear();
+
+    storage.files.set("projects.json", "{ corrupt");
+    const corrupt = await loadAll(storage);
+    expect(corrupt.projectsHealth).toMatchObject({ status: "unreadable", setAside: ["primary"] });
+  });
+
+  it("treats an I/O error on the backup as io_error without writing anything", async () => {
+    storage.files.set("projects.json.bak", '{"schemaVersion":1,"projects":[]}');
+    storage.failingReads.set("projects.json.bak", "READ_FAILED");
+    const before = new Map(storage.files);
+    const loaded = await loadAll(storage);
+    expect(loaded.projectsHealth).toMatchObject({ status: "io_error", code: "READ_FAILED" });
+    expect(storage.files).toEqual(before);
+  });
+
+  it("reports review session I/O errors as io_error, not unreadable", async () => {
+    await seed(storage);
+    storage.failingReads.set(`reviews/${ALPHA_ID}/session.json`, "READ_FAILED");
+    const loaded = await loadAll(storage);
+    expect(loaded.reviews.find((r) => r.reviewId === ALPHA_ID)?.health).toMatchObject({ status: "io_error", code: "READ_FAILED" });
+    expect(loaded.reviews.find((r) => r.reviewId === BETA_ID)?.health).toEqual({ status: "ok" });
   });
 });
 

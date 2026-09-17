@@ -191,11 +191,21 @@ fn write_synced(path: &Path, bytes: &[u8]) -> io::Result<()> {
     file.sync_all()
 }
 
+fn path_exists(path: &Path) -> Result<bool, CommandError> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(io_error("READ_FAILED", path, error)),
+    }
+}
+
 /// Atomically replaces `path` with `content` (temp file + sync + rename).
 ///
 /// For JSON files: new content must parse as JSON, an existing primary that does not parse
-/// is never overwritten (`PRIMARY_UNREADABLE`), and the previous valid primary is kept as
-/// `<name>.bak`. `events.jsonl` is append-only and rejected here.
+/// is never overwritten (`PRIMARY_UNREADABLE`), the previous valid primary is kept as
+/// `<name>.bak`, and a missing primary whose `.bak` still exists is a recovery state
+/// (`RECOVERY_REQUIRED`): a normal write must not create a new primary that would later
+/// replace the only recoverable backup. `events.jsonl` is append-only and rejected here.
 pub fn write_atomic(path: &Path, content: &str) -> Result<(), CommandError> {
     if is_events_file(path) {
         return Err(CommandError::new(
@@ -225,6 +235,15 @@ pub fn write_atomic(path: &Path, content: &str) -> Result<(), CommandError> {
             "PRIMARY_UNREADABLE",
             format!(
                 "{}: existing file is not valid JSON and will not be overwritten; set it aside first",
+                path.display()
+            ),
+        ));
+    }
+    if json && existing.is_none() && path_exists(&with_suffix(path, ".bak"))? {
+        return Err(CommandError::new(
+            "RECOVERY_REQUIRED",
+            format!(
+                "{}: the file is missing but its backup exists; restore the backup or set it aside first",
                 path.display()
             ),
         ));
@@ -307,16 +326,53 @@ pub fn append_line(path: &Path, line: &str) -> Result<(), CommandError> {
     append().map_err(|error| io_error("WRITE_FAILED", path, error))
 }
 
-/// Renames a JSON file aside as `<name>.corrupt-<millis>[-n]` and returns the new file name.
-/// The content is preserved; nothing is deleted.
-pub fn quarantine(path: &Path, now_millis: u128) -> Result<String, CommandError> {
+/// Restores a missing JSON primary from its `.bak` (the backup itself is left untouched).
+/// Refuses when the primary exists (`PRIMARY_EXISTS`), the backup is missing (`NOT_FOUND`)
+/// or the backup does not parse as JSON (`BACKUP_INVALID`).
+pub fn restore_backup(path: &Path) -> Result<(), CommandError> {
     if !is_json_file(path) {
         return Err(CommandError::new(
             "INVALID_TARGET",
-            "only JSON files can be set aside",
+            "backups exist only for JSON files",
         ));
     }
-    if !path.exists() {
+    if path_exists(path)? {
+        return Err(CommandError::new(
+            "PRIMARY_EXISTS",
+            format!("{}: primary exists; refusing to restore over it", path.display()),
+        ));
+    }
+    let backup = with_suffix(path, ".bak");
+    let bytes = match fs::read(&backup) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return Err(CommandError::new(
+                "NOT_FOUND",
+                format!("{}: backup does not exist", backup.display()),
+            ))
+        }
+        Err(error) => return Err(io_error("READ_FAILED", &backup, error)),
+    };
+    if !parses_as_json(&bytes) {
+        return Err(CommandError::new(
+            "BACKUP_INVALID",
+            format!("{}: backup is not valid JSON", backup.display()),
+        ));
+    }
+    let tmp = with_suffix(path, ".tmp");
+    if let Err(error) = write_synced(&tmp, &bytes) {
+        let _ = fs::remove_file(&tmp);
+        return Err(io_error("WRITE_FAILED", &tmp, error));
+    }
+    if let Err(error) = fs::rename(&tmp, path) {
+        let _ = fs::remove_file(&tmp);
+        return Err(io_error("WRITE_FAILED", path, error));
+    }
+    Ok(())
+}
+
+fn quarantine_file(path: &Path, now_millis: u128) -> Result<String, CommandError> {
+    if !path_exists(path)? {
         return Err(CommandError::new(
             "NOT_FOUND",
             format!("{}: file does not exist", path.display()),
@@ -324,7 +380,7 @@ pub fn quarantine(path: &Path, now_millis: u128) -> Result<String, CommandError>
     }
     let mut candidate = with_suffix(path, &format!(".corrupt-{now_millis}"));
     let mut counter = 1;
-    while candidate.exists() {
+    while path_exists(&candidate)? {
         candidate = with_suffix(path, &format!(".corrupt-{now_millis}-{counter}"));
         counter += 1;
     }
@@ -333,6 +389,23 @@ pub fn quarantine(path: &Path, now_millis: u128) -> Result<String, CommandError>
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default())
+}
+
+/// Renames a JSON file (or its `.bak` when `backup` is true) aside as
+/// `<name>.corrupt-<millis>[-n]` and returns the new file name. The content is preserved;
+/// nothing is deleted.
+pub fn quarantine(path: &Path, backup: bool, now_millis: u128) -> Result<String, CommandError> {
+    if !is_json_file(path) {
+        return Err(CommandError::new(
+            "INVALID_TARGET",
+            "only JSON files can be set aside",
+        ));
+    }
+    if backup {
+        quarantine_file(&with_suffix(path, ".bak"), now_millis)
+    } else {
+        quarantine_file(path, now_millis)
+    }
 }
 
 /// Lists review directories whose names are valid review ids. Anything else is ignored.
@@ -436,9 +509,19 @@ pub async fn storage_list_reviews(root: State<'_, DataRoot>) -> Result<Vec<Strin
 pub async fn storage_quarantine(
     root: State<'_, DataRoot>,
     target: StorageTarget,
+    backup: Option<bool>,
 ) -> Result<String, CommandError> {
     let path = target_path(root.path()?, &target)?;
-    quarantine(&path, unix_millis())
+    quarantine(&path, backup.unwrap_or(false), unix_millis())
+}
+
+#[tauri::command]
+pub async fn storage_restore_backup(
+    root: State<'_, DataRoot>,
+    target: StorageTarget,
+) -> Result<(), CommandError> {
+    let path = target_path(root.path()?, &target)?;
+    restore_backup(&path)
 }
 
 #[cfg(test)]
@@ -694,21 +777,70 @@ pub(crate) mod tests {
         let dir = TempDir::new();
         let path = dir.0.join("projects.json");
         fs::write(&path, "corrupt").unwrap();
-        let name = quarantine(&path, 42).unwrap();
+        let name = quarantine(&path, false, 42).unwrap();
         assert_eq!(name, "projects.json.corrupt-42");
         assert!(!path.exists());
         assert_eq!(fs::read_to_string(dir.0.join(&name)).unwrap(), "corrupt");
 
         fs::write(&path, "corrupt again").unwrap();
-        let second = quarantine(&path, 42).unwrap();
+        let second = quarantine(&path, false, 42).unwrap();
         assert_eq!(second, "projects.json.corrupt-42-1");
         assert_eq!(fs::read_to_string(dir.0.join(&second)).unwrap(), "corrupt again");
 
-        assert_eq!(quarantine(&path, 43).unwrap_err().code, "NOT_FOUND");
+        assert_eq!(quarantine(&path, false, 43).unwrap_err().code, "NOT_FOUND");
         assert_eq!(
-            quarantine(&dir.0.join("checkpoint.md"), 1).unwrap_err().code,
+            quarantine(&dir.0.join("checkpoint.md"), false, 1).unwrap_err().code,
             "INVALID_TARGET"
         );
+
+        fs::write(dir.0.join("projects.json.bak"), "bad backup").unwrap();
+        let aside = quarantine(&path, true, 44).unwrap();
+        assert_eq!(aside, "projects.json.bak.corrupt-44");
+        assert!(!dir.0.join("projects.json.bak").exists());
+        assert_eq!(fs::read_to_string(dir.0.join(&aside)).unwrap(), "bad backup");
+    }
+
+    #[test]
+    fn missing_primary_with_backup_requires_recovery_and_protects_backup() {
+        let dir = TempDir::new();
+        let path = dir.0.join("projects.json");
+        let backup = dir.0.join("projects.json.bak");
+        fs::write(&backup, "{\"only\":\"copy\"}").unwrap();
+
+        // A normal write must not start a new primary next to the only recoverable backup.
+        let error = write_atomic(&path, "{\"new\":1}").unwrap_err();
+        assert_eq!(error.code, "RECOVERY_REQUIRED");
+        assert!(!path.exists());
+        assert_eq!(fs::read_to_string(&backup).unwrap(), "{\"only\":\"copy\"}");
+
+        // Explicit restore copies the backup to the primary and keeps the backup.
+        restore_backup(&path).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "{\"only\":\"copy\"}");
+        assert_eq!(fs::read_to_string(&backup).unwrap(), "{\"only\":\"copy\"}");
+        assert!(!with_suffix(&path, ".tmp").exists());
+
+        // After restore, normal writes resume and the backup rotates to the restored content.
+        write_atomic(&path, "{\"new\":1}").unwrap();
+        assert_eq!(fs::read_to_string(&backup).unwrap(), "{\"only\":\"copy\"}");
+        assert_eq!(restore_backup(&path).unwrap_err().code, "PRIMARY_EXISTS");
+    }
+
+    #[test]
+    fn restore_backup_refuses_missing_or_invalid_backup() {
+        let dir = TempDir::new();
+        let path = dir.0.join("projects.json");
+        assert_eq!(restore_backup(&path).unwrap_err().code, "NOT_FOUND");
+        fs::write(dir.0.join("projects.json.bak"), "{truncated").unwrap();
+        assert_eq!(restore_backup(&path).unwrap_err().code, "BACKUP_INVALID");
+        assert!(!path.exists());
+        assert_eq!(
+            restore_backup(&dir.0.join("checkpoint.md")).unwrap_err().code,
+            "INVALID_TARGET"
+        );
+        // Setting the invalid backup aside leaves a clean state where writes are allowed.
+        quarantine(&path, true, 7).unwrap();
+        write_atomic(&path, "{\"fresh\":true}").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "{\"fresh\":true}");
     }
 
     #[test]

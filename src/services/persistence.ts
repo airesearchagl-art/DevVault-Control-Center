@@ -21,16 +21,24 @@ import {
   type StorageTarget,
 } from "./storage";
 
+/** Which files a Human "set aside" action renames (never deletes) for an unreadable JSON file. */
+export type SetAsidePart = "primary" | "backup";
+
 /**
  * Health of one persisted JSON file after loading.
  * - ok / missing / restored_from_backup: writable
- * - unreadable / unsupported_version: read-only until a Human acts (writes are refused)
+ * - unreadable: content is corrupt / invalid and no valid backup exists; read-only until a
+ *   Human acts. `setAside` lists the files a safe Human set-aside would rename.
+ * - io_error: the file could not be accessed (permission, device, lock, unknown). The content
+ *   may be fine, so no set-aside / recovery action is offered (F-8).
+ * - unsupported_version: newer schema; read-only, never overwritten.
  */
 export type FileHealth =
   | { status: "ok" }
   | { status: "missing" }
-  | { status: "restored_from_backup"; quarantinedAs: string }
-  | { status: "unreadable"; reason: string }
+  | { status: "restored_from_backup"; cause: "corrupt_primary" | "missing_primary"; quarantinedAs: string | null }
+  | { status: "unreadable"; reason: string; setAside: SetAsidePart[] }
+  | { status: "io_error"; reason: string; code: string }
   | { status: "unsupported_version"; version: number };
 
 export function isWritable(health: FileHealth): boolean {
@@ -41,12 +49,17 @@ export function describeHealthProblem(health: FileHealth): string | null {
   switch (health.status) {
     case "unreadable":
       return health.reason;
+    case "io_error":
+      return `could not be accessed: ${health.reason} (${health.code})`;
     case "unsupported_version":
       return `written by a newer DVCC version (schemaVersion ${health.version}); opened read-only`;
     default:
       return null;
   }
 }
+
+/** Codes that mean "the content itself is unusable" rather than "the file could not be accessed". */
+const CONTENT_ERROR_CODES = new Set(["INVALID_UTF8"]);
 
 export interface LoadedReview {
   reviewId: string;
@@ -60,66 +73,113 @@ export interface LoadedData {
   reviews: LoadedReview[];
 }
 
-async function readPrimary(backend: StorageBackend, target: StorageTarget): Promise<{ text: string | null; readError: StorageError | null }> {
+type ReadOutcome =
+  | { kind: "text"; text: string }
+  | { kind: "absent" }
+  | { kind: "content_error"; reason: string }
+  | { kind: "io_error"; error: StorageError };
+
+async function readFile(backend: StorageBackend, target: StorageTarget, backup: boolean): Promise<ReadOutcome> {
   try {
-    return { text: await backend.read(target), readError: null };
+    const text = await backend.read(target, backup ? { backup: true } : undefined);
+    return text === null ? { kind: "absent" } : { kind: "text", text };
   } catch (error) {
-    return { text: null, readError: toStorageError(error) };
+    const storageError = toStorageError(error);
+    return CONTENT_ERROR_CODES.has(storageError.code)
+      ? { kind: "content_error", reason: storageError.message }
+      : { kind: "io_error", error: storageError };
   }
 }
 
+function ioHealth(error: StorageError, context?: string): FileHealth {
+  return { status: "io_error", reason: context ? `${context}: ${error.message}` : error.message, code: error.code };
+}
+
+type Loaded<T> = { value: T | null; health: FileHealth };
+
 /**
- * Recovery contract (Task Packet §4 / AC-17):
- * valid primary → use; invalid primary + valid backup → set primary aside, restore backup,
- * warn; invalid primary without valid backup → unreadable (no writes); newer schema →
- * unsupported (read-only). Nothing is deleted.
+ * Recovery contract (Task Packet rev 2 §4, AC-17, R-F2, R-F8). Nothing is ever deleted.
+ *
+ * | primary              | backup      | result                                                          |
+ * |----------------------|-------------|-----------------------------------------------------------------|
+ * | valid                | —           | use                                                             |
+ * | newer schema         | —           | unsupported_version (read-only)                                 |
+ * | I/O error            | —           | io_error (no recovery offered)                                  |
+ * | missing              | missing     | missing (empty, writable)                                       |
+ * | missing              | valid       | restore backup → restored_from_backup (RECOVERY REQUIRED)       |
+ * | missing              | invalid     | unreadable, set-aside = [backup]                                |
+ * | invalid / not UTF-8  | valid       | set primary aside, restore backup → restored_from_backup        |
+ * | invalid / not UTF-8  | missing     | unreadable, set-aside = [primary]                               |
+ * | invalid / not UTF-8  | invalid     | unreadable, set-aside = [primary, backup]                       |
+ * | any                  | newer schema| unsupported_version (read-only)                                 |
+ * | any                  | I/O error   | io_error                                                        |
  */
 async function loadJsonWithRecovery<T>(
   backend: StorageBackend,
   target: StorageTarget,
   parse: (text: string) => ParseResult<T>,
-): Promise<{ value: T | null; health: FileHealth }> {
-  const { text, readError } = await readPrimary(backend, target);
-  let reason: string;
-  if (readError !== null) {
-    if (readError.code !== "INVALID_UTF8") {
-      // I/O problem: the file may be fine, so never quarantine or restore here.
-      return { value: null, health: { status: "unreadable", reason: `${readError.message} (${readError.code})` } };
+): Promise<Loaded<T>> {
+  const primary = await readFile(backend, target, false);
+  let primaryProblem: string | null = null;
+  switch (primary.kind) {
+    case "io_error":
+      return { value: null, health: ioHealth(primary.error) };
+    case "content_error":
+      primaryProblem = primary.reason;
+      break;
+    case "text": {
+      const parsed = parse(primary.text);
+      if (parsed.status === "ok") return { value: parsed.value, health: { status: "ok" } };
+      if (parsed.status === "unsupported_version") {
+        return { value: null, health: { status: "unsupported_version", version: parsed.version } };
+      }
+      primaryProblem = parsed.reason;
+      break;
     }
-    reason = readError.message;
-  } else if (text === null) {
-    return { value: null, health: { status: "missing" } };
-  } else {
-    const parsed = parse(text);
-    if (parsed.status === "ok") return { value: parsed.value, health: { status: "ok" } };
-    if (parsed.status === "unsupported_version") {
-      return { value: null, health: { status: "unsupported_version", version: parsed.version } };
-    }
-    reason = parsed.reason;
+    case "absent":
+      break;
   }
 
-  let backupText: string | null = null;
-  try {
-    backupText = await backend.read(target, { backup: true });
-  } catch {
-    backupText = null;
-  }
-  const backup = backupText === null ? null : parse(backupText);
-  if (backupText === null || backup === null || backup.status !== "ok") {
-    return { value: null, health: { status: "unreadable", reason } };
+  const backup = await readFile(backend, target, true);
+  if (backup.kind === "io_error") return { value: null, health: ioHealth(backup.error, "backup") };
+  const primaryParts: SetAsidePart[] = primaryProblem === null ? [] : ["primary"];
+
+  if (backup.kind === "absent") {
+    return primaryProblem === null
+      ? { value: null, health: { status: "missing" } }
+      : { value: null, health: { status: "unreadable", reason: primaryProblem, setAside: primaryParts } };
   }
 
+  const parsedBackup: ParseResult<T> =
+    backup.kind === "text" ? parse(backup.text) : { status: "malformed", reason: backup.reason };
+  if (parsedBackup.status === "unsupported_version") {
+    return { value: null, health: { status: "unsupported_version", version: parsedBackup.version } };
+  }
+  if (parsedBackup.status === "malformed") {
+    const reason =
+      primaryProblem === null
+        ? `file is missing and its backup is unreadable: ${parsedBackup.reason}`
+        : `${primaryProblem}; backup is also unreadable: ${parsedBackup.reason}`;
+    return { value: null, health: { status: "unreadable", reason, setAside: [...primaryParts, "backup"] } };
+  }
+
+  // A valid backup is the recoverable copy: restore it before anything can be written.
+  let quarantinedAs: string | null = null;
   try {
-    const quarantinedAs = await backend.quarantine(target);
-    await backend.write(target, backupText);
-    return { value: backup.value, health: { status: "restored_from_backup", quarantinedAs } };
+    if (primaryProblem !== null) quarantinedAs = await backend.quarantine(target);
+    await backend.restoreBackup(target);
   } catch (error) {
-    const storageError = toStorageError(error);
-    return {
-      value: null,
-      health: { status: "unreadable", reason: `${reason}; backup restore failed: ${storageError.message}` },
-    };
+    // The backup is untouched (restore never modifies it); the next load retries recovery.
+    return { value: null, health: ioHealth(toStorageError(error), "backup restore failed") };
   }
+  return {
+    value: parsedBackup.value,
+    health: {
+      status: "restored_from_backup",
+      cause: primaryProblem === null ? "missing_primary" : "corrupt_primary",
+      quarantinedAs,
+    },
+  };
 }
 
 export async function loadAll(backend: StorageBackend): Promise<LoadedData> {
@@ -131,7 +191,7 @@ export async function loadAll(backend: StorageBackend): Promise<LoadedData> {
       parseSessionFile(text, reviewId),
     );
     const health: FileHealth =
-      loaded.health.status === "missing" ? { status: "unreadable", reason: "session.json is missing" } : loaded.health;
+      loaded.health.status === "missing" ? { status: "unreadable", reason: "session.json is missing", setAside: [] } : loaded.health;
     reviews.push({ reviewId, session: loaded.value, health });
   }
   return { projects: projects.value ?? [], projectsHealth: projects.health, reviews };
@@ -207,7 +267,18 @@ export async function writeRoundArtifact(
   await backend.write(reviewTarget(reviewId, file), text.endsWith("\n") ? text : `${text}\n`);
 }
 
-/** Human action for an unreadable `projects.json`: rename it aside (never deleted). */
-export async function setAsideProjectsFile(backend: StorageBackend): Promise<string> {
-  return backend.quarantine(PROJECTS_TARGET);
+/**
+ * Human action for an unreadable `projects.json`: rename the unusable files aside (never
+ * deleted) so an empty project list can start. Only allowed for `unreadable` health; I/O
+ * errors and newer schema versions offer no set-aside (F-8).
+ */
+export async function setAsideProjectsFile(backend: StorageBackend, health: FileHealth): Promise<string[]> {
+  if (health.status !== "unreadable") {
+    throw new StorageError("NOT_RECOVERABLE", `projects.json is ${health.status}; set-aside is only available for unreadable content`);
+  }
+  const kept: string[] = [];
+  for (const part of health.setAside) {
+    kept.push(await backend.quarantine(PROJECTS_TARGET, part === "backup" ? { backup: true } : undefined));
+  }
+  return kept;
 }

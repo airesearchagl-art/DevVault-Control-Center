@@ -31,8 +31,10 @@ export interface StorageBackend {
   write(target: StorageTarget, content: string): Promise<void>;
   appendLine(target: StorageTarget, line: string): Promise<void>;
   listReviews(): Promise<string[]>;
-  /** Renames a JSON file aside and returns the new file name. */
-  quarantine(target: StorageTarget): Promise<string>;
+  /** Renames a JSON file (or its `.bak` with `backup: true`) aside and returns the new file name. */
+  quarantine(target: StorageTarget, options?: { backup?: boolean }): Promise<string>;
+  /** Restores a missing JSON primary from its `.bak`; the backup is kept. */
+  restoreBackup(target: StorageTarget): Promise<void>;
 }
 
 export const PROJECTS_TARGET: StorageTarget = { kind: "projects" };
@@ -70,7 +72,8 @@ export const tauriStorage: StorageBackend = {
   write: (target, content) => call<void>("storage_write", { target, content }),
   appendLine: (target, line) => call<void>("storage_append_line", { target, line }),
   listReviews: () => call<string[]>("storage_list_reviews"),
-  quarantine: (target) => call<string>("storage_quarantine", { target }),
+  quarantine: (target, options) => call<string>("storage_quarantine", { target, backup: options?.backup ?? false }),
+  restoreBackup: (target) => call<void>("storage_restore_backup", { target }),
 };
 
 export { call as invokeCommand };
