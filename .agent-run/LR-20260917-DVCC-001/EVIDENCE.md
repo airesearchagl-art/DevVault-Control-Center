@@ -55,3 +55,20 @@ Key test evidence:
 - `src-tauri/src/launcher.rs` tests: https + host allowlist via URL parsing (rejects `javascript:`, `file:`, `http:`, `https://github.com@evil.example/`, credentials, ports, look-alike hosts); folder validation (rejects UNC, verbatim / device, drive-relative, relative, file, missing).
 - `src/domain/transitions.test.ts`: full guard table (14 actions × 8 states), lifecycle, D2 suspend / resume for WARM and COLD, AC-14 confirmations, resource independence across all states.
 - `src/services/persistence.test.ts`: restart round trip, AC-09 service-level scenario, per-round artifacts, backup restore, UNREADABLE write refusal, set-aside flow, future version read-only, per-review isolation, INVALID_UTF8 vs I/O error, write failure atomicity, event append warning.
+
+Wave 1 checkpoint commit: `fd733e1` (pushed); Task Packet digest re-verified: match.
+
+## Wave 2 checkpoint — 2026-09-17
+
+| Check | Command | Result |
+|---|---|---|
+| TypeScript | `npx tsc --noEmit` | PASS |
+| Vitest | `npx vitest run` | PASS — 8 files, 222 tests (adds `src/app/appState.test.ts`) |
+| Vite build | `npm run build` | PASS |
+| cargo check | `cargo check` (src-tauri) | PASS — no warnings |
+| tauri dev launch | `npm run tauri dev` with `DVCC_DATA_DIR=<SCRATCHPAD>/dvcc-dev-data`, WebView2 debug port 9333 | PASS — process `devvault-control-center` with window title "DevVault Control Center"; CDP launch check: document title, no fatal error, data dir shown with `DVCC_DATA_DIR` + `debug build` tags, empty state rendered (screenshot reviewed) |
+| Dev-build UI pre-check (phase 1 flow) | `node <SCRATCHPAD>/smoke/e2e-phase1.mjs 9333 …` against the dev window | PASS — 2 projects, 2 reviews, WARM independent of NEW/READY, copy prompt (clipboard content verified with `Get-Clipboard`), REVIEWING, capture without state change, verdict submit disabled until selection + acknowledgement, FIX_REQUIRED with WARM, reviewed HEAD normalized, next action saved, Suspend WARM + checkpoint; runtime launcher / storage rejections: `javascript:`, `file:`, `http:`, `https://github.com@evil.example/`, non-allowlisted host → URL_REJECTED; UNC / relative → FOLDER_REJECTED; file path → NOT_A_DIRECTORY; `..` review id / traversal file → INVALID_TARGET |
+| Persisted files (dev pre-check) | directory listing + `ConvertFrom-Json` | `projects.json` + `.bak`; `reviews/<alpha>/{session.json, session.json.bak, checkpoint.md, request-r1.md, result-r1.md, events.jsonl}`; events: review_created, resource_changed, review_ready, request_saved, review_started, result_captured, verdict_confirmed, next_action_updated, suspended; session SUSPENDED from FIX_REQUIRED, WARM, PR 45, R1 verdict FIX_REQUIRED; no `*.tmp` |
+| Real data dirs | `Test-Path %APPDATA%\DevVault-Control[-dev]` | False / False |
+
+Defects found and fixed in Wave 2: grid layout when banners are empty (footer absorbed free space); toast auto-dismiss timers reset on every new toast (moved to per-toast effect); CDP harness DOM serialization (scratch script only).

@@ -21,22 +21,22 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 - [x] Synthetic fixtures (valid + malformed) + fixture hygiene test
 - [x] docs/data-contract-v1.md
 - [x] Checks: npm install, tsc, vitest, vite build, cargo check, cargo test
-- [~] Checkpoint 1 (commit + push)
+- [x] Checkpoint 1 (`fd733e1`, pushed)
 
 ## Wave 2 — Review Hub UI
 
-- [ ] App shell + reducer (+ tests) + loading / fatal states
-- [ ] Queue (attention sort, filter, closed toggle, unreadable rows) + project list
-- [ ] Detail (project, review, heads, states, thread, previous result, checkpoint, next action, recent events)
-- [ ] Create / Edit Project; Create / Edit Review
-- [ ] State controls: Resource segmented control, Mark Ready / Start Review / Cancel / Next Round / Block / Close
-- [ ] Suspend dialog (checkpoint + WARM/COLD) / Resume
-- [ ] Open GitHub / ChatGPT / Project Folder / Data folder
-- [ ] Copy Review Prompt (request-r<N>.md + clipboard)
-- [ ] Capture Result (paste textarea → result-r<N>.md) + Human verdict confirmation
-- [ ] Empty states, error toasts, recovery / unreadable banners, set-aside flow
-- [ ] Checks: tsc, vitest, vite build, cargo check, tauri dev launch (DVCC_DATA_DIR = scratch)
-- [ ] Checkpoint 2 (commit + push)
+- [x] App shell + reducer (+ tests) + loading / fatal states
+- [x] Queue (attention sort, filter, closed toggle, unreadable rows) + project list
+- [x] Detail (project, review, heads, states, thread, previous result, checkpoint, next action, recent events)
+- [x] Create / Edit Project; Create / Edit Review
+- [x] State controls: Resource segmented control, Mark Ready / Start Review / Cancel / Next Round / Block / Close
+- [x] Suspend dialog (checkpoint + WARM/COLD) / Resume
+- [x] Open GitHub / ChatGPT / Project Folder / Data folder
+- [x] Copy Review Prompt (request-r<N>.md + clipboard)
+- [x] Capture Result (paste textarea → result-r<N>.md) + Human verdict confirmation
+- [x] Empty states, error toasts, recovery / unreadable banners, set-aside flow
+- [x] Checks: tsc, vitest, vite build, cargo check, tauri dev launch (DVCC_DATA_DIR = scratch)
+- [~] Checkpoint 2 (commit + push)
 
 ## Wave 3 — Convergence
 
