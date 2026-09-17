@@ -1,0 +1,31 @@
+[package]
+name = "devvault-control-center"
+version = "0.1.0"
+description = "DevVault Control Center - Review Hub"
+authors = ["DevVault Control Center contributors"]
+edition = "2021"
+publish = false
+
+[lib]
+# The `_lib` suffix keeps the lib name distinct from the bin name on Windows
+# (see https://github.com/rust-lang/cargo/issues/8519).
+name = "dvcc_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-clipboard-manager = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

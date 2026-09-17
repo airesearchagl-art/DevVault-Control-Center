@@ -1,0 +1,760 @@
+//! Storage boundary for DVCC runtime data.
+//!
+//! Rust owns path construction, atomic replacement, backups, append-only history and
+//! quarantine (renaming a corrupt file aside). It does not interpret the schema; the
+//! TypeScript domain layer validates content. Every path is derived from the resolved data
+//! root plus a validated `StorageTarget`, so the frontend can never address arbitrary files.
+
+use std::ffi::OsString;
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use serde::{Deserialize, Serialize};
+use tauri::State;
+
+use crate::CommandError;
+
+pub const DATA_DIR_ENV: &str = "DVCC_DATA_DIR";
+const RELEASE_DIR_NAME: &str = "DevVault-Control";
+const DEBUG_DIR_NAME: &str = "DevVault-Control-dev";
+const PROJECTS_FILE: &str = "projects.json";
+const REVIEWS_DIR: &str = "reviews";
+const SESSION_FILE: &str = "session.json";
+const CHECKPOINT_FILE: &str = "checkpoint.md";
+const EVENTS_FILE: &str = "events.jsonl";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DataRootSource {
+    Env,
+    Default,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedRoot {
+    pub path: PathBuf,
+    pub source: DataRootSource,
+}
+
+/// Managed state: the resolved data root, or the reason it could not be resolved.
+pub struct DataRoot(Result<ResolvedRoot, String>);
+
+impl DataRoot {
+    pub fn new(resolved: Result<ResolvedRoot, String>) -> Self {
+        Self(resolved)
+    }
+
+    fn resolved(&self) -> Result<&ResolvedRoot, CommandError> {
+        self.0
+            .as_ref()
+            .map_err(|message| CommandError::new("DATA_DIR_UNAVAILABLE", message.clone()))
+    }
+
+    pub fn path(&self) -> Result<&Path, CommandError> {
+        Ok(&self.resolved()?.path)
+    }
+}
+
+/// `DVCC_DATA_DIR` (absolute) wins; otherwise `<user data dir>/DevVault-Control[-dev]`.
+pub fn resolve_data_root(
+    env_override: Option<OsString>,
+    base_data_dir: Option<PathBuf>,
+    debug_build: bool,
+) -> Result<ResolvedRoot, String> {
+    if let Some(raw) = env_override.filter(|value| !value.is_empty()) {
+        let path = PathBuf::from(raw);
+        if !path.is_absolute() {
+            return Err(format!("{DATA_DIR_ENV} must be an absolute path"));
+        }
+        return Ok(ResolvedRoot {
+            path,
+            source: DataRootSource::Env,
+        });
+    }
+    let base = base_data_dir
+        .ok_or_else(|| "could not resolve the user application data directory".to_string())?;
+    let name = if debug_build {
+        DEBUG_DIR_NAME
+    } else {
+        RELEASE_DIR_NAME
+    };
+    Ok(ResolvedRoot {
+        path: base.join(name),
+        source: DataRootSource::Default,
+    })
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum StorageTarget {
+    Projects,
+    Review {
+        #[serde(rename = "reviewId")]
+        review_id: String,
+        file: String,
+    },
+}
+
+/// `rv-YYYYMMDD-xxxxxx` with a lowercase alphanumeric suffix.
+pub fn is_valid_review_id(id: &str) -> bool {
+    let bytes = id.as_bytes();
+    bytes.len() == 18
+        && id.starts_with("rv-")
+        && bytes[3..11].iter().all(|c| c.is_ascii_digit())
+        && bytes[11] == b'-'
+        && bytes[12..]
+            .iter()
+            .all(|c| c.is_ascii_digit() || c.is_ascii_lowercase())
+}
+
+fn is_round_artifact(file: &str, prefix: &str) -> bool {
+    let Some(number) = file
+        .strip_prefix(prefix)
+        .and_then(|rest| rest.strip_suffix(".md"))
+    else {
+        return false;
+    };
+    !number.is_empty()
+        && number.len() <= 3
+        && !number.starts_with('0')
+        && number.bytes().all(|c| c.is_ascii_digit())
+}
+
+pub fn is_allowed_review_file(file: &str) -> bool {
+    matches!(file, SESSION_FILE | CHECKPOINT_FILE | EVENTS_FILE)
+        || is_round_artifact(file, "request-r")
+        || is_round_artifact(file, "result-r")
+}
+
+pub fn target_path(root: &Path, target: &StorageTarget) -> Result<PathBuf, CommandError> {
+    match target {
+        StorageTarget::Projects => Ok(root.join(PROJECTS_FILE)),
+        StorageTarget::Review { review_id, file } => {
+            if !is_valid_review_id(review_id) {
+                return Err(CommandError::new(
+                    "INVALID_TARGET",
+                    format!("invalid review id: {review_id:?}"),
+                ));
+            }
+            if !is_allowed_review_file(file) {
+                return Err(CommandError::new(
+                    "INVALID_TARGET",
+                    format!("invalid review file name: {file:?}"),
+                ));
+            }
+            Ok(root.join(REVIEWS_DIR).join(review_id).join(file))
+        }
+    }
+}
+
+fn is_json_file(path: &Path) -> bool {
+    path.extension().is_some_and(|ext| ext == "json")
+}
+
+fn is_events_file(path: &Path) -> bool {
+    path.file_name().is_some_and(|name| name == EVENTS_FILE)
+}
+
+fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.file_name().map(OsString::from).unwrap_or_default();
+    name.push(suffix);
+    path.with_file_name(name)
+}
+
+fn io_error(code: &'static str, path: &Path, error: io::Error) -> CommandError {
+    CommandError::new(code, format!("{}: {error}", path.display()))
+}
+
+fn parses_as_json(bytes: &[u8]) -> bool {
+    serde_json::from_slice::<serde_json::Value>(bytes).is_ok()
+}
+
+/// Reads a UTF-8 text file. A missing file is `Ok(None)`.
+pub fn read_text(path: &Path) -> Result<Option<String>, CommandError> {
+    match fs::read(path) {
+        Ok(bytes) => String::from_utf8(bytes).map(Some).map_err(|_| {
+            CommandError::new(
+                "INVALID_UTF8",
+                format!("{}: file is not valid UTF-8", path.display()),
+            )
+        }),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(io_error("READ_FAILED", path, error)),
+    }
+}
+
+fn write_synced(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    let mut file = File::create(path)?;
+    file.write_all(bytes)?;
+    file.sync_all()
+}
+
+/// Atomically replaces `path` with `content` (temp file + sync + rename).
+///
+/// For JSON files: new content must parse as JSON, an existing primary that does not parse
+/// is never overwritten (`PRIMARY_UNREADABLE`), and the previous valid primary is kept as
+/// `<name>.bak`. `events.jsonl` is append-only and rejected here.
+pub fn write_atomic(path: &Path, content: &str) -> Result<(), CommandError> {
+    if is_events_file(path) {
+        return Err(CommandError::new(
+            "APPEND_ONLY",
+            "events.jsonl can only be appended",
+        ));
+    }
+    let json = is_json_file(path);
+    if json && !parses_as_json(content.as_bytes()) {
+        return Err(CommandError::new(
+            "INVALID_CONTENT",
+            "refusing to write content that is not valid JSON",
+        ));
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| CommandError::new("INVALID_TARGET", "target has no parent directory"))?;
+    fs::create_dir_all(parent).map_err(|error| io_error("WRITE_FAILED", parent, error))?;
+
+    let existing = match fs::read(path) {
+        Ok(bytes) => Some(bytes),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        Err(error) => return Err(io_error("READ_FAILED", path, error)),
+    };
+    if json && existing.as_deref().is_some_and(|bytes| !parses_as_json(bytes)) {
+        return Err(CommandError::new(
+            "PRIMARY_UNREADABLE",
+            format!(
+                "{}: existing file is not valid JSON and will not be overwritten; set it aside first",
+                path.display()
+            ),
+        ));
+    }
+
+    let tmp = with_suffix(path, ".tmp");
+    if let Err(error) = write_synced(&tmp, content.as_bytes()) {
+        let _ = fs::remove_file(&tmp);
+        return Err(io_error("WRITE_FAILED", &tmp, error));
+    }
+
+    if json {
+        if let Some(previous) = &existing {
+            let backup = with_suffix(path, ".bak");
+            let backup_tmp = with_suffix(path, ".bak.tmp");
+            let backup_result = write_synced(&backup_tmp, previous)
+                .and_then(|_| fs::rename(&backup_tmp, &backup));
+            if let Err(error) = backup_result {
+                let _ = fs::remove_file(&backup_tmp);
+                let _ = fs::remove_file(&tmp);
+                return Err(io_error("WRITE_FAILED", &backup, error));
+            }
+        }
+    }
+
+    if let Err(error) = fs::rename(&tmp, path) {
+        let _ = fs::remove_file(&tmp);
+        return Err(io_error("WRITE_FAILED", path, error));
+    }
+    Ok(())
+}
+
+/// Appends one JSON line to an `events.jsonl` file. Existing content is never rewritten; if
+/// the file ends with a partial line (for example after a crash) a newline is inserted first.
+pub fn append_line(path: &Path, line: &str) -> Result<(), CommandError> {
+    if !is_events_file(path) {
+        return Err(CommandError::new(
+            "NOT_APPENDABLE",
+            "only events.jsonl accepts appended lines",
+        ));
+    }
+    if line.contains('\n') || line.contains('\r') {
+        return Err(CommandError::new(
+            "INVALID_CONTENT",
+            "an event line must not contain line breaks",
+        ));
+    }
+    if !parses_as_json(line.as_bytes()) {
+        return Err(CommandError::new(
+            "INVALID_CONTENT",
+            "an event line must be valid JSON",
+        ));
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| CommandError::new("INVALID_TARGET", "target has no parent directory"))?;
+    fs::create_dir_all(parent).map_err(|error| io_error("WRITE_FAILED", parent, error))?;
+
+    let append = || -> io::Result<()> {
+        let mut file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .append(true)
+            .open(path)?;
+        let len = file.metadata()?.len();
+        let mut buffer = Vec::with_capacity(line.len() + 2);
+        if len > 0 {
+            let mut last = [0u8; 1];
+            file.seek(SeekFrom::Start(len - 1))?;
+            file.read_exact(&mut last)?;
+            if last[0] != b'\n' {
+                buffer.push(b'\n');
+            }
+        }
+        buffer.extend_from_slice(line.as_bytes());
+        buffer.push(b'\n');
+        file.write_all(&buffer)?;
+        file.sync_all()
+    };
+    append().map_err(|error| io_error("WRITE_FAILED", path, error))
+}
+
+/// Renames a JSON file aside as `<name>.corrupt-<millis>[-n]` and returns the new file name.
+/// The content is preserved; nothing is deleted.
+pub fn quarantine(path: &Path, now_millis: u128) -> Result<String, CommandError> {
+    if !is_json_file(path) {
+        return Err(CommandError::new(
+            "INVALID_TARGET",
+            "only JSON files can be set aside",
+        ));
+    }
+    if !path.exists() {
+        return Err(CommandError::new(
+            "NOT_FOUND",
+            format!("{}: file does not exist", path.display()),
+        ));
+    }
+    let mut candidate = with_suffix(path, &format!(".corrupt-{now_millis}"));
+    let mut counter = 1;
+    while candidate.exists() {
+        candidate = with_suffix(path, &format!(".corrupt-{now_millis}-{counter}"));
+        counter += 1;
+    }
+    fs::rename(path, &candidate).map_err(|error| io_error("WRITE_FAILED", path, error))?;
+    Ok(candidate
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default())
+}
+
+/// Lists review directories whose names are valid review ids. Anything else is ignored.
+pub fn list_review_ids(root: &Path) -> Result<Vec<String>, CommandError> {
+    let dir = root.join(REVIEWS_DIR);
+    let entries = match fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(io_error("READ_FAILED", &dir, error)),
+    };
+    let mut ids = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| io_error("READ_FAILED", &dir, error))?;
+        let is_dir = entry
+            .file_type()
+            .map_err(|error| io_error("READ_FAILED", &entry.path(), error))?
+            .is_dir();
+        if let (true, Some(name)) = (is_dir, entry.file_name().to_str()) {
+            if is_valid_review_id(name) {
+                ids.push(name.to_string());
+            }
+        }
+    }
+    ids.sort();
+    Ok(ids)
+}
+
+fn unix_millis() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or_default()
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageInfo {
+    data_dir: String,
+    source: DataRootSource,
+    debug_build: bool,
+}
+
+#[tauri::command]
+pub async fn storage_info(root: State<'_, DataRoot>) -> Result<StorageInfo, CommandError> {
+    let resolved = root.resolved()?;
+    let reviews = resolved.path.join(REVIEWS_DIR);
+    fs::create_dir_all(&reviews)
+        .map_err(|error| io_error("DATA_DIR_UNAVAILABLE", &resolved.path, error))?;
+    Ok(StorageInfo {
+        data_dir: resolved.path.display().to_string(),
+        source: resolved.source,
+        debug_build: cfg!(debug_assertions),
+    })
+}
+
+#[tauri::command]
+pub async fn storage_read(
+    root: State<'_, DataRoot>,
+    target: StorageTarget,
+    backup: Option<bool>,
+) -> Result<Option<String>, CommandError> {
+    let path = target_path(root.path()?, &target)?;
+    if backup.unwrap_or(false) {
+        if !is_json_file(&path) {
+            return Err(CommandError::new(
+                "INVALID_TARGET",
+                "backups exist only for JSON files",
+            ));
+        }
+        return read_text(&with_suffix(&path, ".bak"));
+    }
+    read_text(&path)
+}
+
+#[tauri::command]
+pub async fn storage_write(
+    root: State<'_, DataRoot>,
+    target: StorageTarget,
+    content: String,
+) -> Result<(), CommandError> {
+    let path = target_path(root.path()?, &target)?;
+    write_atomic(&path, &content)
+}
+
+#[tauri::command]
+pub async fn storage_append_line(
+    root: State<'_, DataRoot>,
+    target: StorageTarget,
+    line: String,
+) -> Result<(), CommandError> {
+    let path = target_path(root.path()?, &target)?;
+    append_line(&path, &line)
+}
+
+#[tauri::command]
+pub async fn storage_list_reviews(root: State<'_, DataRoot>) -> Result<Vec<String>, CommandError> {
+    list_review_ids(root.path()?)
+}
+
+#[tauri::command]
+pub async fn storage_quarantine(
+    root: State<'_, DataRoot>,
+    target: StorageTarget,
+) -> Result<String, CommandError> {
+    let path = target_path(root.path()?, &target)?;
+    quarantine(&path, unix_millis())
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    /// Unique temporary directory removed on drop (test data only).
+    pub(crate) struct TempDir(pub PathBuf);
+
+    impl TempDir {
+        pub(crate) fn new() -> Self {
+            let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+            let path = std::env::temp_dir().join(format!(
+                "dvcc-rust-test-{}-{}-{n}",
+                std::process::id(),
+                unix_millis()
+            ));
+            fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn review(id: &str, file: &str) -> StorageTarget {
+        StorageTarget::Review {
+            review_id: id.to_string(),
+            file: file.to_string(),
+        }
+    }
+
+    const ID: &str = "rv-20260101-alpha1";
+
+    #[test]
+    fn data_root_prefers_absolute_env_override() {
+        let base = std::env::temp_dir();
+        let override_dir = base.join("dvcc-override");
+        let resolved = resolve_data_root(
+            Some(override_dir.clone().into_os_string()),
+            Some(base.clone()),
+            false,
+        )
+        .unwrap();
+        assert_eq!(resolved.path, override_dir);
+        assert_eq!(resolved.source, DataRootSource::Env);
+    }
+
+    #[test]
+    fn data_root_rejects_relative_env_override() {
+        let result = resolve_data_root(
+            Some(OsString::from("relative\\dir")),
+            Some(std::env::temp_dir()),
+            false,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn data_root_uses_release_and_debug_defaults() {
+        let base = std::env::temp_dir();
+        let release = resolve_data_root(Some(OsString::new()), Some(base.clone()), false).unwrap();
+        assert_eq!(release.path, base.join("DevVault-Control"));
+        assert_eq!(release.source, DataRootSource::Default);
+        let debug = resolve_data_root(None, Some(base.clone()), true).unwrap();
+        assert_eq!(debug.path, base.join("DevVault-Control-dev"));
+    }
+
+    #[test]
+    fn data_root_errors_without_base_dir() {
+        assert!(resolve_data_root(None, None, false).is_err());
+    }
+    #[test]
+    fn review_id_validation() {
+        assert!(is_valid_review_id("rv-20260101-alpha1"));
+        assert!(is_valid_review_id("rv-20261231-0z9y8x"));
+        for bad in [
+            "",
+            "rv-2026010-alpha1",
+            "rv-20260101-Alpha1",
+            "rv-20260101-alpha",
+            "rv-20260101_alpha1",
+            "xx-20260101-alpha1",
+            "rv-20260101-alph..",
+            "rv-20260101-alpha1/",
+            "../20260101-alpha1",
+        ] {
+            assert!(!is_valid_review_id(bad), "{bad:?} should be rejected");
+        }
+    }
+
+    #[test]
+    fn review_file_validation() {
+        for good in [
+            "session.json",
+            "checkpoint.md",
+            "events.jsonl",
+            "request-r1.md",
+            "result-r12.md",
+            "result-r999.md",
+        ] {
+            assert!(is_allowed_review_file(good), "{good:?} should be allowed");
+        }
+        for bad in [
+            "",
+            "request.md",
+            "result.md",
+            "request-r0.md",
+            "request-r01.md",
+            "result-r1000.md",
+            "result-r1.txt",
+            "../session.json",
+            "session.json.bak",
+            "notes.md",
+            "result-r1.md/../../x",
+        ] {
+            assert!(!is_allowed_review_file(bad), "{bad:?} should be rejected");
+        }
+    }
+
+    #[test]
+    fn target_path_confines_to_data_root() {
+        let root = Path::new("C:\\data-root");
+        assert_eq!(
+            target_path(root, &StorageTarget::Projects).unwrap(),
+            root.join("projects.json")
+        );
+        assert_eq!(
+            target_path(root, &review(ID, "session.json")).unwrap(),
+            root.join("reviews").join(ID).join("session.json")
+        );
+        for (id, file) in [
+            ("..", "session.json"),
+            (ID, "..\\..\\projects.json"),
+            (ID, "../projects.json"),
+            ("rv-20260101-alpha1\\..", "session.json"),
+        ] {
+            let error = target_path(root, &review(id, file)).unwrap_err();
+            assert_eq!(error.code, "INVALID_TARGET");
+        }
+    }
+
+    #[test]
+    fn storage_target_deserializes_from_frontend_shape() {
+        let projects: StorageTarget = serde_json::from_str(r#"{"kind":"projects"}"#).unwrap();
+        assert!(matches!(projects, StorageTarget::Projects));
+        let target: StorageTarget =
+            serde_json::from_str(r#"{"kind":"review","reviewId":"rv-20260101-alpha1","file":"session.json"}"#)
+                .unwrap();
+        assert!(matches!(target, StorageTarget::Review { .. }));
+    }
+
+    #[test]
+    fn write_atomic_creates_file_and_keeps_previous_json_as_backup() {
+        let dir = TempDir::new();
+        let path = target_path(&dir.0, &review(ID, "session.json")).unwrap();
+        write_atomic(&path, "{\"v\":1}").unwrap();
+        assert_eq!(read_text(&path).unwrap().unwrap(), "{\"v\":1}");
+        assert!(!with_suffix(&path, ".bak").exists());
+
+        write_atomic(&path, "{\"v\":2}").unwrap();
+        assert_eq!(read_text(&path).unwrap().unwrap(), "{\"v\":2}");
+        assert_eq!(
+            read_text(&with_suffix(&path, ".bak")).unwrap().unwrap(),
+            "{\"v\":1}"
+        );
+        assert!(!with_suffix(&path, ".tmp").exists());
+        assert!(!with_suffix(&path, ".bak.tmp").exists());
+    }
+
+    #[test]
+    fn write_atomic_rejects_invalid_json_content() {
+        let dir = TempDir::new();
+        let path = dir.0.join("projects.json");
+        let error = write_atomic(&path, "{not json").unwrap_err();
+        assert_eq!(error.code, "INVALID_CONTENT");
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn write_atomic_never_overwrites_corrupt_primary() {
+        let dir = TempDir::new();
+        let path = dir.0.join("projects.json");
+        fs::write(&path, "{\"projects\": [trunc").unwrap();
+        let error = write_atomic(&path, "{\"schemaVersion\":1,\"projects\":[]}").unwrap_err();
+        assert_eq!(error.code, "PRIMARY_UNREADABLE");
+        assert_eq!(fs::read_to_string(&path).unwrap(), "{\"projects\": [trunc");
+        assert!(!with_suffix(&path, ".bak").exists());
+        assert!(!with_suffix(&path, ".tmp").exists());
+    }
+
+    #[test]
+    fn write_atomic_markdown_has_no_backup_and_events_are_append_only() {
+        let dir = TempDir::new();
+        let md = target_path(&dir.0, &review(ID, "result-r1.md")).unwrap();
+        write_atomic(&md, "first").unwrap();
+        write_atomic(&md, "second").unwrap();
+        assert_eq!(read_text(&md).unwrap().unwrap(), "second");
+        assert!(!with_suffix(&md, ".bak").exists());
+
+        let events = target_path(&dir.0, &review(ID, "events.jsonl")).unwrap();
+        assert_eq!(write_atomic(&events, "{}").unwrap_err().code, "APPEND_ONLY");
+    }
+
+    #[test]
+    fn read_text_reports_missing_and_invalid_utf8() {
+        let dir = TempDir::new();
+        let path = dir.0.join("projects.json");
+        assert_eq!(read_text(&path).unwrap(), None);
+        fs::write(&path, [0xff, 0xfe, 0x00]).unwrap();
+        assert_eq!(read_text(&path).unwrap_err().code, "INVALID_UTF8");
+    }
+
+    #[test]
+    fn append_line_appends_and_repairs_partial_trailing_line() {
+        let dir = TempDir::new();
+        let path = target_path(&dir.0, &review(ID, "events.jsonl")).unwrap();
+        append_line(&path, "{\"n\":1}").unwrap();
+        append_line(&path, "{\"n\":2}").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "{\"n\":1}\n{\"n\":2}\n");
+
+        let mut file = OpenOptions::new().append(true).open(&path).unwrap();
+        file.write_all(b"{\"n\":3, \"trunc").unwrap();
+        drop(file);
+        append_line(&path, "{\"n\":4}").unwrap();
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "{\"n\":1}\n{\"n\":2}\n{\"n\":3, \"trunc\n{\"n\":4}\n"
+        );
+    }
+
+    #[test]
+    fn append_line_rejects_bad_input_and_non_event_files() {
+        let dir = TempDir::new();
+        let events = target_path(&dir.0, &review(ID, "events.jsonl")).unwrap();
+        assert_eq!(
+            append_line(&events, "{\"a\":1}\n{\"b\":2}").unwrap_err().code,
+            "INVALID_CONTENT"
+        );
+        assert_eq!(append_line(&events, "not json").unwrap_err().code, "INVALID_CONTENT");
+        let session = target_path(&dir.0, &review(ID, "session.json")).unwrap();
+        assert_eq!(append_line(&session, "{}").unwrap_err().code, "NOT_APPENDABLE");
+    }
+
+    #[test]
+    fn quarantine_renames_and_preserves_content() {
+        let dir = TempDir::new();
+        let path = dir.0.join("projects.json");
+        fs::write(&path, "corrupt").unwrap();
+        let name = quarantine(&path, 42).unwrap();
+        assert_eq!(name, "projects.json.corrupt-42");
+        assert!(!path.exists());
+        assert_eq!(fs::read_to_string(dir.0.join(&name)).unwrap(), "corrupt");
+
+        fs::write(&path, "corrupt again").unwrap();
+        let second = quarantine(&path, 42).unwrap();
+        assert_eq!(second, "projects.json.corrupt-42-1");
+        assert_eq!(fs::read_to_string(dir.0.join(&second)).unwrap(), "corrupt again");
+
+        assert_eq!(quarantine(&path, 43).unwrap_err().code, "NOT_FOUND");
+        assert_eq!(
+            quarantine(&dir.0.join("checkpoint.md"), 1).unwrap_err().code,
+            "INVALID_TARGET"
+        );
+    }
+
+    #[test]
+    fn list_review_ids_ignores_unexpected_entries() {
+        let dir = TempDir::new();
+        let reviews = dir.0.join("reviews");
+        assert!(list_review_ids(&dir.0).unwrap().is_empty());
+        fs::create_dir_all(reviews.join("rv-20260102-beta01")).unwrap();
+        fs::create_dir_all(reviews.join(ID)).unwrap();
+        fs::create_dir_all(reviews.join("not-a-review")).unwrap();
+        fs::write(reviews.join("rv-20260103-gamma1"), "file, not dir").unwrap();
+        assert_eq!(
+            list_review_ids(&dir.0).unwrap(),
+            vec![ID.to_string(), "rv-20260102-beta01".to_string()]
+        );
+    }
+
+    #[test]
+    fn restart_round_trip_reads_back_written_state() {
+        let dir = TempDir::new();
+        let projects = "{\"schemaVersion\":1,\"projects\":[{\"projectId\":\"project-alpha\"}]}";
+        let session = "{\"schemaVersion\":1,\"reviewSessionId\":\"rv-20260101-alpha1\",\"reviewState\":\"SUSPENDED\"}";
+        {
+            write_atomic(&target_path(&dir.0, &StorageTarget::Projects).unwrap(), projects).unwrap();
+            write_atomic(&target_path(&dir.0, &review(ID, "session.json")).unwrap(), session).unwrap();
+            write_atomic(&target_path(&dir.0, &review(ID, "checkpoint.md")).unwrap(), "stopped here").unwrap();
+            append_line(&target_path(&dir.0, &review(ID, "events.jsonl")).unwrap(), "{\"type\":\"suspended\"}").unwrap();
+        }
+        // "Restart": resolve everything again from disk only.
+        let root = resolve_data_root(Some(dir.0.clone().into_os_string()), None, false).unwrap();
+        assert_eq!(list_review_ids(&root.path).unwrap(), vec![ID.to_string()]);
+        assert_eq!(
+            read_text(&target_path(&root.path, &StorageTarget::Projects).unwrap()).unwrap().unwrap(),
+            projects
+        );
+        assert_eq!(
+            read_text(&target_path(&root.path, &review(ID, "session.json")).unwrap()).unwrap().unwrap(),
+            session
+        );
+        assert_eq!(
+            read_text(&target_path(&root.path, &review(ID, "checkpoint.md")).unwrap()).unwrap().unwrap(),
+            "stopped here"
+        );
+        assert_eq!(
+            read_text(&target_path(&root.path, &review(ID, "events.jsonl")).unwrap()).unwrap().unwrap(),
+            "{\"type\":\"suspended\"}\n"
+        );
+    }
+}

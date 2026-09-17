@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "reviewSessionId": "rv-20260103-gamma1",
+  "projectId": "project-gamma",
+  "prNumber": null,
+  "reviewType": "Plan review",
+  "reviewRound": 1,
+  "resourceState": "COLD",
+  "reviewState": "WAITING",
+  "suspendedFrom": null,
+  "chatgptThreadTitle": null,
+  "chatgptThreadUrl": null,
+  "nextAction": "",
+  "rounds": [
+    {
+      "round": 1,
+      "expectedHead": null,
+      "reviewedHead": null,
+      "requestSavedAt": null,
+      "resultCapturedAt": null,
+      "verdict": null,
+      "verdictConfirmedAt": null,
+      "verdictNote": null
+    }
+  ],
+  "createdAt": "2026-01-03T10:00:00.000Z",
+  "updatedAt": "2026-01-03T10:00:00.000Z"
+}
