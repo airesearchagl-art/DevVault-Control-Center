@@ -28,7 +28,8 @@ restarting the app.
   and copies it to the clipboard.
 - **Capture result** — you paste the reviewer's answer (Ctrl+V); it is saved as `result-r<N>.md`.
   The review state changes only when you explicitly confirm a verdict. Replacing a saved result
-  needs your confirmation and keeps the earlier text as `result-r<N>-previous-<ms>.md`.
+  needs your confirmation and keeps the earlier text as `result-r<N>-previous-<ms>.md`
+  (`-<n>` is added if that name is taken, so an interrupted capture can simply be retried).
 - **Open GitHub / ChatGPT / project folder** through a validated launcher.
 - **Attention-ordered queue** with filter, recovery banners and a readable history (`events.jsonl`).
 
@@ -41,9 +42,13 @@ restarting the app.
 - URLs open only if they are `https` on `github.com`, `chatgpt.com` or `chat.openai.com`
   (checked by URL parsing). Folders open only if they are existing absolute local directories on
   a local drive whose final target — after resolving symbolic links, junctions and mapped drives —
-  is also local; UNC / network locations are never opened. No shell commands are executed.
+  is also local; UNC / network locations are never opened, and links pointing to them are refused
+  before they are followed. No shell commands are executed.
 - The app runs with normal user privileges (no administrator manifest).
-- Only one DVCC process runs at a time; starting it again focuses the running window.
+- One DVCC process per Windows session: a named mutex taken at startup makes any later (or
+  simultaneous) process exit before touching data, a second launch focuses the running window,
+  and the data folder is locked (`.dvcc.lock`) while DVCC runs. Debug and release builds share
+  this identity, so a running debug build also blocks a release build.
 - Out of scope for v0.1: Git / GitHub freshness detection, GitHub API, Claude Code / Codex session
   discovery, terminal embedding, Notion / Vault sync, SQLite, REST / MCP, authentication,
   installers and releases.
@@ -60,9 +65,10 @@ Runtime data never lives in this repository.
 
 The format is plain JSON / Markdown so you (or an IDE agent) can inspect it directly. Writes are
 atomic with a `.bak` of the previous valid JSON and are refused (nothing overwritten) if another
-program changed the file since DVCC loaded it. Unreadable files are never overwritten and are only
-renamed aside (`.corrupt-<ms>`), never deleted; a missing file with a valid backup is restored from
-the backup. Access errors (permissions, locks) are reported without offering to discard anything.
+program changed the file since DVCC loaded it; the regenerated notes `request-r<N>.md` and
+`checkpoint.md` are latest-wins unless DVCC read them in this run. Unreadable files are never
+overwritten and are only renamed aside (`.corrupt-<ms>`), never deleted; a missing file with a
+valid backup is restored from the backup. Access errors (permissions, locks) are reported without offering to discard anything.
 See [docs/data-contract-v1.md](docs/data-contract-v1.md).
 
 ## Development
@@ -84,7 +90,7 @@ cd src-tauri; cargo check; cargo test; cd ..
 # Release compile without an installer
 npm run tauri build -- --no-bundle
 
-# Evidence that a second process is refused (uses an isolated data folder)
+# Evidence that a second process is refused, including simultaneous starts (isolated data folder)
 .\scripts\verify-single-instance.ps1 -Exe .\src-tauri\target\release\devvault-control-center.exe -DataDir D:\scratch\dvcc-si-data
 
 # Network-drive launcher boundary (needs a temporary mapping, e.g. net use W: \\localhost\C$ /persistent:no)

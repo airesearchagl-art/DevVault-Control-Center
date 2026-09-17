@@ -19,13 +19,26 @@ The data root is resolved by Rust (`src-tauri/src/storage.rs`). The frontend nev
 paths; it addresses files through a validated target (`projects`, or `review` + review id +
 allowed file name).
 
-Only one DVCC process runs at a time (single-instance plugin): starting DVCC again brings the
-running window to the front instead of opening a second writer.
+One DVCC process per Windows session uses the data, enforced in three layers:
+
+1. **Named mutex** `Local\com.devvault.controlcenter.instance`, created as the very first step of
+   the process. A process that finds it already created exits in setup, before the data root is
+   resolved or any file is opened. Of two processes started at the same moment exactly one
+   continues.
+2. **Single-instance plugin**: when the running instance already has its window, a second launch
+   brings that window to the front and exits.
+3. **Data-folder lock** `.dvcc.lock`: the running process keeps this file open without sharing. A
+   process that cannot open it (e.g. another Windows session using the same folder) performs no
+   storage operation and shows `DATA_DIR_IN_USE`; close the other process, then start DVCC again.
+
+Debug and release builds share the app identifier and the mutex name, so a running debug build
+also stops a release build from starting (and vice versa), even though their data folders differ.
 
 ## Layout
 
 ```text
 <data root>/
+  .dvcc.lock                        empty; held open exclusively while DVCC runs (see above)
   projects.json
   projects.json.bak                 previous valid projects.json (written automatically)
   projects.json.corrupt-<ms>[-n]    unusable file set aside (kept, never deleted)
@@ -35,9 +48,10 @@ running window to the front instead of opening a second writer.
       session.json                  current state of the review (authoritative)
       session.json.bak
       checkpoint.md                 latest resume note written on Suspend
-      request-r<N>.md               review request of round N (kept per round)
+      request-r<N>.md               latest review request of round N (one file per round)
       result-r<N>.md                latest Human-pasted review result of round N (canonical)
-      result-r<N>-previous-<ms>.md  an earlier result of round N that was replaced (kept)
+      result-r<N>-previous-<ms>[-<n>].md
+                                    an earlier result of round N that was replaced (kept)
       events.jsonl                  append-only history
 ```
 
@@ -123,7 +137,7 @@ running window to the front instead of opening a second writer.
 | `rounds[].expectedHead`, `reviewedHead` | `null` or lowercase 7–40 hex SHA. These are **Human-recorded values**, not observed Git facts (Git / GitHub freshness is Phase 2). `null` means "not recorded" and is never filled by guessing. |
 | `rounds[].resultCapturedAt` | capture time of the canonical latest `result-r<N>.md` |
 | `rounds[].verdict` | `null` / `FIX_REQUIRED` / `REVIEW_PASS` / `BLOCKED`, set only by explicit Human confirmation |
-| `rounds[].archivedResults` | earlier results of the round kept when a result was replaced, oldest first (`result-r<N>-previous-<ms>.md`, `<ms>` = capture time of the replaced result). Missing in files written before this field existed → `[]`. |
+| `rounds[].archivedResults` | earlier results of the round kept when a result was replaced, oldest first (`result-r<N>-previous-<ms>.md`, `<ms>` = capture time of the replaced result; `-<n>` (1–999) is appended when that name is already taken, e.g. by an archive an interrupted capture left unrecorded). Missing in files written before this field existed → `[]`. |
 
 ### Review State transitions
 
@@ -167,9 +181,24 @@ warning is shown. Broken or unknown lines are skipped with a warning; the file i
   process, every storage command is serialized by one lock.
 - Files are replaced atomically: unique temp file (`create_new`) → `sync_all` → for JSON, copy the
   previous valid file to `.bak` → rename over the primary.
-- Writes carry a precondition: the file must still be absent, or contain exactly what DVCC last
-  read or wrote. If another program changed it, the write is refused (`CONFLICT`), nothing is
-  overwritten, and the Human is asked to Reload.
+- Conditional writes: the file must still be absent, or contain exactly what DVCC last read or
+  wrote in this run. If another program changed it, that write is refused (`CONFLICT`), the
+  changed file is not overwritten, and the Human is asked to Reload.
+
+  | File | Precondition |
+  |---|---|
+  | `projects.json`, `session.json` | always (loaded at start; a new review requires an absent `session.json`) |
+  | `result-r<N>.md` | always: absent for a first capture, otherwise exactly the text that was just archived |
+  | `result-r<N>-previous-<ms>[-<n>].md` | always: absent, or exactly the replaced text when an earlier attempt already wrote it |
+  | `request-r<N>.md`, `checkpoint.md` | only when DVCC read or wrote that file in this run; otherwise the latest save replaces it (both are regenerated notes, not history) |
+  | `events.jsonl` | append only |
+
+- A save that writes other files before `session.json` (Suspend → `checkpoint.md`, Copy review
+  prompt → `request-r<N>.md`, Capture result → archive and result) first checks that
+  `session.json` is unchanged, so a conflict is normally found before anything is written.
+- Capture result can be retried after any interruption: an unrecorded archive that already holds
+  the replaced text is reused, one holding other text is recorded as well (never overwritten),
+  and the replaced text otherwise goes to the next free `-<n>` name.
 - A JSON primary that is not valid JSON is never overwritten (`PRIMARY_UNREADABLE`).
 - A missing JSON primary whose `.bak` exists cannot be recreated by a normal save
   (`RECOVERY_REQUIRED`); only an explicit restore from the backup (or setting the backup aside) can
@@ -204,3 +233,6 @@ warning is shown. Broken or unknown lines are skipped with a warning; the file i
   non-network drive, and the final target after resolving symbolic links, junctions and mapped
   drives is also on a local drive. UNC / network targets are refused (`NETWORK_TARGET`). The
   resolved local path is what gets opened. No shell command is executed.
+- Before any metadata or resolution call follows a link, every symbolic link / junction along the
+  path is read (not followed) and its target is checked the same way, so a link to a network
+  location is refused without contacting that location.
