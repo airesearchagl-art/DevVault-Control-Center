@@ -7,8 +7,9 @@
 #   - A keeps running (same PID, still responding),
 #   - exactly one DVCC process remains,
 #   - B did not change any file in the data folder.
-# Phase 2 (race): -RaceRounds times, starts -RaceSize processes back to back (no wait between the
-# starts) and checks that exactly one survives, it is responding, and no data file changed. A failed
+# Phase 2 (race): -RaceRounds times, starts -RaceSize processes with a short pause between the starts
+# (cycling through -DelaysMs, 0 = back to back) and checks that exactly one survives, it is
+# responding, and no data file changed. A failed
 # round prints the state of both processes (window, responsiveness, threads, child processes).
 # Every instance is closed gracefully at the end. Never point -DataDir at real runtime data.
 #
@@ -19,7 +20,10 @@ param(
   [Parameter(Mandatory = $true)][string] $DataDir,
   [int] $TimeoutSeconds = 30,
   [int] $RaceRounds = 10,
-  [ValidateRange(2, 8)][int] $RaceSize = 2
+  [ValidateRange(2, 8)][int] $RaceSize = 2,
+  # Pause between consecutive starts, cycled per round. Non-zero pauses hit the window in which the
+  # first process is registering while the next one starts.
+  [int[]] $DelaysMs = @(0, 0, 10, 20, 50, 100, 200, 300, 500, 1000)
 )
 
 $ErrorActionPreference = "Stop"
@@ -144,11 +148,15 @@ $results.GetEnumerator() | ForEach-Object { "{0}: {1}" -f $_.Key, $_.Value }
 "SEQUENTIAL: $(if ($sequentialPass) { 'PASS' } else { 'FAIL' })"
 if (-not (Wait-ForNoProcess 15)) { throw "a $processName process is still running after phase 1" }
 
-# Phase 2: -RaceSize processes started back to back.
+# Phase 2: -RaceSize processes started with a short pause between the starts.
 $racePass = $true
 for ($round = 1; $round -le $RaceRounds; $round++) {
   $before = Get-DataFingerprint $dataRoot
-  $group = @(1..$RaceSize | ForEach-Object { Start-Direct })
+  $delay = $DelaysMs[($round - 1) % $DelaysMs.Count]
+  $group = @(1..$RaceSize | ForEach-Object {
+      if ($_ -gt 1 -and $delay -gt 0) { Start-Sleep -Milliseconds $delay }
+      Start-Direct
+    })
   try {
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     do {
@@ -167,7 +175,7 @@ for ($round = 1; $round -le $RaceRounds; $round++) {
     $roundPass = $alive.Count -eq 1 -and $running.Count -eq 1 -and $running[0].Id -eq $alive[0].Id -and $alive[0].Responding -and ($before -eq $after)
     $survivor = if ($alive.Count -eq 1) { "#" + ([array]::IndexOf(@($group | ForEach-Object Id), $alive[0].Id) + 1) } else { "count=$($alive.Count)" }
     $loserExit = ($exited | ForEach-Object { $_.ExitCode }) -join ","
-    "race {0}: size={1} survivor={2} loserExitCodes={3} processes={4} dataUnchanged={5} -> {6}" -f $round, $RaceSize, $survivor, $loserExit, $running.Count, ($before -eq $after), $(if ($roundPass) { "PASS" } else { "FAIL" })
+    "race {0}: size={1} delayMs={2} survivor={3} loserExitCodes={4} processes={5} dataUnchanged={6} -> {7}" -f $round, $RaceSize, $delay, $survivor, $loserExit, $running.Count, ($before -eq $after), $(if ($roundPass) { "PASS" } else { "FAIL" })
     if (-not $roundPass) { $racePass = $false; Write-Diagnostics $group; Start-Sleep -Seconds 20; "  after 20 s more:"; Write-Diagnostics $group }
   }
   finally {
