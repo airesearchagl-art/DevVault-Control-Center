@@ -29,6 +29,22 @@ merge: PROHIBITED
 production: PROHIBITED
 ```
 
+## Active binding — Task Packet revision 2 (2026-09-17T14:3xZ)
+
+```yaml
+active_task_packet_revision: 2
+task_packet_snapshot_path: .agent-run/LR-20260917-DVCC-001/TASK_PACKET_SNAPSHOT.rev2.md
+task_packet_digest_sha256: 624ef4d3716e7490d035e2b5dc599fb3c3d59cacb60d0827f298dbc7a391567b
+task_packet_snapshot_bytes: 22799
+previous_revision: 1
+previous_revision_snapshot_path: .agent-run/LR-20260917-DVCC-001/TASK_PACKET_SNAPSHOT.md
+previous_revision_digest_sha256: 4200048dd5535f596af25e588f0c572c4ca611464aff7bf221686c5759a1124b
+repair_authorization_source: Human message "DevVault Control Center — Review Hub v0.1 LONG_RUN Repair Authorization / Task Packet Revision 2"
+starting_state: BLOCKED (HARD_GATE_FAILURE) at evidence head bf833767c12e9a2e420855ed11fce0083c5dd923 / code head b2c3ae892e81178f742ad96423eb3d0a859e5ed6
+```
+
+The revision 1 block above is retained as history; revision 2 is the binding contract from this point.
+
 ## Human authorization source
 
 Human instruction in the current development thread (2026-09-17):
@@ -59,6 +75,8 @@ confirmed by the Human message "DevVault Control Center — Review Hub v0.1 LONG
 ## Digest verification procedure
 
 ```powershell
+(Get-FileHash -Algorithm SHA256 -LiteralPath .agent-run/LR-20260917-DVCC-001/TASK_PACKET_SNAPSHOT.rev2.md).Hash.ToLower()
+# active: must equal 624ef4d3716e7490d035e2b5dc599fb3c3d59cacb60d0827f298dbc7a391567b
 (Get-FileHash -Algorithm SHA256 -LiteralPath .agent-run/LR-20260917-DVCC-001/TASK_PACKET_SNAPSHOT.md).Hash.ToLower()
-# must equal task_packet_digest_sha256 above
+# retained revision 1: must equal 4200048dd5535f596af25e588f0c572c4ca611464aff7bf221686c5759a1124b
 ```

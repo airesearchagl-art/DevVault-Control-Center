@@ -5,4 +5,4 @@
 *.icns binary
 
 # Long-run Task Packet snapshots are hashed byte-for-byte; never convert line endings.
-.agent-run/**/TASK_PACKET_SNAPSHOT.md -text
+.agent-run/**/TASK_PACKET_SNAPSHOT*.md -text

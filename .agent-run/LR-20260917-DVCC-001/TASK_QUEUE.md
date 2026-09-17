@@ -2,59 +2,26 @@
 
 Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 
-## Wave 0 — Preflight / Task Packet init
+## Revision 1 (history)
 
-- [x] Fresh preflight with evidence
-- [x] Read required Vault route files (read-only)
-- [x] TASK_PACKET_SNAPSHOT.md + SHA-256 binding
-- [x] Run artifact init commit (`dd6a82f`) + first push
+- [x] Wave 0 — preflight / Task Packet rev 1 (`dd6a82f`)
+- [x] Wave 1 — Tauri shell + Rust boundary + domain + persistence (`fd733e1`)
+- [x] Wave 2 — Review Hub UI (`bec4a7b`)
+- [x] Wave 3 — convergence, README, release smoke, E2E (`b2c3ae8`)
+- [x] Final Convergence — checks re-run PASS; Independent Verification → Data integrity FAIL / Irreversible-data safety FAIL
+- [x] HARD_GATE_FAILURE → BLOCKED evidence checkpoint (`bf83376`); Human escalation
 
-## Wave 1 — Tauri shell + Rust boundary + domain + persistence foundation
+## Revision 2 — Repair campaign (Human authorized)
 
-- [x] Scaffold Tauri 2 + React 19 + TypeScript strict + Vite (+ Vitest)
-- [x] Rust: data-root resolution (env override / debug / release)
-- [x] Rust: storage commands (read / atomic write + backup / append / list / quarantine / info) with path confinement
-- [x] Rust: launcher (https allowlist URL, validated project folder, data dir) via opener API
-- [x] Capabilities: core:default + clipboard-manager:allow-write-text only; CSP
-- [x] TS domain: states, project, review (rounds), transitions (D2), events, validation, schema, prompt, queue
-- [x] TS services: storage backend (invoke), persistence (recovery), review operations, launcher, clipboard
-- [x] Synthetic fixtures (valid + malformed) + fixture hygiene test
-- [x] docs/data-contract-v1.md
-- [x] Checks: npm install, tsc, vitest, vite build, cargo check, cargo test
-- [x] Checkpoint 1 (`fd733e1`, pushed)
-
-## Wave 2 — Review Hub UI
-
-- [x] App shell + reducer (+ tests) + loading / fatal states
-- [x] Queue (attention sort, filter, closed toggle, unreadable rows) + project list
-- [x] Detail (project, review, heads, states, thread, previous result, checkpoint, next action, recent events)
-- [x] Create / Edit Project; Create / Edit Review
-- [x] State controls: Resource segmented control, Mark Ready / Start Review / Cancel / Next Round / Block / Close
-- [x] Suspend dialog (checkpoint + WARM/COLD) / Resume
-- [x] Open GitHub / ChatGPT / Project Folder / Data folder
-- [x] Copy Review Prompt (request-r<N>.md + clipboard)
-- [x] Capture Result (paste textarea → result-r<N>.md) + Human verdict confirmation
-- [x] Empty states, error toasts, recovery / unreadable banners, set-aside flow
-- [x] Checks: tsc, vitest, vite build, cargo check, tauri dev launch (DVCC_DATA_DIR = scratch)
-- [x] Checkpoint 2 (`bec4a7b`, pushed)
-
-## Wave 3 — Convergence
-
-- [x] Defect repair, README
-- [x] Release no-bundle build
-- [x] Windows launch smoke
-- [x] E2E restart smoke (Create → Suspend → close → reopen → Resume) + event / checkpoint verification
-- [x] App-level malformed recovery smoke (restored / unsupported / unreadable + set-aside / fatal data dir)
-- [x] Real launcher opens (folder, GitHub, ChatGPT) + clipboard write
-- [x] Repository hygiene scan + synthetic fixture verification
-- [x] Full diff review (scope / boundary grep)
-- [x] Checkpoint 3 (`b2c3ae8`, pushed)
-
-## Final Convergence
-
-- [x] Freeze (code head `b2c3ae8`), required checks re-run (all PASS), release launch smoke
-- [x] Independent Verifier → Data integrity FAIL, Irreversible-data safety FAIL (F-1, F-2, F-3)
-- [!] HARD_GATE_FAILURE → BLOCKED: evidence-only checkpoint + push; Human escalation
-- [!] Repair wave (F-1 / F-2 / F-3 + test validity) — awaiting Human authorization
-- [!] Re-run hard checks + Independent Verification after repair — blocked
-- [!] Draft PR → STOP / Human Gate — blocked (not created)
+- [x] R0 Repair preflight
+- [~] R0 Task Packet revision 2 snapshot / digest binding (commit + push)
+- [ ] R1 F-1 idempotent repository URL normalization; normalization + save / reload / validate round-trip table tests; `.git.git` regression
+- [ ] R2 F-2 missing primary + valid backup → recovery; Rust backup protection (`RECOVERY_REQUIRED`), explicit restore; tests incl. restore write failure
+- [ ] R3 F-3 `tauri-plugin-single-instance`; unique temp names; serialized storage commands (Rust mutex) + optimistic write preconditions (no silent cross-process overwrite); F-4 serialized application operation queue using latest committed state; race tests
+- [ ] R4 F-5 independent Human-approved transition contract oracle (+ mutation probe evidence)
+- [ ] R5 F-6 re-capture: explicit overwrite confirmation + previous result archive; F-8 I/O error state distinct from corrupt; F-11 shared round-limit contract
+- [ ] R6 F-9 launcher: canonical target / drive type checks; verify direct UNC, junction → local, symlink → UNC, temporary loopback mapped drive
+- [ ] R7 Targeted checks → checkpoint (push)
+- [ ] R7 Full Convergence: tsc, vitest, build, cargo check, cargo test, no-bundle build, release launch, restart E2E, persistence / recovery smoke, single-instance evidence, launcher boundary smoke, hygiene
+- [ ] R8 Independent Verification (new context; focus F-1 / F-2 / F-3 / F-9)
+- [ ] R8 Hard Checks → Draft PR only if conditions hold → STOP

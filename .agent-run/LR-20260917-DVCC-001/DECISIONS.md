@@ -8,6 +8,14 @@
 - Architecture: Hybrid, Tauri 2 + React 19 + TypeScript strict + Vite; Rust limited to storage / launcher / data-dir.
 - Reuse: HybridGauge reference_pattern + adopt tauri-plugin-opener; persistence build_custom; AgentDeck / Taurus defer.
 
+## Human-approved — Task Packet revision 2 (repair)
+
+Binding: `TASK_PACKET_SNAPSHOT.rev2.md`, SHA-256 `624ef4d3716e7490d035e2b5dc599fb3c3d59cacb60d0827f298dbc7a391567b` (revision 1 snapshot / digest retained).
+
+- **R2-D1** Repair Wave AUTHORIZED. Required: F-1, F-2, F-3, F-5. Same wave: F-4, F-6, F-8, F-11. Debt allowed: F-7, F-10. F-9: defer prohibited (mandatory verification; fix if reproduced; INCONCLUSIVE + BLOCKED if undecidable).
+- **R2-D2** `tauri-plugin-single-instance` adopted (`adopt_dependency`); F-3 also requires unique temp names, serialized storage mutations and evidence-based multi-instance verification.
+- **R2-D3** Draft PR only after Repair + Full Convergence + Independent Verification and only if F-1 / F-2 / F-3 resolved, F-9 PASS, Data integrity + Irreversible-data safety PASS and required checks PASS; otherwise BLOCKED without Draft PR.
+
 ## Lead decisions during the run (within approved scope)
 
 | ID | Decision | Rationale |

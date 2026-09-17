@@ -152,4 +152,24 @@ Claims in earlier run artifacts corrected by this verification: "full guard tabl
 
 ### Transition
 
-Per Task Packet §7 / §12 and Long-Run Route "Hard-gate failure transition": Data integrity and Irreversible-data safety Hard Checks show real FAIL → `HARD_GATE_FAILURE` → **BLOCKED**. Implementation writes, Repair Waves, independent-task continuation and Draft PR creation are stopped. Only evidence and current state are saved (run artifacts). Human escalation required.
+Per Task Packet revision 1 §7 / §12 and Long-Run Route "Hard-gate failure transition": Data integrity and Irreversible-data safety Hard Checks show real FAIL → `HARD_GATE_FAILURE` → **BLOCKED**. Implementation writes, Repair Waves, independent-task continuation and Draft PR creation are stopped. Only evidence and current state are saved (run artifacts). Human escalation required.
+
+## Repair campaign — Task Packet revision 2
+
+### Repair preflight — 2026-09-17T14:35Z
+
+| Item | Evidence | Result |
+|---|---|---|
+| Branch / HEAD | `feat/review-hub-v0.1`; HEAD `bf833767c12e9a2e420855ed11fce0083c5dd923` == `origin/feat/review-hub-v0.1` | PASS |
+| Base | `origin/main` `bbffea1177b80dfe46a0f6887a9fc05dd5e4f05d`; merge-base == base | PASS |
+| Working tree | clean (no untracked) | PASS |
+| Code vs frozen head | `git diff --name-only b2c3ae8 HEAD` outside `.agent-run/` → 0 files | PASS |
+| Revision 1 digest | `4200048dd5535f596af25e588f0c572c4ca611464aff7bf221686c5759a1124b` | match |
+| App processes / real data dirs | 0 running; `%APPDATA%\DevVault-Control[-dev]` → False / False | PASS |
+| F-9 environment | Developer Mode enabled (symbolic links creatable without elevation); loopback admin share `\\localhost\C$` reachable; free drive letters available for a temporary loopback mapping. The user's existing network drive mappings exist and are **not accessed** (names / addresses intentionally not recorded). | recorded |
+
+### Task Packet revision 2 initialization
+
+- Snapshot: `.agent-run/LR-20260917-DVCC-001/TASK_PACKET_SNAPSHOT.rev2.md`, 22799 bytes, 0 CR bytes, `git check-attr text` → unset.
+- SHA-256: `624ef4d3716e7490d035e2b5dc599fb3c3d59cacb60d0827f298dbc7a391567b`.
+- Revision 1 snapshot retained unchanged (digest match). `.gitattributes` pattern widened to `TASK_PACKET_SNAPSHOT*.md -text`.
