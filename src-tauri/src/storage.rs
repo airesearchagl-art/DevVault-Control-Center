@@ -40,26 +40,66 @@ pub struct ResolvedRoot {
     pub source: DataRootSource,
 }
 
-/// Managed state: the resolved data root (or the reason it could not be resolved) plus the
-/// lock that serializes every storage operation of this process (F-3 / F-4): a read-compare-
-/// write sequence is never interleaved with another command.
+/// Lock file held exclusively by the process that owns a data folder.
+pub const DATA_DIR_LOCK_FILE: &str = ".dvcc.lock";
+
+/// Opens `<root>/.dvcc.lock` with no sharing, so no other process can open it while this handle
+/// lives. A second DVCC process using the same data folder (for example in another Windows
+/// session, or one that slipped past the single-instance guards) gets `DATA_DIR_IN_USE` and
+/// never reaches the data files (F-3 / E-1).
+pub fn acquire_data_dir_lock(root: &Path) -> Result<File, CommandError> {
+    fs::create_dir_all(root).map_err(|error| io_error("DATA_DIR_UNAVAILABLE", root, error))?;
+    let path = root.join(DATA_DIR_LOCK_FILE);
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.share_mode(0);
+    }
+    options.open(&path).map_err(|error| {
+        // ERROR_SHARING_VIOLATION (32): another process holds the lock.
+        if error.raw_os_error() == Some(32) {
+            CommandError::new(
+                "DATA_DIR_IN_USE",
+                "another DevVault Control Center process is using this data folder; close it, then start DevVault Control Center again",
+            )
+        } else {
+            io_error("DATA_DIR_UNAVAILABLE", &path, error)
+        }
+    })
+}
+
+/// Managed state: the resolved data root (or the reason it cannot be used), the exclusive
+/// data-folder lock, and the lock that serializes every storage operation of this process
+/// (F-3 / F-4): a read-compare-write sequence is never interleaved with another command.
 pub struct DataRoot {
-    resolved: Result<ResolvedRoot, String>,
+    resolved: Result<ResolvedRoot, CommandError>,
     lock: Mutex<()>,
+    _folder_lock: Option<File>,
 }
 
 impl DataRoot {
     pub fn new(resolved: Result<ResolvedRoot, String>) -> Self {
+        let (resolved, folder_lock) = match resolved {
+            Err(message) => (
+                Err(CommandError::new("DATA_DIR_UNAVAILABLE", message)),
+                None,
+            ),
+            Ok(root) => match acquire_data_dir_lock(&root.path) {
+                Ok(file) => (Ok(root), Some(file)),
+                Err(error) => (Err(error), None),
+            },
+        };
         Self {
             resolved,
             lock: Mutex::new(()),
+            _folder_lock: folder_lock,
         }
     }
 
     fn resolved(&self) -> Result<&ResolvedRoot, CommandError> {
-        self.resolved
-            .as_ref()
-            .map_err(|message| CommandError::new("DATA_DIR_UNAVAILABLE", message.clone()))
+        self.resolved.as_ref().map_err(Clone::clone)
     }
 
     pub fn path(&self) -> Result<&Path, CommandError> {
@@ -193,7 +233,12 @@ fn is_round_artifact(file: &str, prefix: &str) -> bool {
         .is_some()
 }
 
-/// `result-r<N>-previous-<ms>.md`: a result replaced in the same round (F-6).
+fn is_digits(text: &str, max_len: usize) -> bool {
+    !text.is_empty() && text.len() <= max_len && text.bytes().all(|c| c.is_ascii_digit())
+}
+
+/// `result-r<N>-previous-<ms>[-<n>].md`: a result replaced in the same round (F-6); the optional
+/// `-<n>` (1..999, no leading zero) distinguishes texts archived for the same capture time (E-2).
 fn is_archived_result(file: &str) -> bool {
     let Some(rest) = file
         .strip_prefix("result-r")
@@ -201,13 +246,14 @@ fn is_archived_result(file: &str) -> bool {
     else {
         return false;
     };
-    let Some((round, millis)) = rest.split_once("-previous-") else {
+    let Some((round, stamp)) = rest.split_once("-previous-") else {
         return false;
     };
-    parse_round(round).is_some()
-        && !millis.is_empty()
-        && millis.len() <= 20
-        && millis.bytes().all(|c| c.is_ascii_digit())
+    let valid_stamp = match stamp.split_once('-') {
+        None => is_digits(stamp, 20),
+        Some((millis, n)) => is_digits(millis, 20) && is_digits(n, 3) && !n.starts_with('0'),
+    };
+    parse_round(round).is_some() && valid_stamp
 }
 
 pub fn is_allowed_review_file(file: &str) -> bool {
@@ -788,6 +834,8 @@ pub(crate) mod tests {
             at_limit_result.as_str(),
             "result-r1-previous-1767225600000.md",
             "result-r12-previous-0.md",
+            "result-r1-previous-1767225600000-1.md",
+            "result-r1-previous-1767225600000-999.md",
         ] {
             assert!(is_allowed_review_file(good), "{good:?} should be allowed");
         }
@@ -810,6 +858,11 @@ pub(crate) mod tests {
             "request-r1-previous-1.md",
             "result-r1-previous-1.md.bak",
             "result-r1-previous-123456789012345678901.md",
+            "result-r1-previous-1767225600000-0.md",
+            "result-r1-previous-1767225600000-01.md",
+            "result-r1-previous-1767225600000-1000.md",
+            "result-r1-previous-1767225600000-.md",
+            "result-r1-previous-1767225600000-1-2.md",
         ] {
             assert!(!is_allowed_review_file(bad), "{bad:?} should be rejected");
         }
@@ -1063,6 +1116,38 @@ pub(crate) mod tests {
             fs::read_to_string(&a).unwrap(),
             "{\"stale\":true}",
             "stale temp untouched"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn data_folder_lock_admits_only_one_owner_at_a_time() {
+        let dir = TempDir::new();
+        let resolved = || {
+            Ok(ResolvedRoot {
+                path: dir.0.clone(),
+                source: DataRootSource::Env,
+            })
+        };
+        let first = DataRoot::new(resolved());
+        assert!(first.path().is_ok());
+        assert!(dir.0.join(DATA_DIR_LOCK_FILE).exists());
+
+        let second = DataRoot::new(resolved());
+        let error = second.path().unwrap_err();
+        assert_eq!(error.code, "DATA_DIR_IN_USE");
+        let refused = second.exclusive(|p| write_atomic(&p.join("projects.json"), "{}", None));
+        assert_eq!(refused.unwrap_err().code, "DATA_DIR_IN_USE");
+        assert!(
+            !dir.0.join("projects.json").exists(),
+            "the second owner never reaches the data"
+        );
+
+        drop(first);
+        let third = DataRoot::new(resolved());
+        assert!(
+            third.path().is_ok(),
+            "the lock is released when the owner goes away"
         );
     }
 

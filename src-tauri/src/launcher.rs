@@ -121,10 +121,90 @@ pub fn local_final_target(canonical: &Path) -> Result<PathBuf, CommandError> {
     Ok(PathBuf::from(text.strip_prefix(r"\\?\").unwrap_or(&text)))
 }
 
+const MAX_LINK_DEPTH: u32 = 32;
+
+/// Checks a link target *as text* (without opening it): UNC / verbatim-UNC targets are network,
+/// device / volume targets are rejected, drive-letter targets must be on a local drive.
+fn check_link_target(target: &Path) -> Result<(), CommandError> {
+    const NETWORK_LINK: &str =
+        "a link inside the folder path points to a network (UNC) location; network locations are not opened";
+    match target.components().next() {
+        Some(Component::Prefix(prefix)) => match prefix.kind() {
+            Prefix::Disk(letter) | Prefix::VerbatimDisk(letter) => ensure_local_drive(letter),
+            Prefix::UNC(..) | Prefix::VerbatimUNC(..) => Err(network_target(NETWORK_LINK)),
+            _ => Err(folder_rejected(
+                "FOLDER_REJECTED",
+                "a link inside the folder path points to a device or volume path",
+            )),
+        },
+        _ => {
+            // Relative or drive-less rooted targets are resolved against the link's folder; a
+            // leading double separator that was not parsed as a prefix is still a network form.
+            let text = target.to_string_lossy();
+            if text.starts_with("\\\\") || text.starts_with("//") {
+                Err(network_target(NETWORK_LINK))
+            } else {
+                Ok(())
+            }
+        }
+    }
+}
+
+/// Walks `path` component by component and, for every symbolic link or junction, reads its target
+/// without following it (E-5). A network target is rejected before the file system ever resolves
+/// it, so validating a planted link cannot trigger a connection to a remote host. Targets are
+/// followed textually (relative targets against the link's folder) up to `MAX_LINK_DEPTH` links.
+fn reject_network_links(path: &Path, depth: u32) -> Result<(), CommandError> {
+    if depth > MAX_LINK_DEPTH {
+        return Err(folder_rejected(
+            "FOLDER_REJECTED",
+            "the folder path contains too many links",
+        ));
+    }
+    let mut current = PathBuf::new();
+    for component in path.components() {
+        current.push(component.as_os_str());
+        if !matches!(component, Component::Normal(_)) {
+            continue;
+        }
+        let metadata = match fs::symlink_metadata(&current) {
+            Ok(metadata) => metadata,
+            // Missing / inaccessible parts are reported by the regular checks that follow.
+            Err(_) => return Ok(()),
+        };
+        if !metadata.file_type().is_symlink() {
+            continue;
+        }
+        let target = fs::read_link(&current).map_err(|error| {
+            folder_rejected(
+                "FOLDER_REJECTED",
+                format!("a link inside the folder path could not be read: {error}"),
+            )
+        })?;
+        check_link_target(&target)?;
+        let absolute = if target.is_absolute()
+            || matches!(target.components().next(), Some(Component::Prefix(_)))
+        {
+            target
+        } else {
+            current
+                .parent()
+                .map(|parent| parent.join(&target))
+                .unwrap_or(target)
+        };
+        return reject_network_links(
+            &absolute.join(path.strip_prefix(&current).unwrap_or(Path::new(""))),
+            depth + 1,
+        );
+    }
+    Ok(())
+}
+
 /// Accepts only an absolute local drive path (e.g. `C:\work\project`) of an existing directory.
-/// UNC, device, verbatim, drive-relative and relative paths are rejected by form; then symbolic
-/// links, junctions and mapped drives are resolved to the final target, which must also be on a
-/// local drive (F-9). The resolved local path is returned and is what gets opened.
+/// UNC, device, verbatim, drive-relative and relative paths are rejected by form; link targets
+/// inside the path are checked without following them (E-5); then symbolic links, junctions and
+/// mapped drives are resolved to the final target, which must also be on a local drive (F-9).
+/// The resolved local path is returned and is what gets opened.
 pub fn validate_project_folder(raw: &str) -> Result<PathBuf, CommandError> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -152,6 +232,8 @@ pub fn validate_project_folder(raw: &str) -> Result<PathBuf, CommandError> {
     };
     // A mapped network drive looks like a local path: check the drive before touching it.
     ensure_local_drive(letter)?;
+    // Links pointing to network locations are rejected before anything follows them (E-5).
+    reject_network_links(path, 0)?;
     match fs::metadata(path) {
         Ok(metadata) if metadata.is_dir() => {}
         Ok(_) => {
@@ -379,6 +461,105 @@ mod tests {
     fn loopback_unc_target() -> Option<PathBuf> {
         let path = PathBuf::from(r"\\localhost\C$\Windows");
         path.is_dir().then_some(path)
+    }
+
+    /// Creates a directory symlink (dangling targets allowed); returns false when the environment
+    /// cannot create symlinks (no Developer Mode / privilege), in which case the test is reported.
+    #[cfg(windows)]
+    fn try_symlink_dir(target: &Path, link: &Path, label: &str) -> bool {
+        match std::os::windows::fs::symlink_dir(target, link) {
+            Ok(()) => true,
+            Err(error) => {
+                eprintln!("{label}: SKIPPED (cannot create directory symlink: {error})");
+                false
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn rejects_link_to_unreachable_network_host_without_resolving_it() {
+        // The host does not exist: following the link would fail with a not-found / network error.
+        // NETWORK_TARGET proves the decision was made from the link text alone (E-5).
+        let dir = TempDir::new();
+        let unreachable = PathBuf::from(r"\\dvcc-unreachable-host.invalid\share\project");
+        let link = dir.0.join("link-to-unreachable-unc");
+        if !try_symlink_dir(&unreachable, &link, "E5-UNREACHABLE") {
+            return;
+        }
+        let started = std::time::Instant::now();
+        let result = validate_project_folder(&link.to_string_lossy());
+        eprintln!(
+            "E5-UNREACHABLE: EXECUTED result={result:?} elapsed={:?}",
+            started.elapsed()
+        );
+        assert_eq!(result.unwrap_err().code, "NETWORK_TARGET");
+
+        // A sub folder below the link is rejected the same way.
+        let below = link.join("sub");
+        assert_eq!(
+            validate_project_folder(&below.to_string_lossy())
+                .unwrap_err()
+                .code,
+            "NETWORK_TARGET"
+        );
+
+        // A chain of local links ending at the network target is followed textually and rejected.
+        let chain = dir.0.join("chain-to-link");
+        if try_symlink_dir(&link, &chain, "E5-CHAIN") {
+            assert_eq!(
+                validate_project_folder(&chain.to_string_lossy())
+                    .unwrap_err()
+                    .code,
+                "NETWORK_TARGET"
+            );
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn relative_symlink_to_local_directory_is_accepted() {
+        let dir = TempDir::new();
+        let target = dir.0.join("real-target");
+        fs::create_dir_all(target.join("inner")).unwrap();
+        let link = dir.0.join("relative-link");
+        if !try_symlink_dir(Path::new("real-target"), &link, "E5-RELATIVE") {
+            return;
+        }
+        let resolved = validate_project_folder(&link.join("inner").to_string_lossy()).unwrap();
+        assert_eq!(
+            resolved,
+            plain(fs::canonicalize(target.join("inner")).unwrap())
+        );
+    }
+
+    #[test]
+    fn classifies_link_targets_without_opening_them() {
+        for network in [r"\\server\share", r"\\?\UNC\server\share\x"] {
+            assert_eq!(
+                check_link_target(Path::new(network)).unwrap_err().code,
+                "NETWORK_TARGET",
+                "{network}"
+            );
+        }
+        for device in [
+            r"\\.\PIPE\x",
+            r"\\?\Volume{00000000-0000-0000-0000-000000000000}\x",
+        ] {
+            assert_eq!(
+                check_link_target(Path::new(device)).unwrap_err().code,
+                "FOLDER_REJECTED",
+                "{device}"
+            );
+        }
+        for local in [
+            r"C:\Windows",
+            r"\\?\C:\Windows",
+            r"relative\target",
+            r"..\sibling",
+        ] {
+            assert!(check_link_target(Path::new(local)).is_ok(), "{local}");
+        }
     }
 
     #[cfg(windows)]
