@@ -74,7 +74,10 @@ impl DataRoot {
         let root = self.path()?;
         // A poisoned lock only means an earlier operation panicked; the files themselves are
         // still protected by atomic replacement, so continue with the inner guard.
-        let _guard = self.lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _guard = self
+            .lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         operation(root)
     }
 }
@@ -170,10 +173,17 @@ pub fn max_review_rounds() -> u32 {
 
 /// A round number `1..=max_review_rounds()` written without leading zeros.
 fn parse_round(digits: &str) -> Option<u32> {
-    if digits.is_empty() || digits.len() > 10 || digits.starts_with('0') || !digits.bytes().all(|c| c.is_ascii_digit()) {
+    if digits.is_empty()
+        || digits.len() > 10
+        || digits.starts_with('0')
+        || !digits.bytes().all(|c| c.is_ascii_digit())
+    {
         return None;
     }
-    digits.parse::<u32>().ok().filter(|round| *round <= max_review_rounds())
+    digits
+        .parse::<u32>()
+        .ok()
+        .filter(|round| *round <= max_review_rounds())
 }
 
 fn is_round_artifact(file: &str, prefix: &str) -> bool {
@@ -185,7 +195,10 @@ fn is_round_artifact(file: &str, prefix: &str) -> bool {
 
 /// `result-r<N>-previous-<ms>.md`: a result replaced in the same round (F-6).
 fn is_archived_result(file: &str) -> bool {
-    let Some(rest) = file.strip_prefix("result-r").and_then(|rest| rest.strip_suffix(".md")) else {
+    let Some(rest) = file
+        .strip_prefix("result-r")
+        .and_then(|rest| rest.strip_suffix(".md"))
+    else {
         return false;
     };
     let Some((round, millis)) = rest.split_once("-previous-") else {
@@ -328,7 +341,11 @@ pub fn write_atomic(
             ),
         ));
     }
-    if json && existing.as_deref().is_some_and(|bytes| !parses_as_json(bytes)) {
+    if json
+        && existing
+            .as_deref()
+            .is_some_and(|bytes| !parses_as_json(bytes))
+    {
         return Err(CommandError::new(
             "PRIMARY_UNREADABLE",
             format!(
@@ -357,8 +374,8 @@ pub fn write_atomic(
         if let Some(previous) = &existing {
             let backup = with_suffix(path, ".bak");
             let backup_tmp = unique_temp_path(&backup, "tmp");
-            let backup_result = write_synced(&backup_tmp, previous)
-                .and_then(|_| fs::rename(&backup_tmp, &backup));
+            let backup_result =
+                write_synced(&backup_tmp, previous).and_then(|_| fs::rename(&backup_tmp, &backup));
             if let Err(error) = backup_result {
                 let _ = fs::remove_file(&backup_tmp);
                 let _ = fs::remove_file(&tmp);
@@ -437,7 +454,10 @@ pub fn restore_backup(path: &Path) -> Result<(), CommandError> {
     if path_exists(path)? {
         return Err(CommandError::new(
             "PRIMARY_EXISTS",
-            format!("{}: primary exists; refusing to restore over it", path.display()),
+            format!(
+                "{}: primary exists; refusing to restore over it",
+                path.display()
+            ),
         ));
     }
     let backup = with_suffix(path, ".bak");
@@ -561,7 +581,11 @@ pub async fn storage_info(root: State<'_, DataRoot>) -> Result<StorageInfo, Comm
 }
 
 /// Reads a target (or its `.bak`). Shared by the command and tests.
-pub fn read_target(root: &Path, target: &StorageTarget, backup: bool) -> Result<Option<String>, CommandError> {
+pub fn read_target(
+    root: &Path,
+    target: &StorageTarget,
+    backup: bool,
+) -> Result<Option<String>, CommandError> {
     let path = target_path(root, target)?;
     if backup {
         if !is_json_file(&path) {
@@ -591,7 +615,13 @@ pub async fn storage_write(
     content: String,
     precondition: Option<WritePrecondition>,
 ) -> Result<(), CommandError> {
-    root.exclusive(|path| write_atomic(&target_path(path, &target)?, &content, precondition.as_ref()))
+    root.exclusive(|path| {
+        write_atomic(
+            &target_path(path, &target)?,
+            &content,
+            precondition.as_ref(),
+        )
+    })
 }
 
 #[tauri::command]
@@ -614,7 +644,13 @@ pub async fn storage_quarantine(
     target: StorageTarget,
     backup: Option<bool>,
 ) -> Result<String, CommandError> {
-    root.exclusive(|path| quarantine(&target_path(path, &target)?, backup.unwrap_or(false), unix_millis()))
+    root.exclusive(|path| {
+        quarantine(
+            &target_path(path, &target)?,
+            backup.unwrap_or(false),
+            unix_millis(),
+        )
+    })
 }
 
 #[tauri::command]
@@ -782,7 +818,10 @@ pub(crate) mod tests {
     #[test]
     fn round_limit_comes_from_the_shared_contract_file() {
         let contract: serde_json::Value = serde_json::from_str(LIMITS_JSON).unwrap();
-        assert_eq!(contract["maxReviewRounds"].as_u64().unwrap(), u64::from(max_review_rounds()));
+        assert_eq!(
+            contract["maxReviewRounds"].as_u64().unwrap(),
+            u64::from(max_review_rounds())
+        );
         assert!(max_review_rounds() >= 1);
     }
 
@@ -812,9 +851,10 @@ pub(crate) mod tests {
     fn storage_target_deserializes_from_frontend_shape() {
         let projects: StorageTarget = serde_json::from_str(r#"{"kind":"projects"}"#).unwrap();
         assert!(matches!(projects, StorageTarget::Projects));
-        let target: StorageTarget =
-            serde_json::from_str(r#"{"kind":"review","reviewId":"rv-20260101-alpha1","file":"session.json"}"#)
-                .unwrap();
+        let target: StorageTarget = serde_json::from_str(
+            r#"{"kind":"review","reviewId":"rv-20260101-alpha1","file":"session.json"}"#,
+        )
+        .unwrap();
         assert!(matches!(target, StorageTarget::Review { .. }));
     }
 
@@ -901,12 +941,20 @@ pub(crate) mod tests {
         let dir = TempDir::new();
         let events = target_path(&dir.0, &review(ID, "events.jsonl")).unwrap();
         assert_eq!(
-            append_line(&events, "{\"a\":1}\n{\"b\":2}").unwrap_err().code,
+            append_line(&events, "{\"a\":1}\n{\"b\":2}")
+                .unwrap_err()
+                .code,
             "INVALID_CONTENT"
         );
-        assert_eq!(append_line(&events, "not json").unwrap_err().code, "INVALID_CONTENT");
+        assert_eq!(
+            append_line(&events, "not json").unwrap_err().code,
+            "INVALID_CONTENT"
+        );
         let session = target_path(&dir.0, &review(ID, "session.json")).unwrap();
-        assert_eq!(append_line(&session, "{}").unwrap_err().code, "NOT_APPENDABLE");
+        assert_eq!(
+            append_line(&session, "{}").unwrap_err().code,
+            "NOT_APPENDABLE"
+        );
     }
 
     #[test]
@@ -922,11 +970,16 @@ pub(crate) mod tests {
         fs::write(&path, "corrupt again").unwrap();
         let second = quarantine(&path, false, 42).unwrap();
         assert_eq!(second, "projects.json.corrupt-42-1");
-        assert_eq!(fs::read_to_string(dir.0.join(&second)).unwrap(), "corrupt again");
+        assert_eq!(
+            fs::read_to_string(dir.0.join(&second)).unwrap(),
+            "corrupt again"
+        );
 
         assert_eq!(quarantine(&path, false, 43).unwrap_err().code, "NOT_FOUND");
         assert_eq!(
-            quarantine(&dir.0.join("checkpoint.md"), false, 1).unwrap_err().code,
+            quarantine(&dir.0.join("checkpoint.md"), false, 1)
+                .unwrap_err()
+                .code,
             "INVALID_TARGET"
         );
 
@@ -934,7 +987,10 @@ pub(crate) mod tests {
         let aside = quarantine(&path, true, 44).unwrap();
         assert_eq!(aside, "projects.json.bak.corrupt-44");
         assert!(!dir.0.join("projects.json.bak").exists());
-        assert_eq!(fs::read_to_string(dir.0.join(&aside)).unwrap(), "bad backup");
+        assert_eq!(
+            fs::read_to_string(dir.0.join(&aside)).unwrap(),
+            "bad backup"
+        );
     }
 
     #[test]
@@ -949,14 +1005,21 @@ pub(crate) mod tests {
 
         // Another process / editor changes the file after this process loaded "{\"v\":1}".
         fs::write(&path, "{\"v\":\"external\"}").unwrap();
-        let loaded = WritePrecondition::Matches { content: "{\"v\":1}".to_string() };
+        let loaded = WritePrecondition::Matches {
+            content: "{\"v\":1}".to_string(),
+        };
         let error = write_atomic(&path, "{\"v\":2}", Some(&loaded)).unwrap_err();
         assert_eq!(error.code, "CONFLICT");
         assert_eq!(fs::read_to_string(&path).unwrap(), "{\"v\":\"external\"}");
-        assert!(!with_suffix(&path, ".bak").exists(), "a refused write must not rotate the backup");
+        assert!(
+            !with_suffix(&path, ".bak").exists(),
+            "a refused write must not rotate the backup"
+        );
 
         // Matching content → write succeeds.
-        let current = WritePrecondition::Matches { content: "{\"v\":\"external\"}".to_string() };
+        let current = WritePrecondition::Matches {
+            content: "{\"v\":\"external\"}".to_string(),
+        };
         write_atomic(&path, "{\"v\":3}", Some(&current)).unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), "{\"v\":3}");
 
@@ -964,7 +1027,9 @@ pub(crate) mod tests {
         let md = target_path(&dir.0, &review(ID, "result-r1.md")).unwrap();
         write_atomic(&md, "first", Some(&WritePrecondition::Absent)).unwrap();
         assert_eq!(
-            write_atomic(&md, "second", Some(&WritePrecondition::Absent)).unwrap_err().code,
+            write_atomic(&md, "second", Some(&WritePrecondition::Absent))
+                .unwrap_err()
+                .code,
             "CONFLICT"
         );
         assert!(no_temp_files(path.parent().unwrap()));
@@ -977,16 +1042,28 @@ pub(crate) mod tests {
         let a = unique_temp_path(&path, "tmp");
         let b = unique_temp_path(&path, "tmp");
         assert_ne!(a, b);
-        assert!(a.file_name().unwrap().to_string_lossy().starts_with("projects.json.tmp-"));
+        assert!(a
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("projects.json.tmp-"));
 
         // Leftovers from a crash (old fixed name and a unique-name temp) contain garbage.
         fs::write(with_suffix(&path, ".tmp"), "garbage").unwrap();
         fs::write(&a, "{\"stale\":true}").unwrap();
-        assert_eq!(read_text(&path).unwrap(), None, "temp files are never read as the primary");
+        assert_eq!(
+            read_text(&path).unwrap(),
+            None,
+            "temp files are never read as the primary"
+        );
         write(&path, "{\"v\":1}").unwrap();
         write(&path, "{\"v\":2}").unwrap();
         assert_eq!(read_text(&path).unwrap().unwrap(), "{\"v\":2}");
-        assert_eq!(fs::read_to_string(&a).unwrap(), "{\"stale\":true}", "stale temp untouched");
+        assert_eq!(
+            fs::read_to_string(&a).unwrap(),
+            "{\"stale\":true}",
+            "stale temp untouched"
+        );
     }
 
     #[test]
@@ -998,8 +1075,10 @@ pub(crate) mod tests {
             source: DataRootSource::Env,
         })));
         let target = StorageTarget::Projects;
-        root.exclusive(|p| write_atomic(&target_path(p, &target)?, "{\"writer\":-1,\"i\":-1}", None))
-            .unwrap();
+        root.exclusive(|p| {
+            write_atomic(&target_path(p, &target)?, "{\"writer\":-1,\"i\":-1}", None)
+        })
+        .unwrap();
 
         let threads: Vec<_> = (0..8)
             .map(|writer| {
@@ -1011,7 +1090,11 @@ pub(crate) mod tests {
                             let path = target_path(p, &StorageTarget::Projects)?;
                             // read-compare-write under the lock never sees a CONFLICT
                             let current = read_text(&path)?.unwrap();
-                            write_atomic(&path, &content, Some(&WritePrecondition::Matches { content: current }))
+                            write_atomic(
+                                &path,
+                                &content,
+                                Some(&WritePrecondition::Matches { content: current }),
+                            )
                         })
                         .unwrap();
                     }
@@ -1024,7 +1107,9 @@ pub(crate) mod tests {
         let path = dir.0.join("projects.json");
         let final_text = read_text(&path).unwrap().unwrap();
         assert!(parses_as_json(final_text.as_bytes()));
-        assert!(parses_as_json(fs::read(with_suffix(&path, ".bak")).unwrap().as_slice()));
+        assert!(parses_as_json(
+            fs::read(with_suffix(&path, ".bak")).unwrap().as_slice()
+        ));
         assert!(no_temp_files(&dir.0));
     }
 
@@ -1062,7 +1147,9 @@ pub(crate) mod tests {
         assert_eq!(restore_backup(&path).unwrap_err().code, "BACKUP_INVALID");
         assert!(!path.exists());
         assert_eq!(
-            restore_backup(&dir.0.join("checkpoint.md")).unwrap_err().code,
+            restore_backup(&dir.0.join("checkpoint.md"))
+                .unwrap_err()
+                .code,
             "INVALID_TARGET"
         );
         // Setting the invalid backup aside leaves a clean state where writes are allowed.
@@ -1092,28 +1179,52 @@ pub(crate) mod tests {
         let projects = "{\"schemaVersion\":1,\"projects\":[{\"projectId\":\"project-alpha\"}]}";
         let session = "{\"schemaVersion\":1,\"reviewSessionId\":\"rv-20260101-alpha1\",\"reviewState\":\"SUSPENDED\"}";
         {
-            write(&target_path(&dir.0, &StorageTarget::Projects).unwrap(), projects).unwrap();
-            write(&target_path(&dir.0, &review(ID, "session.json")).unwrap(), session).unwrap();
-            write(&target_path(&dir.0, &review(ID, "checkpoint.md")).unwrap(), "stopped here").unwrap();
-            append_line(&target_path(&dir.0, &review(ID, "events.jsonl")).unwrap(), "{\"type\":\"suspended\"}").unwrap();
+            write(
+                &target_path(&dir.0, &StorageTarget::Projects).unwrap(),
+                projects,
+            )
+            .unwrap();
+            write(
+                &target_path(&dir.0, &review(ID, "session.json")).unwrap(),
+                session,
+            )
+            .unwrap();
+            write(
+                &target_path(&dir.0, &review(ID, "checkpoint.md")).unwrap(),
+                "stopped here",
+            )
+            .unwrap();
+            append_line(
+                &target_path(&dir.0, &review(ID, "events.jsonl")).unwrap(),
+                "{\"type\":\"suspended\"}",
+            )
+            .unwrap();
         }
         // "Restart": resolve everything again from disk only.
         let root = resolve_data_root(Some(dir.0.clone().into_os_string()), None, false).unwrap();
         assert_eq!(list_review_ids(&root.path).unwrap(), vec![ID.to_string()]);
         assert_eq!(
-            read_text(&target_path(&root.path, &StorageTarget::Projects).unwrap()).unwrap().unwrap(),
+            read_text(&target_path(&root.path, &StorageTarget::Projects).unwrap())
+                .unwrap()
+                .unwrap(),
             projects
         );
         assert_eq!(
-            read_text(&target_path(&root.path, &review(ID, "session.json")).unwrap()).unwrap().unwrap(),
+            read_text(&target_path(&root.path, &review(ID, "session.json")).unwrap())
+                .unwrap()
+                .unwrap(),
             session
         );
         assert_eq!(
-            read_text(&target_path(&root.path, &review(ID, "checkpoint.md")).unwrap()).unwrap().unwrap(),
+            read_text(&target_path(&root.path, &review(ID, "checkpoint.md")).unwrap())
+                .unwrap()
+                .unwrap(),
             "stopped here"
         );
         assert_eq!(
-            read_text(&target_path(&root.path, &review(ID, "events.jsonl")).unwrap()).unwrap().unwrap(),
+            read_text(&target_path(&root.path, &review(ID, "events.jsonl")).unwrap())
+                .unwrap()
+                .unwrap(),
             "{\"type\":\"suspended\"}\n"
         );
     }

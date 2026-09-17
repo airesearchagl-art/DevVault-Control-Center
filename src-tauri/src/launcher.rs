@@ -25,7 +25,9 @@ pub fn validate_external_url(raw: &str) -> Result<Url, CommandError> {
         return Err(url_rejected("only https URLs can be opened"));
     }
     if !url.username().is_empty() || url.password().is_some() {
-        return Err(url_rejected("URLs with embedded credentials are not allowed"));
+        return Err(url_rejected(
+            "URLs with embedded credentials are not allowed",
+        ));
     }
     if url.port().is_some() {
         return Err(url_rejected("URLs with an explicit port are not allowed"));
@@ -62,7 +64,10 @@ mod drive {
 
     /// `GetDriveTypeW` for a root such as `C:\`.
     pub fn drive_type(root: &str) -> u32 {
-        let wide: Vec<u16> = OsStr::new(root).encode_wide().chain(std::iter::once(0)).collect();
+        let wide: Vec<u16> = OsStr::new(root)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
         // SAFETY: `wide` is a NUL-terminated UTF-16 string that outlives the call; the API only reads it.
         unsafe { GetDriveTypeW(wide.as_ptr()) }
     }
@@ -94,11 +99,9 @@ pub fn local_final_target(canonical: &Path) -> Result<PathBuf, CommandError> {
     let letter = match canonical.components().next() {
         Some(Component::Prefix(prefix)) => match prefix.kind() {
             Prefix::VerbatimDisk(letter) | Prefix::Disk(letter) => letter,
-            Prefix::VerbatimUNC(..) | Prefix::UNC(..) => {
-                return Err(network_target(
-                    "the folder resolves to a network (UNC) location; network locations are not opened",
-                ))
-            }
+            Prefix::VerbatimUNC(..) | Prefix::UNC(..) => return Err(network_target(
+                "the folder resolves to a network (UNC) location; network locations are not opened",
+            )),
             _ => {
                 return Err(folder_rejected(
                     "FOLDER_REJECTED",
@@ -151,7 +154,12 @@ pub fn validate_project_folder(raw: &str) -> Result<PathBuf, CommandError> {
     ensure_local_drive(letter)?;
     match fs::metadata(path) {
         Ok(metadata) if metadata.is_dir() => {}
-        Ok(_) => return Err(folder_rejected("NOT_A_DIRECTORY", "path is not a directory")),
+        Ok(_) => {
+            return Err(folder_rejected(
+                "NOT_A_DIRECTORY",
+                "path is not a directory",
+            ))
+        }
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
             return Err(folder_rejected("FOLDER_NOT_FOUND", "folder does not exist"))
         }
@@ -212,7 +220,10 @@ mod tests {
             "  https://GitHub.com/example-org/project-alpha  ",
             "https://github.com:443/example-org/project-alpha",
         ] {
-            assert!(validate_external_url(good).is_ok(), "{good:?} should be accepted");
+            assert!(
+                validate_external_url(good).is_ok(),
+                "{good:?} should be accepted"
+            );
         }
     }
 
@@ -296,9 +307,17 @@ mod tests {
             .arg(&target)
             .output()
             .unwrap();
-        assert!(output.status.success(), "mklink /J failed: {}", String::from_utf8_lossy(&output.stdout));
+        assert!(
+            output.status.success(),
+            "mklink /J failed: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
         let resolved = validate_project_folder(&link.to_string_lossy()).unwrap();
-        eprintln!("F9-JUNCTION-LOCAL: EXECUTED link={} resolved={}", link.display(), resolved.display());
+        eprintln!(
+            "F9-JUNCTION-LOCAL: EXECUTED link={} resolved={}",
+            link.display(),
+            resolved.display()
+        );
         assert_eq!(resolved, plain(fs::canonicalize(&target).unwrap()));
     }
 
@@ -324,7 +343,9 @@ mod tests {
         let file = dir.0.join("not-a-folder.txt");
         fs::write(&file, "x").unwrap();
         assert_eq!(
-            validate_project_folder(&file.to_string_lossy()).unwrap_err().code,
+            validate_project_folder(&file.to_string_lossy())
+                .unwrap_err()
+                .code,
             "NOT_A_DIRECTORY"
         );
         assert_eq!(
@@ -373,9 +394,15 @@ mod tests {
             eprintln!("F9-SYMLINK-UNC: SKIPPED (cannot create directory symlink: {error})");
             return;
         }
-        assert!(link.is_dir(), "the local-looking link resolves to a network directory");
+        assert!(
+            link.is_dir(),
+            "the local-looking link resolves to a network directory"
+        );
         let result = validate_project_folder(&link.to_string_lossy());
-        eprintln!("F9-SYMLINK-UNC: EXECUTED link={} result={result:?}", link.display());
+        eprintln!(
+            "F9-SYMLINK-UNC: EXECUTED link={} result={result:?}",
+            link.display()
+        );
         assert_eq!(result.unwrap_err().code, "NETWORK_TARGET");
     }
 
@@ -414,8 +441,12 @@ mod tests {
     #[test]
     #[ignore = "requires a temporary network drive mapping (see doc comment)"]
     fn rejects_mapped_network_drive_directory() {
-        let raw = std::env::var("DVCC_TEST_MAPPED_DRIVE_DIR").expect("set DVCC_TEST_MAPPED_DRIVE_DIR");
-        assert!(Path::new(&raw).is_dir(), "{raw} must be an existing directory on a mapped network drive");
+        let raw =
+            std::env::var("DVCC_TEST_MAPPED_DRIVE_DIR").expect("set DVCC_TEST_MAPPED_DRIVE_DIR");
+        assert!(
+            Path::new(&raw).is_dir(),
+            "{raw} must be an existing directory on a mapped network drive"
+        );
         let result = validate_project_folder(&raw);
         eprintln!("F9-MAPPED-DRIVE: EXECUTED path={raw} result={result:?}");
         assert_eq!(result.unwrap_err().code, "NETWORK_TARGET");
