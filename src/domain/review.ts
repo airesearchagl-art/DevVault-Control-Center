@@ -12,10 +12,29 @@ export interface RoundRecord {
   expectedHead: string | null;
   reviewedHead: string | null;
   requestSavedAt: string | null;
+  /** Capture time of the canonical latest result `result-r<N>.md`. */
   resultCapturedAt: string | null;
   verdict: Verdict | null;
   verdictConfirmedAt: string | null;
   verdictNote: string | null;
+  /**
+   * Earlier results of this round kept when a result was replaced (F-6), oldest first:
+   * `result-r<N>-previous-<capture time in ms>.md`. `result-r<N>.md` is always the latest.
+   */
+  archivedResults: string[];
+}
+
+const ARCHIVED_RESULT_PATTERN = /^result-r([1-9]\d*)-previous-(\d{1,20})\.md$/;
+
+/** Deterministic archive name for the result captured at `capturedAt` in `round`. */
+export function archivedResultFileName(round: number, capturedAt: string): string {
+  return `result-r${round}-previous-${Date.parse(capturedAt)}.md`;
+}
+
+export function isArchivedResultFileName(name: unknown, round: number): name is string {
+  if (typeof name !== "string") return false;
+  const match = ARCHIVED_RESULT_PATTERN.exec(name);
+  return match !== null && Number(match[1]) === round;
 }
 
 export interface ReviewSession {
@@ -166,6 +185,7 @@ export function createReviewSession(
         verdict: null,
         verdictConfirmedAt: null,
         verdictNote: null,
+        archivedResults: [],
       },
     ],
     createdAt: now,

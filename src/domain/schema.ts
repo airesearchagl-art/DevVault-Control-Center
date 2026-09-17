@@ -1,6 +1,7 @@
 import { isReviewEventType, type ReviewEvent, type StateChange } from "./events";
 import type { Project } from "./project";
-import { SCHEMA_VERSION, type ReviewSession, type RoundRecord } from "./review";
+import { SCHEMA_VERSION, isArchivedResultFileName, type ReviewSession, type RoundRecord } from "./review";
+import { MAX_REVIEW_ROUNDS } from "./limits";
 import {
   isResourceState,
   isResumableState,
@@ -157,6 +158,11 @@ function parseRound(value: unknown, index: number): RoundRecord {
   if (value.round !== index + 1) fail(`${where}.round must be ${index + 1}`);
   const verdict = value.verdict;
   if (verdict !== null && !isVerdict(verdict)) fail(`${where}.verdict is not a known verdict`);
+  // `archivedResults` was added in the repair (F-6); files written before it omit the key.
+  const archived = value.archivedResults === undefined ? [] : value.archivedResults;
+  if (!Array.isArray(archived) || !archived.every((name) => isArchivedResultFileName(name, index + 1))) {
+    fail(`${where}.archivedResults must list result-r${index + 1}-previous-<ms>.md file names`);
+  }
   return {
     round: index + 1,
     expectedHead: nullableHead(value, "expectedHead", where),
@@ -166,6 +172,7 @@ function parseRound(value: unknown, index: number): RoundRecord {
     verdict,
     verdictConfirmedAt: nullableTimestamp(value, "verdictConfirmedAt", where),
     verdictNote: nullableStr(value, "verdictNote", where),
+    archivedResults: [...(archived as string[])],
   };
 }
 
@@ -199,6 +206,7 @@ export function parseSessionFile(text: string, expectedReviewId?: string): Parse
     }
 
     if (!Array.isArray(data.rounds) || data.rounds.length === 0) fail("session.rounds must be a non-empty array");
+    if (data.rounds.length > MAX_REVIEW_ROUNDS) fail(`session.rounds exceeds the round limit (${MAX_REVIEW_ROUNDS})`);
     const rounds = data.rounds.map(parseRound);
     if (data.reviewRound !== rounds.length) fail("session.reviewRound must equal the number of rounds");
 

@@ -91,7 +91,7 @@ describe("round trip across restart (AC-18)", () => {
     const request = unwrap(await saveReviewRequest(storage, projects[0], alpha, now()));
     alpha = request.session;
     alpha = await act(storage, alpha, { type: "startReview" });
-    alpha = unwrap(await captureReviewResult(storage, alpha, "Reviewed HEAD: x\n\n## 修正必須\n1. fix", HEAD, now())).session;
+    alpha = unwrap(await captureReviewResult(storage, alpha, "Reviewed HEAD: x\n\n## 修正必須\n1. fix", HEAD, false, now())).session;
     expect(alpha.reviewState).toBe("REVIEWING");
     alpha = await act(storage, alpha, { type: "confirmVerdict", verdict: "FIX_REQUIRED", note: null, confirmedByHuman: true });
     expect(alpha).toMatchObject({ reviewState: "FIX_REQUIRED", resourceState: "WARM" });
@@ -146,7 +146,7 @@ describe("round trip across restart (AC-18)", () => {
       else s = await act(storage, s, { type: "startNextRound", expectedHead: null });
       s = unwrap(await saveReviewRequest(storage, projects[0], s, now())).session;
       s = await act(storage, s, { type: "startReview" });
-      s = unwrap(await captureReviewResult(storage, s, `result of round ${round}`, null, now())).session;
+      s = unwrap(await captureReviewResult(storage, s, `result of round ${round}`, null, false, now())).session;
       s = await act(storage, s, { type: "confirmVerdict", verdict: "FIX_REQUIRED", note: null, confirmedByHuman: true });
     }
     expect(storage.files.get(`reviews/${ALPHA_ID}/result-r1.md`)).toBe("result of round 1\n");
@@ -444,6 +444,72 @@ describe("corrupt content vs ordinary I/O failure (F-8)", () => {
   });
 });
 
+describe("re-capture preserves the previous result (F-6)", () => {
+  async function capturedAlpha() {
+    await seed(storage);
+    let alpha = (await loadAll(storage)).reviews[0].session!;
+    alpha = await act(storage, alpha, { type: "markReady" });
+    alpha = await act(storage, alpha, { type: "startReview" });
+    alpha = unwrap(await captureReviewResult(storage, alpha, "first result", null, false, now())).session;
+    alpha = await act(storage, alpha, { type: "confirmVerdict", verdict: "FIX_REQUIRED", note: null, confirmedByHuman: true });
+    return alpha;
+  }
+  const resultPath = `reviews/${ALPHA_ID}/result-r1.md`;
+
+  it("refuses to replace a recorded result without explicit Human confirmation and changes nothing", async () => {
+    const alpha = await capturedAlpha();
+    const before = new Map(storage.files);
+    const attempt = await captureReviewResult(storage, alpha, "second result", null, false, now());
+    expect(attempt.ok).toBe(false);
+    expect(storage.files).toEqual(before);
+  });
+
+  it("keeps the previous text as result-r<N>-previous-<ms>.md and records it on the round", async () => {
+    const alpha = await capturedAlpha();
+    const firstCapturedAt = alpha.rounds[0].resultCapturedAt!;
+    const out = unwrap(await captureReviewResult(storage, alpha, "second result", HEAD, true, now()));
+    const archive = `result-r1-previous-${Date.parse(firstCapturedAt)}.md`;
+    expect(out.archivedAs).toBe(archive);
+    expect(storage.files.get(`reviews/${ALPHA_ID}/${archive}`)).toBe("first result\n");
+    expect(storage.files.get(resultPath)).toBe("second result\n");
+    expect(out.session.rounds[0]).toMatchObject({ archivedResults: [archive], verdict: "FIX_REQUIRED", reviewedHead: HEAD });
+    expect(out.session.reviewState).toBe("FIX_REQUIRED");
+
+    // A third capture keeps both earlier results.
+    const third = unwrap(await captureReviewResult(storage, out.session, "third result", null, true, now()));
+    const secondArchive = `result-r1-previous-${Date.parse(out.session.rounds[0].resultCapturedAt!)}.md`;
+    expect(third.session.rounds[0].archivedResults).toEqual([archive, secondArchive]);
+    expect(storage.files.get(`reviews/${ALPHA_ID}/${secondArchive}`)).toBe("second result\n");
+    expect((await loadReviewArtifacts(storage, third.session)).latestResult).toEqual({ round: 1, text: "third result\n" });
+
+    const reloaded = (await loadAll(storage)).reviews.find((r) => r.reviewId === ALPHA_ID)!.session!;
+    expect(reloaded).toEqual(third.session);
+    const events = parseEventsFile(storage.files.get(`reviews/${ALPHA_ID}/events.jsonl`)!).events;
+    expect(events.filter((e) => e.type === "result_captured").at(-1)?.note).toContain(secondArchive);
+  });
+
+  it("never overwrites an existing archive file or a result that changed on disk", async () => {
+    const alpha = await capturedAlpha();
+    const archive = `reviews/${ALPHA_ID}/result-r1-previous-${Date.parse(alpha.rounds[0].resultCapturedAt!)}.md`;
+    storage.files.set(archive, "someone else's archive");
+    await expect(captureReviewResult(storage, alpha, "second result", null, true, now())).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(storage.files.get(archive)).toBe("someone else's archive");
+    expect(storage.files.get(resultPath)).toBe("first result\n");
+  });
+
+  it("archives an orphan result file (written but never recorded) instead of overwriting it", async () => {
+    await seed(storage);
+    let alpha = (await loadAll(storage)).reviews[0].session!;
+    alpha = await act(storage, alpha, { type: "markReady" });
+    alpha = await act(storage, alpha, { type: "startReview" });
+    storage.files.set(resultPath, "orphan text from an interrupted capture\n");
+    const out = unwrap(await captureReviewResult(storage, alpha, "new result", null, false, now()));
+    expect(out.archivedAs).toMatch(/^result-r1-previous-\d+\.md$/);
+    expect(storage.files.get(`reviews/${ALPHA_ID}/${out.archivedAs}`)).toBe("orphan text from an interrupted capture\n");
+    expect(storage.files.get(resultPath)).toBe("new result\n");
+  });
+});
+
 describe("write failures", () => {
   it("does not report success when a write fails", async () => {
     const { projects, alpha } = await seed(storage);
@@ -475,11 +541,11 @@ describe("write failures", () => {
 
   it("validates before writing artifacts", async () => {
     const { alpha } = await seed(storage);
-    const notAllowed = await captureReviewResult(storage, alpha, "text", null, now());
+    const notAllowed = await captureReviewResult(storage, alpha, "text", null, false, now());
     expect(notAllowed.ok).toBe(false);
     const reviewing = await act(storage, await act(storage, alpha, { type: "markReady" }), { type: "startReview" });
-    expect((await captureReviewResult(storage, reviewing, "   ", null, now())).ok).toBe(false);
-    expect((await captureReviewResult(storage, reviewing, "text", "zzz", now())).ok).toBe(false);
+    expect((await captureReviewResult(storage, reviewing, "   ", null, false, now())).ok).toBe(false);
+    expect((await captureReviewResult(storage, reviewing, "text", "zzz", false, now())).ok).toBe(false);
     expect(storage.files.has(`reviews/${ALPHA_ID}/result-r1.md`)).toBe(false);
   });
 });

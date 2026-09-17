@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { excerpt, formatTimestamp } from "../../app/format";
 import { ResourceStateBadge, ReviewStateBadge } from "../../components/StateBadge";
+import { MAX_REVIEW_ROUNDS } from "../../domain/limits";
 import type { Project } from "../../domain/project";
 import { currentRound, latestCapturedRound, type ReviewSession } from "../../domain/review";
 import { REVIEW_STATE_LABELS, RESOURCE_STATE_HINTS, RESOURCE_STATES, type ResourceState } from "../../domain/states";
@@ -144,7 +145,14 @@ export function ReviewDetail({
               </>
             )}
             {(state === "FIX_REQUIRED" || state === "REVIEW_PASS") && (
-              <ActionButton label={`Start R${session.reviewRound + 1}`} testId="action-next-round" primary enabled={can("startNextRound")} onClick={() => onOpenDialog("nextRound")} />
+              <ActionButton
+                label={`Start R${session.reviewRound + 1}`}
+                testId="action-next-round"
+                primary
+                enabled={can("startNextRound")}
+                title={session.reviewRound >= MAX_REVIEW_ROUNDS ? `Round limit R${MAX_REVIEW_ROUNDS} reached` : undefined}
+                onClick={() => onOpenDialog("nextRound")}
+              />
             )}
             {(state === "FIX_REQUIRED" || state === "REVIEW_PASS" || state === "BLOCKED") && (
               <ActionButton label="Re-capture result" testId="action-capture" enabled={can("captureResult")} onClick={() => onOpenDialog("capture")} />
@@ -350,6 +358,11 @@ export function ReviewDetail({
           </>
         )}
         {captured?.verdictNote && <p className="hint">Verdict note: {captured.verdictNote}</p>}
+        {captured && captured.archivedResults.length > 0 && (
+          <p className="hint" data-testid="detail-archived-results">
+            Earlier results of R{captured.round} kept: {captured.archivedResults.join(", ")}
+          </p>
+        )}
       </section>
 
       <section className="card">

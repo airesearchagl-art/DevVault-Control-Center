@@ -49,7 +49,9 @@ function actionFor(row: ContractRow, session: ReviewSession): ReviewAction {
     case "startNextRound":
       return { type: "startNextRound", expectedHead: HEAD };
     case "captureResult":
-      return { type: "captureResult", reviewedHead: HEAD };
+      // sessionIn() has a recorded result captured at T0: replacing it needs confirmation and the
+      // deterministic archive name result-r1-previous-<T0 ms>.md (F-6).
+      return { type: "captureResult", reviewedHead: HEAD, replaceConfirmedByHuman: true, archivedResultFile: "result-r1-previous-1767225600000.md" };
     case "setResource":
       return { type: "setResource", resourceState: session.resourceState === "HOT" ? "COLD" : "HOT" };
     case "setNextAction":
@@ -178,6 +180,41 @@ describe("resource independence (AC-04)", () => {
   }
 });
 
+describe("re-capture contract (F-6)", () => {
+  it("first capture needs no confirmation; replacing a recorded result needs explicit Human confirmation", () => {
+    const first = applyReviewAction(sessionIn("REVIEWING", "WARM", false), { type: "captureResult", reviewedHead: null }, T1);
+    expect(first.ok).toBe(true);
+    const recorded = sessionIn("FIX_REQUIRED");
+    expect(applyReviewAction(recorded, { type: "captureResult", reviewedHead: null, archivedResultFile: "result-r1-previous-1767225600000.md" }, T1).ok).toBe(false);
+    const unconfirmed = { type: "captureResult", reviewedHead: null, replaceConfirmedByHuman: false, archivedResultFile: "result-r1-previous-1767225600000.md" };
+    expect(applyReviewAction(recorded, unconfirmed as unknown as ReviewAction, T1).ok).toBe(false);
+  });
+
+  it("records the archive of the replaced result and keeps the verdict", () => {
+    const recorded = { ...sessionIn("FIX_REQUIRED"), rounds: [{ ...sessionIn("FIX_REQUIRED").rounds[0], verdict: "FIX_REQUIRED" as const }] };
+    const result = applyReviewAction(
+      recorded,
+      { type: "captureResult", reviewedHead: null, replaceConfirmedByHuman: true, archivedResultFile: "result-r1-previous-1767225600000.md" },
+      T1,
+    );
+    if (!result.ok) throw new Error(result.error);
+    expect(currentRound(result.value.session)).toMatchObject({
+      resultCapturedAt: T1,
+      verdict: "FIX_REQUIRED",
+      archivedResults: ["result-r1-previous-1767225600000.md"],
+    });
+    expect(result.value.session.reviewState).toBe("FIX_REQUIRED");
+    expect(result.value.event.note).toContain("result-r1-previous-1767225600000.md");
+  });
+
+  it("rejects an archive name that does not belong to the replaced result", () => {
+    const recorded = sessionIn("REVIEWING");
+    for (const archivedResultFile of ["result-r1-previous-1.md", "result-r2-previous-1767225600000.md", "result-r1.md", "../x.md"]) {
+      expect(applyReviewAction(recorded, { type: "captureResult", reviewedHead: null, replaceConfirmedByHuman: true, archivedResultFile }, T1).ok).toBe(false);
+    }
+  });
+});
+
 describe("next round contract", () => {
   it("adds an empty round, keeps previous rounds and becomes READY_FOR_REVIEW", () => {
     for (const state of ["FIX_REQUIRED", "REVIEW_PASS"] as const) {
@@ -196,6 +233,7 @@ describe("next round contract", () => {
         verdict: null,
         verdictConfirmedAt: null,
         verdictNote: null,
+        archivedResults: [],
       });
       expect(next.reviewState).toBe("READY_FOR_REVIEW");
     }

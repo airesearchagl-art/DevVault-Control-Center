@@ -1,6 +1,6 @@
 import { createProject, updateProject, type Project, type ProjectFormInput } from "../domain/project";
 import { buildReviewRequest } from "../domain/prompt";
-import { createReviewSession, currentRound, type ReviewFormInput, type ReviewSession } from "../domain/review";
+import { archivedResultFileName, createReviewSession, currentRound, type ReviewFormInput, type ReviewSession } from "../domain/review";
 import { err, ok, type FieldErrors, type Result } from "../domain/result";
 import { applyReviewAction, guardAction, type ReviewAction } from "../domain/transitions";
 import { TEXT_MAX } from "../domain/project";
@@ -13,7 +13,7 @@ import {
   writeSessionAndEvent,
   type FileHealth,
 } from "./persistence";
-import type { StorageBackend } from "./storage";
+import { resultFileName, reviewTarget, type StorageBackend } from "./storage";
 
 /**
  * Use cases combining pure domain rules with persistence. The in-memory state is only
@@ -113,24 +113,57 @@ export async function saveReviewRequest(
   return saved.ok ? ok({ ...saved.value, text }) : saved;
 }
 
+function withTrailingNewline(text: string): string {
+  return text.endsWith("\n") ? text : `${text}\n`;
+}
+
 /**
- * Saves the Human-pasted result as `result-r<N>.md` (AC-13). Does not change the Review State;
- * a verdict needs a separate Human confirmation (AC-14).
+ * Saves the Human-pasted result as `result-r<N>.md` (AC-13), the canonical latest result of the
+ * round. Does not change the Review State; a verdict needs a separate Human confirmation (AC-14).
+ *
+ * F-6: an existing result is never silently lost. Replacing a recorded result requires
+ * `replaceConfirmed` (explicit Human confirmation); the previous text is first written to
+ * `result-r<N>-previous-<ms>.md` (write-if-absent), then the new result replaces the old one only
+ * if it is still exactly the text that was archived, then the session records the archive.
  */
 export async function captureReviewResult(
   backend: StorageBackend,
   session: ReviewSession,
   resultText: string,
   reviewedHead: string | null,
+  replaceConfirmed: boolean,
   now: string,
-): Promise<Result<SaveOutcome>> {
+): Promise<Result<SaveOutcome & { archivedAs: string | null }>> {
   const guard = guardAction(session, "captureResult");
   if (guard !== null) return err(guard);
   if (resultText.trim() === "") return err("Paste the review result before saving");
   if (resultText.length > TEXT_MAX * 10) return err("Review result is too long");
-  // Validate the transition payload before writing the artifact.
-  const preview = applyReviewAction(session, { type: "captureResult", reviewedHead }, now);
+
+  const round = currentRound(session);
+  const target = reviewTarget(session.reviewSessionId, resultFileName(round.round));
+  const previousText = await backend.read(target);
+  const archivedAs =
+    previousText === null
+      ? null
+      : archivedResultFileName(round.round, round.resultCapturedAt ?? now);
+  const action: ReviewAction = {
+    type: "captureResult",
+    reviewedHead,
+    archivedResultFile: archivedAs,
+    ...(replaceConfirmed ? { replaceConfirmedByHuman: true as const } : {}),
+  };
+  // Validate everything (confirmation, archive name, HEAD) before any write.
+  const preview = applyReviewAction(session, action, now);
   if (!preview.ok) return preview;
-  await writeRoundArtifact(backend, session.reviewSessionId, "result", currentRound(session).round, resultText);
-  return performReviewAction(backend, session, { type: "captureResult", reviewedHead }, now);
+
+  if (previousText !== null && archivedAs !== null) {
+    await backend.write(reviewTarget(session.reviewSessionId, archivedAs), previousText, { kind: "absent" });
+  }
+  await backend.write(
+    target,
+    withTrailingNewline(resultText),
+    previousText === null ? { kind: "absent" } : { kind: "matches", content: previousText },
+  );
+  const saved = await performReviewAction(backend, session, action, now);
+  return saved.ok ? ok({ ...saved.value, archivedAs }) : saved;
 }

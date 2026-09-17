@@ -167,11 +167,16 @@ export class ReviewHub {
     });
   }
 
-  captureResult(reviewId: string, text: string, reviewedHead: string | null): Promise<Result<SaveOutcome>> {
+  captureResult(
+    reviewId: string,
+    text: string,
+    reviewedHead: string | null,
+    replaceConfirmed: boolean,
+  ): Promise<Result<SaveOutcome & { archivedAs: string | null }>> {
     return this.run(async () => {
       const session = this.session(reviewId);
       if (!session) return err(`Review ${reviewId} is not available`);
-      const result = await captureReviewResult(this.storage, session, text, reviewedHead, this.now());
+      const result = await captureReviewResult(this.storage, session, text, reviewedHead, replaceConfirmed, this.now());
       if (result.ok) {
         this.storeSession(result.value.session);
         this.commit();

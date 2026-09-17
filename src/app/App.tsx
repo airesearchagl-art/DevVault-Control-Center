@@ -223,13 +223,19 @@ export default function App() {
     }
   };
 
-  const submitCapture = async (session: ReviewSession, text: string, reviewedHead: string | null): Promise<string | null> => {
+  const submitCapture = async (
+    session: ReviewSession,
+    text: string,
+    reviewedHead: string | null,
+    replaceConfirmed: boolean,
+  ): Promise<string | null> => {
     try {
-      const result = await track(hub.captureResult(session.reviewSessionId, text, reviewedHead));
+      const result = await track(hub.captureResult(session.reviewSessionId, text, reviewedHead, replaceConfirmed));
       if (!result.ok) return result.error;
       warnIfNeeded(result.value);
       const saved = result.value.session;
-      notify("info", `Result saved as result-r${saved.reviewRound}.md. The review state is unchanged until you confirm a verdict.`);
+      const kept = result.value.archivedAs ? ` The previous result was kept as ${result.value.archivedAs}.` : "";
+      notify("info", `Result saved as result-r${saved.reviewRound}.md.${kept} The review state is unchanged until you confirm a verdict.`);
       setDialog(saved.reviewState === "REVIEWING" ? { kind: "verdict", reviewId: saved.reviewSessionId } : null);
       return null;
     } catch (error) {
@@ -528,7 +534,7 @@ export default function App() {
       {dialog?.kind === "capture" && dialogSession && (
         <CaptureResultDialog
           session={dialogSession}
-          onSubmit={(text, reviewedHead) => submitCapture(dialogSession, text, reviewedHead)}
+          onSubmit={(text, reviewedHead, replaceConfirmed) => submitCapture(dialogSession, text, reviewedHead, replaceConfirmed)}
           onCancel={closeDialog}
         />
       )}

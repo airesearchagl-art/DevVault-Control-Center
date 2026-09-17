@@ -1,9 +1,17 @@
 import type { ReviewEvent, ReviewEventType, StateChange } from "./events";
-import { currentRound, type ReviewMetadata, type ReviewSession, type RoundRecord } from "./review";
+import {
+  archivedResultFileName,
+  currentRound,
+  isArchivedResultFileName,
+  type ReviewMetadata,
+  type ReviewSession,
+  type RoundRecord,
+} from "./review";
 import { err, ok, type Result } from "./result";
 import { isResumableState, type ResourceState, type ReviewState } from "./states";
 import { isValidHead } from "./validation";
 import { TEXT_MAX } from "./project";
+import { MAX_REVIEW_ROUNDS } from "./limits";
 
 /**
  * Review State transition contract (AC-05). Pure functions only.
@@ -17,7 +25,14 @@ export type ReviewAction =
   | { type: "startReview" }
   | { type: "cancelReview" }
   | { type: "recordRequestSaved" }
-  | { type: "captureResult"; reviewedHead: string | null }
+  | {
+      type: "captureResult";
+      reviewedHead: string | null;
+      /** Required (literal true) when the round already has a saved result that will be replaced (F-6). */
+      replaceConfirmedByHuman?: true;
+      /** Archive file holding the replaced result; must be the deterministic name for that result. */
+      archivedResultFile?: string | null;
+    }
   | { type: "confirmVerdict"; verdict: "FIX_REQUIRED" | "REVIEW_PASS"; note: string | null; confirmedByHuman: true }
   | { type: "block"; reason: string; confirmedByHuman: true }
   | { type: "suspend"; resourceState: "WARM" | "COLD"; checkpoint: string }
@@ -65,6 +80,9 @@ export function guardAction(session: ReviewSession, type: ReviewActionType): str
   }
   if (type === "resume" && session.reviewState !== "SUSPENDED" && session.resourceState === "HOT") {
     return "The review is already active (not suspended and HOT)";
+  }
+  if (type === "startNextRound" && session.reviewRound >= MAX_REVIEW_ROUNDS) {
+    return `The round limit (R${MAX_REVIEW_ROUNDS}) has been reached`;
   }
   return null;
 }
@@ -137,6 +155,7 @@ export function applyReviewAction(session: ReviewSession, action: ReviewAction, 
         verdict: null,
         verdictConfirmedAt: null,
         verdictNote: null,
+        archivedResults: [],
       };
       return ok(
         build(
@@ -168,16 +187,34 @@ export function applyReviewAction(session: ReviewSession, action: ReviewAction, 
 
     case "captureResult": {
       if (action.reviewedHead !== null && !isValidHead(action.reviewedHead)) return err("Reviewed HEAD is not a valid SHA");
+      const round = currentRound(session);
+      const archived = action.archivedResultFile ?? null;
+      if (round.resultCapturedAt !== null && action.replaceConfirmedByHuman !== true) {
+        return err(`R${round.round} already has a saved result; replacing it requires explicit Human confirmation`);
+      }
+      if (archived !== null) {
+        if (!isArchivedResultFileName(archived, round.round)) return err("Archive file name does not match this round");
+        // A committed result is archived under its own capture time; an orphan result file
+        // (written but never recorded, e.g. after a crash) may use any valid archive name.
+        if (round.resultCapturedAt !== null && archived !== archivedResultFileName(round.round, round.resultCapturedAt)) {
+          return err("Archive file name does not match the replaced result");
+        }
+        if (round.archivedResults.includes(archived)) return err("Archive file name is already recorded");
+      }
       return ok(
         build(
           session,
           {
             ...session,
-            rounds: withCurrentRound(session, { resultCapturedAt: now, reviewedHead: action.reviewedHead }),
+            rounds: withCurrentRound(session, {
+              resultCapturedAt: now,
+              reviewedHead: action.reviewedHead,
+              archivedResults: archived === null ? round.archivedResults : [...round.archivedResults, archived],
+            }),
           },
           "result_captured",
           now,
-          `result-r${session.reviewRound}.md`,
+          archived === null ? `result-r${session.reviewRound}.md` : `result-r${session.reviewRound}.md (previous result kept as ${archived})`,
         ),
       );
     }

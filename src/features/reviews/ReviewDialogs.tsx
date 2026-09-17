@@ -80,12 +80,14 @@ export function CaptureResultDialog({
   onCancel,
 }: {
   session: ReviewSession;
-  onSubmit: (text: string, reviewedHead: string | null) => Promise<string | null>;
+  onSubmit: (text: string, reviewedHead: string | null, replaceConfirmed: boolean) => Promise<string | null>;
   onCancel: () => void;
 }) {
   const round = currentRound(session);
+  const replacing = round.resultCapturedAt !== null;
   const [text, setText] = useState("");
   const [head, setHead] = useState(round.reviewedHead ?? "");
+  const [replaceConfirmed, setReplaceConfirmed] = useState(false);
   const { error, setError, saving, run } = useSubmit();
 
   const submit = () =>
@@ -96,7 +98,7 @@ export function CaptureResultDialog({
         if (!normalized.ok) return normalized.error;
         reviewedHead = normalized.value;
       }
-      return onSubmit(text, reviewedHead);
+      return onSubmit(text, reviewedHead, replaceConfirmed);
     });
 
   return (
@@ -105,7 +107,15 @@ export function CaptureResultDialog({
         Copy the reviewer&apos;s answer in ChatGPT, then paste it below with <kbd>Ctrl</kbd>+<kbd>V</kbd>. It is saved as{" "}
         <code>result-r{session.reviewRound}.md</code>. The review state does not change until you confirm a verdict.
       </p>
-      {round.resultCapturedAt !== null && <p className="warning-text">A result is already saved for R{session.reviewRound}; saving replaces it.</p>}
+      {replacing && (
+        <label className="checkbox replace-confirm">
+          <input type="checkbox" checked={replaceConfirmed} onChange={(e) => setReplaceConfirmed(e.target.checked)} data-testid="capture-replace-confirm" />
+          <span>
+            Replace the saved result of R{session.reviewRound}. The current text is kept as{" "}
+            <code>result-r{session.reviewRound}-previous-….md</code>; <code>result-r{session.reviewRound}.md</code> becomes the new latest result.
+          </span>
+        </label>
+      )}
       <Field label="Review result" htmlFor="capture-text">
         <textarea
           id="capture-text"
@@ -128,8 +138,14 @@ export function CaptureResultDialog({
         <button type="button" onClick={onCancel}>
           Cancel
         </button>
-        <button type="button" className="primary" disabled={saving || text.trim() === ""} onClick={submit} data-testid="capture-submit">
-          Save result
+        <button
+          type="button"
+          className="primary"
+          disabled={saving || text.trim() === "" || (replacing && !replaceConfirmed)}
+          onClick={submit}
+          data-testid="capture-submit"
+        >
+          {replacing ? "Replace result" : "Save result"}
         </button>
       </div>
     </Dialog>

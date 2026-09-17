@@ -150,23 +150,58 @@ pub fn is_valid_review_id(id: &str) -> bool {
             .all(|c| c.is_ascii_digit() || c.is_ascii_lowercase())
 }
 
+/// Shared limits contract (F-11): the same `contract/limits.json` the TypeScript domain uses.
+const LIMITS_JSON: &str = include_str!("../../contract/limits.json");
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Limits {
+    max_review_rounds: u32,
+}
+
+pub fn max_review_rounds() -> u32 {
+    static LIMITS: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+    *LIMITS.get_or_init(|| {
+        serde_json::from_str::<Limits>(LIMITS_JSON)
+            .map(|limits| limits.max_review_rounds)
+            .expect("contract/limits.json must define maxReviewRounds")
+    })
+}
+
+/// A round number `1..=max_review_rounds()` written without leading zeros.
+fn parse_round(digits: &str) -> Option<u32> {
+    if digits.is_empty() || digits.len() > 10 || digits.starts_with('0') || !digits.bytes().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    digits.parse::<u32>().ok().filter(|round| *round <= max_review_rounds())
+}
+
 fn is_round_artifact(file: &str, prefix: &str) -> bool {
-    let Some(number) = file
-        .strip_prefix(prefix)
+    file.strip_prefix(prefix)
         .and_then(|rest| rest.strip_suffix(".md"))
-    else {
+        .and_then(parse_round)
+        .is_some()
+}
+
+/// `result-r<N>-previous-<ms>.md`: a result replaced in the same round (F-6).
+fn is_archived_result(file: &str) -> bool {
+    let Some(rest) = file.strip_prefix("result-r").and_then(|rest| rest.strip_suffix(".md")) else {
         return false;
     };
-    !number.is_empty()
-        && number.len() <= 3
-        && !number.starts_with('0')
-        && number.bytes().all(|c| c.is_ascii_digit())
+    let Some((round, millis)) = rest.split_once("-previous-") else {
+        return false;
+    };
+    parse_round(round).is_some()
+        && !millis.is_empty()
+        && millis.len() <= 20
+        && millis.bytes().all(|c| c.is_ascii_digit())
 }
 
 pub fn is_allowed_review_file(file: &str) -> bool {
     matches!(file, SESSION_FILE | CHECKPOINT_FILE | EVENTS_FILE)
         || is_round_artifact(file, "request-r")
         || is_round_artifact(file, "result-r")
+        || is_archived_result(file)
 }
 
 pub fn target_path(root: &Path, target: &StorageTarget) -> Result<PathBuf, CommandError> {
@@ -702,13 +737,21 @@ pub(crate) mod tests {
 
     #[test]
     fn review_file_validation() {
+        let max = max_review_rounds();
+        let at_limit_request = format!("request-r{max}.md");
+        let at_limit_result = format!("result-r{max}.md");
+        let over_limit_result = format!("result-r{}.md", max + 1);
+        let over_limit_archive = format!("result-r{}-previous-1.md", max + 1);
         for good in [
             "session.json",
             "checkpoint.md",
             "events.jsonl",
             "request-r1.md",
             "result-r12.md",
-            "result-r999.md",
+            at_limit_request.as_str(),
+            at_limit_result.as_str(),
+            "result-r1-previous-1767225600000.md",
+            "result-r12-previous-0.md",
         ] {
             assert!(is_allowed_review_file(good), "{good:?} should be allowed");
         }
@@ -718,15 +761,29 @@ pub(crate) mod tests {
             "result.md",
             "request-r0.md",
             "request-r01.md",
-            "result-r1000.md",
+            over_limit_result.as_str(),
+            over_limit_archive.as_str(),
             "result-r1.txt",
             "../session.json",
             "session.json.bak",
+            "Session.json",
             "notes.md",
             "result-r1.md/../../x",
+            "result-r1-previous-.md",
+            "result-r1-previous-12a.md",
+            "request-r1-previous-1.md",
+            "result-r1-previous-1.md.bak",
+            "result-r1-previous-123456789012345678901.md",
         ] {
             assert!(!is_allowed_review_file(bad), "{bad:?} should be rejected");
         }
+    }
+
+    #[test]
+    fn round_limit_comes_from_the_shared_contract_file() {
+        let contract: serde_json::Value = serde_json::from_str(LIMITS_JSON).unwrap();
+        assert_eq!(contract["maxReviewRounds"].as_u64().unwrap(), u64::from(max_review_rounds()));
+        assert!(max_review_rounds() >= 1);
     }
 
     #[test]

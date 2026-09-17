@@ -1,7 +1,16 @@
+import { MAX_REVIEW_ROUNDS } from "../domain/limits";
 import { StorageError, type StorageBackend, type StorageInfo, type StorageTarget, type WritePrecondition } from "../services/storage";
 
 const REVIEW_ID = /^rv-\d{8}-[a-z0-9]{6}$/;
-const REVIEW_FILE = /^(session\.json|checkpoint\.md|events\.jsonl|(request|result)-r[1-9]\d{0,2}\.md)$/;
+
+/** Mirrors `is_allowed_review_file` in Rust, using the shared round limit. */
+export function isAllowedReviewFile(file: string): boolean {
+  if (file === "session.json" || file === "checkpoint.md" || file === "events.jsonl") return true;
+  const match = /^(request|result)-r([1-9]\d{0,9})(-previous-\d{1,20})?\.md$/.exec(file);
+  if (!match) return false;
+  if (match[3] !== undefined && match[1] !== "result") return false;
+  return Number(match[2]) <= MAX_REVIEW_ROUNDS;
+}
 
 function isJson(text: string): boolean {
   try {
@@ -28,7 +37,7 @@ export class MemoryStorage implements StorageBackend {
 
   static pathOf(target: StorageTarget): string {
     if (target.kind === "projects") return "projects.json";
-    if (!REVIEW_ID.test(target.reviewId) || !REVIEW_FILE.test(target.file)) {
+    if (!REVIEW_ID.test(target.reviewId) || !isAllowedReviewFile(target.file)) {
       throw new StorageError("INVALID_TARGET", `invalid target ${target.reviewId}/${target.file}`);
     }
     return `reviews/${target.reviewId}/${target.file}`;
