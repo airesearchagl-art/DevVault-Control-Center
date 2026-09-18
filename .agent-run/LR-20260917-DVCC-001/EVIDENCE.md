@@ -369,3 +369,36 @@ Operator-disturbance measure: the race harness now starts every test process on 
 | Strategy 3 staggered suites A (2 processes, 40 rounds) and B (3 processes, 40 rounds) | **NOT STARTED** — available memory fell to 9.89 GiB (below the 12 GiB operator threshold) while the operator's own applications (≈50 unrelated WebView2 processes ≈ 9.7 GB, Notion, Chrome, VS Code) held the memory. Per the resume authorization no operator process was closed and no heavy suite was started; run SUSPENDED with a checkpoint instead. |
 
 Round 2 comparison build: **NOT REQUIRED** (Human decision, resume authorization §7) — optional verification removed from scope, not a waiver of a Required Check.
+
+### Resume #2 — Strategy 3 batched race verification (isolated desktop) — 2026-09-18
+
+Resume gate re-verified fresh: repository, branch `feat/review-hub-v0.1`, base `bbffea1177b80dfe46a0f6887a9fc05dd5e4f05d`, HEAD = `origin/feat/review-hub-v0.1` = `12a678a3709875f7ce5694f5e49bfbf3aafd0916`, clean working tree, previous checkpoint `793fa3e93a81baaf670a707874ca8b92a4bb45c0` resolved locally, `RUN_MANIFEST` active binding revision 2, digests rev 2 `624ef4d3…567b` and rev 1 `4200048d…1a24b` (both match), RUN_STATE / QUALITY_DEBT (12 items, 8 open) / explicit unverified items reviewed. Memory gate: 15.71 GiB available (hard minimum 12 GiB met).
+
+Execution: `diag/race-desktop.ps1` (scratch), all test processes started on an isolated Windows desktop; 5 rounds per batch, resource gate checked between batches; nothing else heavy running in parallel. Per-round pass criteria: exactly one started process alive, every other exit code 0 (from the `CreateProcessW` handle), exactly one DVCC process on the machine, `.dvcc.lock` held, the survivor owning a visible window on the isolated desktop, no data file changed, and no round hitting the wait deadline.
+
+| Batch | Stagger delays (ms) | Rounds | Result | Memory before → after (GiB) |
+|---|---|---|---|---|
+| A-01 | 0, 0, 10, 20, 50 | 5 | PASS | 16.41 → 16.72 |
+| A-02 | 100, 200, 300, 500, 1000 | 5 | PASS | 16.58 → 16.97 |
+| A-03 | 0, 10, 50, 200, 500 | 5 | PASS | 17.11 → 16.98 |
+| A-04 | 0, 20, 100, 300, 1000 | 5 | PASS | 17.07 → 17.04 |
+| A-05 | 0, 0, 10, 20, 50 | 5 | PASS | 17.04 → 17.29 |
+| A-06 | 100, 200, 300, 500, 1000 | 5 | PASS | 17.30 → 17.19 |
+| A-07 | 0, 10, 50, 200, 500 | 5 | PASS | 17.18 → 16.93 |
+| A-08 | 0, 20, 100, 300, 1000 | 5 | PASS | 16.89 → 17.27 |
+| **Suite A total (2 processes)** | — | **40** | **40 / 40 PASS** | stable 16.4–17.3 |
+| B-01 | 0, 0, 10, 20, 50 | 5 | PASS | 17.26 → 17.07 |
+| B-02 | 100, 200, 300, 500, 1000 | 5 | PASS | 17.00 → 16.93 |
+| B-03 | 0, 10, 50, 200, 500 | 5 | PASS | 16.94 → 16.86 |
+| B-04 | 0, 20, 100, 300, 1000 | 5 | PASS | 16.91 → 16.89 |
+| B-05 | 0, 0, 10, 20, 50 | 5 | PASS | 16.85 → 17.05 |
+| B-06 | 100, 200, 300, 500, 1000 | 5 | PASS | 17.07 → 17.00 |
+| B-07 | 0, 10, 50, 200, 500 | 5 | PASS | 17.01 → 16.99 |
+| B-08 | 0, 20, 100, 300, 1000 | 5 | PASS | 16.98 → 16.76 |
+| **Suite B total (3 processes)** | — | **40** | **40 / 40 PASS** | stable 16.5–17.3 |
+
+- Product-side single-instance failures: **0**. Timeouts: **0** (round duration 3.3–5.4 s; wait deadline 30 s never reached). Harness failures during the suites: **0** (the one harness measurement issue was found and fixed during calibration, before the suites).
+- Cleanup after every batch: test-spawned DVCC processes 0, DVCC WebView2 children 0, isolated desktop handle released by the harness; only the harness's own PIDs were ever closed (WM_CLOSE to the survivor's window on the isolated desktop).
+- Operator disturbance: no window on the operator desktop, no foreground focus change, no browser / Explorer / IDE / ChatGPT opened, no unrelated process touched.
+
+Strategy 3 race totals across the campaign: 120 rounds (2 processes, back to back, committed script) + 14 (3 processes, staggered, committed script) + 5 (calibration, isolated desktop) + 40 (Suite A) + 40 (Suite B) = **219 rounds, 0 product failures**.

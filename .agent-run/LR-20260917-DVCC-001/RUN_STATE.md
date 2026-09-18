@@ -3,13 +3,13 @@
 - Run ID: LR-20260917-DVCC-001
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: SUSPENDED (#2) — resumed under the Human "Memory-Aware Final Convergence" authorization; resume contract verified and the isolated-desktop race harness calibrated (5 / 5 PASS). Available memory then fell to 9.89 GiB, below the 12 GiB operator threshold, so the remaining staggered race suites were not started and no operator process was closed. Data integrity hard check still pending; no Draft PR
+- Current state: RUNNING — Strategy 3 race verification COMPLETE (Suite A 40 / 40, Suite B 40 / 40, 219 rounds in total, 0 product failures, 0 timeouts). Next: Independent Verification #3, then implementation freeze, full diff review, Required and Hard Checks, Draft PR decision. Data integrity hard check still pending independent re-verification; no Draft PR yet
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/review-hub-v0.1
 - Base SHA: bbffea1177b80dfe46a0f6887a9fc05dd5e4f05d
-- Current head: suspension #2 checkpoint commit (parent 793fa3e93a81baaf670a707874ca8b92a4bb45c0)
-- Current wave: R9 Full Convergence re-run (suspended before the staggered race suites)
-- Last successful checkpoint: suspension #2 checkpoint (commit "chore(run): suspend again before the staggered race suites (memory below threshold)")
+- Current head: race checkpoint commit (parent 12a678a3709875f7ce5694f5e49bfbf3aafd0916)
+- Current wave: R9 Full Convergence re-run — race verification done, Independent Verification #3 next
+- Last successful checkpoint: race checkpoint (commit "chore(run): strategy 3 race verification complete (Suite A 40/40, Suite B 40/40)")
 - Task Packet ID: LRP-20260917-DVCC-001
 - Task Packet revision: 2
 - Task Packet snapshot path: .agent-run/LR-20260917-DVCC-001/TASK_PACKET_SNAPSHOT.rev2.md
@@ -29,7 +29,7 @@ Independent Verification #2 reported AC-01..AC-20 PASS on `8231e58`. Round 2 cha
 - R-F1, R-F2, R-F4, R-F5, R-F8, R-F11: RESOLVED (Verification #2)
 - R-F6: RESOLVED; residual E-2 repaired in round 2 (tests)
 - R-F9: RESOLVED (Verification #2); E-5 hardening in round 2 (tests)
-- R-F3: PARTIAL in Verification #2 (E-1) → round 2 failed at runtime (1 / 20) → strategy 3 of 3 (start-up lock); unit tests + races 60 / 60 and 60 / 60 (back to back, 2 processes), 14 / 14 (staggered, 3 processes) and 5 / 5 (isolated desktop, staggered, 2 processes) PASS so far; staggered suites A / B and Verification #3 pending
+- R-F3: PARTIAL in Verification #2 (E-1) → round 2 failed at runtime (1 / 20) → strategy 3 of 3 (start-up lock); race verification complete: 219 rounds (120 back-to-back 2-process, 14 staggered 3-process, 5 calibration, Suite A 40, Suite B 40), 0 product failures, 0 timeouts; Independent Verification #3 pending
 
 ## Hard Checks (implementer view)
 
@@ -37,7 +37,7 @@ Independent Verification #2 reported AC-01..AC-20 PASS on `8231e58`. Round 2 cha
 - Privacy: PASS (E-7 reworded); hygiene re-scan at `0b884f6` PASS
 - Authentication: no auth surface
 - Permission: capability unchanged (core:default + clipboard write); no new plugin or permission in round 2
-- Data integrity: not yet PASS — strategy 3 evidence PASS so far; remaining staggered race rounds + Verification #3 pending
+- Data integrity: implementer evidence PASS (race verification complete, storage tests, E2E); independent re-verification (#3) pending before the hard check is recorded PASS
 - Irreversible-data safety: PASS in Verification #2; E-2 / E-3 repaired, runtime E2E PASS; independent re-verification pending
 
 ## Completed
@@ -54,14 +54,14 @@ Resolved: QD-001..QD-004. Open (low, non-blocking): QD-005 (F-7, Human-allowed),
 
 ## Explicit unverified items
 
-- Staggered race suites A (2 processes, ~40 rounds) and B (3 processes, ~40 rounds) on the strategy 3 build. Round-2 comparison build: NOT REQUIRED (L-032, Human decision).
+- Independent Verification #3; full diff review of the final head. Round-2 comparison build: NOT REQUIRED (L-032, Human decision).
 - Full diff review of the final head; Independent Verification #3.
 - Default `%APPDATA%` data folder not exercised at runtime (protected); verified by code + dependency source.
 - Real Ctrl+V paste (automation uses value setter).
 
 ## Known failures
 
-- E-1 round-2 guard: runtime race FAIL (1 / 20) — superseded by strategy 3; strategy 3 has no failure so far. Another F-3 failure would exhaust `repair_strategies_max: 3` → BLOCKED.
+- E-1 round-2 guard: runtime race FAIL (1 / 20) — superseded by strategy 3, which has 0 failures in 219 rounds. Any new F-3 failure would exhaust `repair_strategies_max: 3` → BLOCKED.
 
 ## Decisions
 
@@ -69,15 +69,15 @@ See DECISIONS.md (D1–D3; R2-D1..R2-D3; L-001..L-033).
 
 ## Remaining tasks
 
-Finish Full Convergence re-run (staggered races) → checkpoint → Independent Verification #3 → Hard Checks → Draft PR only if all conditions hold → STOP.
+Independent Verification #3 → implementation freeze → full diff review → Required Checks → Hard Checks → Quality Debt and unverified items review → final checkpoint → Draft PR only if every condition holds → STOP.
 
 ## Next action
 
-When the operator's available physical memory is at least 12 GiB again (their own applications currently hold it; nothing of theirs may be closed) and the Human resumes: run the scratch isolated-desktop harness `diag/race-desktop.ps1` on the strategy 3 release exe, suite A (`-Size 2 -Rounds 40`) first, then suite B (`-Size 3 -Rounds 40`), one at a time, verifying process cleanup and memory recovery between them; stop immediately and escalate (BLOCKED) on any single-instance failure (strategy 3 is the last allowed strategy). Then checkpoint, Independent Verification #3, full diff review, Required and Hard Checks, and the Draft PR decision.
+Verify available memory (>= 12 GiB), then start Independent Verification #3 in a separate context (read-only, no heavy parallel execution, reuse the release artifact built from this head).
 
 ## Stop conditions status
 
-No hard stop condition triggered. Suspension #1: system low-memory stop of background work. Suspension #2: available memory below the 12 GiB operator threshold before the staggered race suites (resume authorization §3 / §10). Both with valid checkpoints; no automatic retry under the same memory condition.
+No hard stop condition triggered; resumed twice under Human authorization. Suspension #1: system low-memory stop of background work. Suspension #2: available memory below the 12 GiB operator threshold before the staggered race suites (resume authorization §3 / §10). Both with valid checkpoints; no automatic retry under the same memory condition.
 
 ## Resume instructions
 
