@@ -33,4 +33,6 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
   - [x] SUSPENDED #2 resolved: Human resume (batched race verification); memory gate 15.71 GiB
   - [x] Suite A (2 processes, staggered, 8 batches) 40 / 40 PASS; Suite B (3 processes, staggered, 8 batches) 40 / 40 PASS; 0 product failures, 0 timeouts
   - [x] Race checkpoint
-- [ ] R10 Independent Verification #3 → Hard Checks → Draft PR only if conditions hold → STOP
+- [x] R10 Independent Verification #3 → all focus items PASS, all six Hard Checks PASS; N-1 fixed with a test, N-2 → QD-013, N-3 → README
+- [x] R11 Implementation freeze → full diff review → Required Checks PASS → Hard Checks PASS → Quality Debt and unverified items review → final checkpoint
+- [x] R12 Draft PR created (base main, head feat/review-hub-v0.1) → STOP

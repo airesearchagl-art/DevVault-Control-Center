@@ -372,7 +372,7 @@ Round 2 comparison build: **NOT REQUIRED** (Human decision, resume authorization
 
 ### Resume #2 — Strategy 3 batched race verification (isolated desktop) — 2026-09-18
 
-Resume gate re-verified fresh: repository, branch `feat/review-hub-v0.1`, base `bbffea1177b80dfe46a0f6887a9fc05dd5e4f05d`, HEAD = `origin/feat/review-hub-v0.1` = `12a678a3709875f7ce5694f5e49bfbf3aafd0916`, clean working tree, previous checkpoint `793fa3e93a81baaf670a707874ca8b92a4bb45c0` resolved locally, `RUN_MANIFEST` active binding revision 2, digests rev 2 `624ef4d3…567b` and rev 1 `4200048d…1a24b` (both match), RUN_STATE / QUALITY_DEBT (12 items, 8 open) / explicit unverified items reviewed. Memory gate: 15.71 GiB available (hard minimum 12 GiB met).
+Resume gate re-verified fresh: repository, branch `feat/review-hub-v0.1`, base `bbffea1177b80dfe46a0f6887a9fc05dd5e4f05d`, HEAD = `origin/feat/review-hub-v0.1` = `12a678a3709875f7ce5694f5e49bfbf3aafd0916`, clean working tree, previous checkpoint `793fa3e93a81baaf670a707874ca8b92a4bb45c0` resolved locally, `RUN_MANIFEST` active binding revision 2, digests rev 2 `624ef4d3…567b` and rev 1 `4200048d…9a1124b` (both match), RUN_STATE / QUALITY_DEBT (12 items, 8 open) / explicit unverified items reviewed. Memory gate: 15.71 GiB available (hard minimum 12 GiB met).
 
 Execution: `diag/race-desktop.ps1` (scratch), all test processes started on an isolated Windows desktop; 5 rounds per batch, resource gate checked between batches; nothing else heavy running in parallel. Per-round pass criteria: exactly one started process alive, every other exit code 0 (from the `CreateProcessW` handle), exactly one DVCC process on the machine, `.dvcc.lock` held, the survivor owning a visible window on the isolated desktop, no data file changed, and no round hitting the wait deadline.
 
@@ -402,3 +402,49 @@ Execution: `diag/race-desktop.ps1` (scratch), all test processes started on an i
 - Operator disturbance: no window on the operator desktop, no foreground focus change, no browser / Explorer / IDE / ChatGPT opened, no unrelated process touched.
 
 Strategy 3 race totals across the campaign: 120 rounds (2 processes, back to back, committed script) + 14 (3 processes, staggered, committed script) + 5 (calibration, isolated desktop) + 40 (Suite A) + 40 (Suite B) = **219 rounds, 0 product failures**.
+
+### Independent Verification #3 (separate context, read-only) — 2026-09-18
+
+Verifier constraints: no repository file modified / created / deleted (`git status` clean before and after), no git writes, no network or external service, no browser / Explorer / IDE, real `%APPDATA%` data folders untouched (absent before and after), only its own scratch folder used, only self-started processes closed, memory checked before heavy runs.
+
+Verifier's own state check: head `c82d8cf202c9d739abe478362746154d710fefee` = `origin/feat/review-hub-v0.1`; Task Packet rev 2 digest recomputed `624ef4d3…567b` (match, 22 799 bytes), rev 1 `4200048d…9a1124b` (match); release artifact confirmed to match the head (no code file differs between `7ef9c29` and the head) and its SHA-256 unchanged by the verifier's runs.
+
+| Item | Verifier verdict |
+|---|---|
+| F-1, F-2, F-3, F-4, F-5, F-6 / E-2, F-8, F-9 / E-5, F-11, E-3, E-4 / E-6 | **PASS** (each re-derived from code, own test runs, own mutations, own runs of the release binary) |
+| AC-01..AC-20 | PASS |
+| Hard checks | Security PASS, Privacy PASS, Authentication PASS, Permission PASS, **Data integrity PASS**, **Irreversible-data safety PASS** |
+
+Verifier's own runs: `tsc` PASS; `vitest` 420 / 420 (its baseline before the N-1 test was added); `vite build` PASS (on its copy); `cargo fmt --check`, `cargo check`, `cargo clippy --all-targets` (zero diagnostics, confirmed against cargo's fingerprint output files), `cargo test` 39 passed / 1 ignored; ignored mapped-drive test executed with its own temporary loopback mapping (removed afterwards) → `NETWORK_TARGET`; `E5-UNREACHABLE` rejected in 467 µs (no name resolution or SMB connection); 12 TypeScript mutations on copies → 11 caught, 1 survived (N-1); four runs of the release binary (backup-only recovery restored byte-identically with the backup kept; an externally held `.dvcc.lock` left the app with zero storage activity; a directory-shaped `projects.json` produced no quarantine, restore, rename or delete; single-instance race 24 / 24 on the isolated desktop); own privacy sweep over all tracked files — clean.
+
+New findings and resolution:
+
+| ID | Severity | Finding | Resolution |
+|---|---|---|---|
+| N-1 | low (test gap) | The archive write's `{ kind: "absent" }` precondition was not pinned by any test (mutation survived). Behaviour was correct; the guard was unverified. | **Fixed, not deferred** (a data-integrity guard may not become Quality Debt): new test "never overwrites an archive file that appeared after DVCC chose that name (F-3)" in `persistence.test.ts` creates that file between the free-name read and the write → `CONFLICT`, foreign text intact, result and session unchanged. Re-running the mutation now fails that test (mutation killed); suite 421 / 421. |
+| N-2 | info | Load-time canonical-form equality is enforced for `repositoryUrl` only; `localRoot` and `chatgptThreadUrl` are validity-checked and stored verbatim (they round-trip unchanged). | Accepted as documented behaviour; recorded as QD-013 so the guarantee is not read more widely than it holds. |
+| N-3 | info | README described the hand-over without the 15 s start-up wait bound. | README now states that a launch waits up to 15 s and is then refused by the data-folder lock (`DATA_DIR_IN_USE`). |
+| — | cosmetic | Abbreviated rev 1 digest mistyped in this file (`…1a24b`). | Corrected to `4200048d…9a1124b`; the full value recorded elsewhere was always correct. |
+
+The verifier reported no overstated claim in the code, documentation or run artifacts.
+
+### Final convergence at the frozen head — 2026-09-18
+
+Implementation freeze after Verification #3; the only changes after it are the N-1 test, the README sentence and the two documentation corrections above.
+
+| Required check | Result |
+|---|---|
+| `npx tsc --noEmit` | PASS |
+| `npx vitest run` | PASS — 13 files, **421** tests |
+| `npm run build` (tsc + vite build) | PASS |
+| `cargo fmt --check` | PASS |
+| `cargo clippy --all-targets` | PASS — 0 warnings |
+| `cargo check` | PASS |
+| `cargo test` | PASS — 39 passed, 1 ignored (mapped-drive test executed separately by the verifier) |
+| `npm run tauri build -- --no-bundle` | PASS — release exe rebuilt at the frozen code state; no `bundle` directory |
+| Persistence (round trip, malformed input, backup recovery, missing-primary recovery, concurrent mutation, interrupted re-capture, external-change conflict) | PASS — unit / service suites plus the release E2E and the verifier's own binary runs |
+| Single instance | PASS — strategy 3, 219 implementer rounds + 24 verifier rounds, 0 product failures |
+| Launcher (safe URL, malicious URL, local path, direct UNC, junction / reparse boundary) | PASS — Rust suite incl. measured `NETWORK_TARGET` timings; runtime rejection through the app |
+| Restart (state restoration, suspend / resume, capture / re-capture preservation) | PASS — release E2E phases 1–2 and the E-2 / E-3 runtime scenarios |
+
+Full diff review at the frozen head: 96 files versus the base (excluding lockfiles), +12 238 / −1. Every path is inside `src/`, `src-tauri/`, `docs/`, `fixtures/`, `contract/`, `scripts/`, `.agent-run/`, `README.md` or root configuration — nothing outside the authorized Phase 1 scope, no dependency change beyond the Human-approved `tauri-plugin-single-instance`, capability unchanged.

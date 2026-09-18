@@ -125,6 +125,16 @@ were repaired under Task Packet revision 2 (see EVIDENCE.md "Repair campaign").
   required_resolution: "Hand over with SendMessageTimeoutW (upstream plugin change or own hand-over) if hung-instance launches must return."
   evidence: "tauri-plugin-single-instance 2.4.4 platform_impl/windows.rs (SendMessageW); src-tauri/src/instance.rs STARTUP_WAIT."
   status: open
+- id: QD-013
+  source_wave: independent verification #3 (rev 2)
+  type: contract_scope
+  description: "N-2: the load-time check that a stored value equals its canonical form applies to repositoryUrl only; localRoot and chatgptThreadUrl are validated for shape and stored verbatim (they round-trip unchanged, so F-1 is unaffected)."
+  why_deferred: "Info-level; no data loss or drift; adding canonicalization for the other fields would change stored values of existing data and needs a contract decision."
+  risk: low
+  blocks_final_verify: false
+  required_resolution: "Decide whether localRoot / chatgptThreadUrl should also be stored canonically; if yes, add normalization plus a migration-safe load rule."
+  evidence: "src/domain/schema.ts repositoryUrl equality check vs the localRoot / chatgptThreadUrl rows; Independent Verification #3 finding N-2."
+  status: open
 ```
 
-Open items are all low risk and non-blocking. No high-risk debt.
+Open items are all low risk and non-blocking. No high-risk debt. Nothing in the Security, Permission, Data integrity, Irreversible-data safety, F-3 or F-9 categories was deferred: the one such finding from Independent Verification #3 (N-1, an unverified data-integrity guard) was fixed with a test instead.

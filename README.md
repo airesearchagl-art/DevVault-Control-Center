@@ -48,8 +48,9 @@ restarting the app.
 - One DVCC process per Windows session: processes start one at a time (start-up lock), so a later
   or simultaneous launch hands over to the running instance (its window is focused) and exits
   before creating a window or touching data; the data folder is also locked (`.dvcc.lock`) while
-  DVCC runs. Debug and release builds share
-  this identity, so a running debug build also blocks a release build.
+  DVCC runs. If the running instance stops responding, a new launch waits up to 15 seconds for the
+  start-up lock and is then refused by the data folder lock (`DATA_DIR_IN_USE`) instead. Debug and
+  release builds share this identity, so a running debug build also blocks a release build.
 - Out of scope for v0.1: Git / GitHub freshness detection, GitHub API, Claude Code / Codex session
   discovery, terminal embedding, Notion / Vault sync, SQLite, REST / MCP, authentication,
   installers and releases.

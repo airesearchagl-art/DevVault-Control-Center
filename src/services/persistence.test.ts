@@ -524,6 +524,34 @@ describe("re-capture preserves the previous result (F-6)", () => {
     expect(storage.files.get(sessionPath)).toBe(sessionBefore);
   });
 
+  it("never overwrites an archive file that appeared after DVCC chose that name (F-3)", async () => {
+    const alpha = await capturedAlpha();
+    const archive = `result-r1-previous-${Date.parse(alpha.rounds[0].resultCapturedAt!)}.md`;
+    const archivePath = `reviews/${ALPHA_ID}/${archive}`;
+    const sessionPath = `reviews/${ALPHA_ID}/session.json`;
+    const sessionBefore = storage.files.get(sessionPath);
+    // Another writer creates that file in the moment between "this name is free" and the write.
+    const interleaved: StorageBackend = {
+      info: () => storage.info(),
+      read: async (target, options) => {
+        const text = await storage.read(target, options);
+        if (target.kind === "review" && target.file === archive && text === null) {
+          storage.files.set(archivePath, "written by another program\n");
+        }
+        return text;
+      },
+      write: (target, content, precondition) => storage.write(target, content, precondition),
+      appendLine: (target, line) => storage.appendLine(target, line),
+      listReviews: () => storage.listReviews(),
+      quarantine: (target, options) => storage.quarantine(target, options),
+      restoreBackup: (target) => storage.restoreBackup(target),
+    };
+    await expect(captureReviewResult(interleaved, alpha, "second result", null, true, now())).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(storage.files.get(archivePath)).toBe("written by another program\n");
+    expect(storage.files.get(resultPath)).toBe("first result\n");
+    expect(storage.files.get(sessionPath)).toBe(sessionBefore);
+  });
+
   it("can retry after the session write failed: the unrecorded archive is recorded, nothing is lost (E-2)", async () => {
     const alpha = await capturedAlpha();
     const base = `result-r1-previous-${Date.parse(alpha.rounds[0].resultCapturedAt!)}`;
