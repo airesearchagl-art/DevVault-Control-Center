@@ -1,0 +1,8 @@
+* text=auto eol=lf
+
+*.png binary
+*.ico binary
+*.icns binary
+
+# Long-run Task Packet snapshots are hashed byte-for-byte; never convert line endings.
+.agent-run/**/TASK_PACKET_SNAPSHOT*.md -text
