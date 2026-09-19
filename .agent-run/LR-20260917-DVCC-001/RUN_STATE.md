@@ -3,14 +3,14 @@
 - Run ID: LR-20260917-DVCC-001
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: **BLOCKED — Independent FULL Review P1-1 / F-3 startup timeout path** → **REPAIRING** (Focused Repair under Human authorization "DVCC PR #1 Focused Long-Run Repair — Independent Review P1-1"; Hard Gate failure, not Quality Debt)
+- Current state: **COMPLETE_PENDING_FULL_VERIFY** — P1-1 repair implemented and implementer-verified (targeted checks, deterministic `NotOwned`, focused race regression PASS). **Focused Independent Re-review pending**; Independent UI verification pending. Not a Ready candidate from this session. History: BLOCKED — Independent FULL Review P1-1 / F-3 startup timeout path → REPAIRING (Human authorization "DVCC PR #1 Focused Long-Run Repair — Independent Review P1-1") → COMPLETE_PENDING_FULL_VERIFY.
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/review-hub-v0.1
 - Base SHA: bbffea1177b80dfe46a0f6887a9fc05dd5e4f05d
 - Reviewed head (Independent FULL Review): 3f99eaba27df5946cfc017542d8d8ea81d5babc3
-- Current head: BLOCKED-transition checkpoint commit (parent 3f99eaba27df5946cfc017542d8d8ea81d5babc3)
-- Current wave: R13 Focused Repair P1-1 (F-3 fail-closed start-up gate)
-- Last successful checkpoint: this BLOCKED-transition checkpoint
+- Current head: Focused Repair evidence checkpoint commit (parent 948de0038e08ef11b611135c5a1d35a1111a2767, the repair code state); BLOCKED-transition checkpoint 505d6039b977249374eb96959f50b8d75b6f6f44
+- Current wave: R13 Focused Repair P1-1 complete (implementation frozen pending re-review)
+- Last successful checkpoint: Focused Repair evidence checkpoint (commit "chore(run): P1-1 focused repair verified by implementer; COMPLETE_PENDING_FULL_VERIFY")
 - Draft PR: https://github.com/airesearchagl-art/DevVault-Control-Center/pull/1 (draft, base main, head feat/review-hub-v0.1)
 - Task Packet ID: LRP-20260917-DVCC-001
 - Task Packet revision: 2 (no revision 3; the repair closes existing F-3 / Phase 1 Acceptance Criteria within the unchanged Objective / Allowed Scope / Hard Boundary)
@@ -30,32 +30,33 @@ NOT READY — REQUIRED FIX. P1-1 / F-3 closure failure: `run()` in `src-tauri/sr
 
 ## Acceptance Criteria
 
-AC-01..AC-20: PASS at 3f99eab except the F-3-dependent single-instance guarantee, which is reopened by P1-1 until the Focused Repair is verified. UI-driven verification of AC-02 / AC-03 / AC-06 / AC-07 / AC-12 / AC-13 and the interactive halves of AC-09 / AC-14 by an independent context is still pending (Verification #3 derived them from the domain, persistence and storage layers plus real-binary loads; the UI-driven evidence comes from the implementer's release E2E).
+AC-01..AC-20: PASS (implementer view) at the repair head; the F-3-dependent single-instance guarantee reopened by P1-1 is re-established by the repair, pending the Focused Independent Re-review. UI-driven verification of AC-02 / AC-03 / AC-06 / AC-07 / AC-12 / AC-13 and the interactive halves of AC-09 / AC-14 by an independent context is still pending (Verification #3 derived them from the domain, persistence and storage layers plus real-binary loads; the UI-driven evidence comes from the implementer's release E2E).
 
 ## Repair acceptance (rev 2)
 
 - R-F1, R-F2, R-F4, R-F5, R-F8, R-F11: RESOLVED (Verification #2, re-confirmed by Verification #3)
 - R-F6: RESOLVED incl. E-2 (Verification #3 PASS)
 - R-F9: RESOLVED incl. E-5 (Verification #3 PASS; rejection measured at 467 µs against an unreachable host)
-- R-F3: **REOPENED** by Independent FULL Review P1-1. History: PARTIAL in Verification #2 (E-1) → round 2 failed at runtime (1 / 20) → strategy 3 (start-up lock), 219 implementer race rounds + 24 Verification #3 rounds with 0 product failures, Verification #3 PASS at `c82d8cf`. The races never exercised the `NotOwned` branch, which built the app anyway (fail open). Focused Repair in progress.
+- R-F3: **REPAIRED (implementer-verified), Focused Independent Re-review pending.** Reopened by Independent FULL Review P1-1 (`NotOwned` built the app — fail open). Repair `948de00`: fail-closed start-up gate (L-035); deterministic `NotOwned` runtime check PASS with a failing negative control; 25 / 25 focused races and 3 / 3 abandoned-owner rounds PASS. History: PARTIAL in Verification #2 (E-1) → round 2 failed at runtime (1 / 20) → strategy 3 (start-up lock), 219 implementer race rounds + 24 Verification #3 rounds with 0 product failures, Verification #3 PASS at `c82d8cf`.
 
 ## Hard Checks (implementer view)
 
-- Security: PASS at 3f99eab (to be re-evaluated after the repair)
-- Privacy: PASS (own hygiene scan + Verification #3 sweep)
+- Security: **PASS** (re-evaluated at the repair head: no new surface, launcher accepted set unchanged, no dependency / capability / config change)
+- Privacy: PASS (own hygiene scan + Verification #3 sweep; repair diff scan clean)
 - Authentication: PASS (no authentication surface; credential-bearing URLs rejected)
-- Permission: PASS at 3f99eab (to be re-evaluated after the repair)
-- Data integrity: **FAIL** (Independent FULL Review P1-1: the single-instance / F-3 boundary fails open on `NotOwned`). No PASS until `NotOwned` fail-closed is established.
-- Irreversible-data safety: PASS at 3f99eab (to be re-evaluated after the repair)
+- Permission: **PASS** (re-evaluated: capability exactly `core:default` + `clipboard-manager:allow-write-text`)
+- Data integrity: **PASS (implementer view)** — `NotOwned` fail-closed established structurally, by tests (mutation 7 / 7) and deterministically at runtime (exit 75, no Builder / window / WebView2 / data access) with a failing negative control; was FAIL at 3f99eab (Independent FULL Review P1-1). Pending the Focused Independent Re-review.
+- Irreversible-data safety: **PASS** (re-evaluated: no storage code changed; the refused path touches no data)
 
 ## Completed
 
 - Revision 1 waves; BLOCKED escalation; revision 2 binding; R1–R6 repairs; docs; Full Convergence; Independent Verification #2; repair round 2 (`3833d4e`, `a03f67f`, `68af11d`, `61949ed`); checkpoint `6610e4c`; Full Convergence re-run required checks PASS; strategy 3 (`7ef9c29`, `0b884f6`); release E2E 0 failures; hygiene PASS; Independent Verification #3 (all focus items PASS at `c82d8cf`, N-1 fixed); final convergence and full diff review at the frozen head (`c250b40`); Draft PR #1 (`3f99eab`).
 - Independent FULL Review at `3f99eab`: NOT READY — REQUIRED FIX (P1-1).
+- Focused Repair P1-1: BLOCKED-transition checkpoint `505d603`; fail-closed start-up gate + P3 URL contract `948de00`; targeted checks, deterministic `NotOwned` verification, negative control, focused race regression, abandoned owner, implementation UI smoke PASS (EVIDENCE.md "Focused Repair implementation").
 
 ## Checks
 
-At 3f99eab (before this repair): npm ci, tsc, vitest 421, build, cargo fmt / clippy clean, cargo check, cargo test 39 / 1 ignored, release build — PASS. See EVIDENCE.md "Final convergence at the frozen head".
+At the repair code head `948de00`: cargo fmt / clippy (0 warnings) / check PASS, cargo test 47 passed / 1 ignored, tsc PASS, vitest 426, npm run build PASS, tauri build --no-bundle PASS; `verify-single-instance.ps1 -FailClosedOnly` PASS; race 25 / 25; abandoned owner 3 / 3. See EVIDENCE.md "Focused Repair implementation". (At 3f99eab: vitest 421, cargo test 39 / 1.)
 
 ## Quality Debt
 
@@ -65,7 +66,7 @@ Resolved: QD-001..QD-004. Open (low, non-blocking): QD-005 (F-7, Human-allowed),
 
 - Focused Independent Re-review of the P1-1 repair (pending).
 - UI-driven re-derivation of AC-02 / AC-03 / AC-06 / AC-07 / AC-12 / AC-13 and the interactive halves of AC-09 / AC-14 by an independent context (pending; the implementer's release E2E covers them; Verification #3 could not drive WebView2).
-- Rust-side mutation testing (Verification #3 verified the Rust boundary by full source reading, cargo tests and real-binary runs instead).
+- Rust-side mutation testing outside the start-up gate (the gate itself: 7 / 7 mutations killed in this repair; Verification #3 verified the rest of the Rust boundary by full source reading, cargo tests and real-binary runs).
 - Cross-Windows-session single instance (only the `.dvcc.lock` layer was exercised directly).
 - Round-2 comparison build: NOT REQUIRED (L-032, Human decision).
 - Default `%APPDATA%` data folder not exercised at runtime (protected); verified by code + dependency source.
@@ -75,27 +76,25 @@ Resolved: QD-001..QD-004. Open (low, non-blocking): QD-005 (F-7, Human-allowed),
 
 ## Known failures
 
-- P1-1 / F-3: `NotOwned` start-up (timeout / mutex failure) proceeds to `tauri::Builder::build` (fail open). Open — Focused Repair in progress.
+none open. (P1-1 / F-3 `NotOwned` fail-open: repaired in `948de00`, implementer-verified; Focused Independent Re-review pending.)
 
 ## Decisions
 
-See DECISIONS.md (D1–D3; R2-D1..R2-D3; L-001..L-034).
+See DECISIONS.md (D1–D3; R2-D1..R2-D3; L-001..L-037).
 
 ## Remaining tasks
 
-1. Fail-closed start-up gate in `instance.rs` / `lib.rs` with structural tests for Owned / OwnedAfterAbandon / NotOwned.
-2. Deterministic timeout / `CreateMutexW`-failure verification against the release binary (no Builder, no window / WebView2, storage root untouched).
-3. Focused race regression (2-process zero / staggered, 3-process staggered, abandoned owner) on the isolated desktop.
-4. P3 URL contract cleanup (non-default explicit port rejected; `:443` canonical HTTPS default accepted).
-5. Targeted checks, Hard Check re-evaluation, checkpoint, PR body update → COMPLETE_PENDING_FULL_VERIFY (Focused Independent Re-review and Independent UI verification pending).
+- Focused Independent Re-review of the P1-1 repair (independent context).
+- Independent UI-driven verification of AC-02 / AC-03 / AC-06 / AC-07 / AC-12 / AC-13 and the interactive halves of AC-09 / AC-14 (independent context).
+- Human Gate: Ready for Review, merge, release and production remain prohibited without a new Human authorization.
 
 ## Next action
 
-Implement the fail-closed start-up gate (remaining task 1).
+None by the implementation session. Focused Independent Re-review and Independent UI verification are pending (the implementation session does not declare an Independent Review PASS).
 
 ## Stop conditions status
 
-BLOCKED by Independent FULL Review P1-1 (Hard Gate: Data integrity). Focused Repair authorized by the Human. Any product-side failure in the focused race regression → BLOCKED / STOP (no retry into PASS). Available memory below 12 GiB before heavy verification → valid checkpoint and SUSPENDED.
+Independent FULL Review P1-1 BLOCKED state addressed by the Human-authorized Focused Repair (no product-side failure in the focused regression; no retry was needed; available memory stayed at or above 14 GiB before every heavy step). A new Hard Failure → BLOCKED.
 
 ## Resume instructions
 

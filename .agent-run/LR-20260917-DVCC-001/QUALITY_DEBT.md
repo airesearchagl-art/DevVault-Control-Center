@@ -118,7 +118,7 @@ were repaired under Task Packet revision 2 (see EVIDENCE.md "Repair campaign").
 - id: QD-012
   source_wave: repair round 3 (rev 2)
   type: liveness_limitation
-  description: "If the running instance's UI thread is hung, a new launch waits: the plugin hand-over uses SendMessageW without a timeout (while holding the start-up lock), and further launches wait 15 s for the start-up lock and then block in the same hand-over; none of them opens the data folder."
+  description: "If the running instance's UI thread is hung, a new launch waits: the plugin hand-over uses SendMessageW without a timeout (while holding the start-up lock). Further launches wait 15 s for the start-up lock and then exit with code 75 without building the app (fail closed since the P1-1 repair; before it they went on to build and blocked in the same hand-over); none of them opens the data folder."
   why_deferred: "Fails safe (never a second writer); only when the running instance is already unresponsive; the plugin's hand-over call is outside DVCC code."
   risk: low
   blocks_final_verify: false

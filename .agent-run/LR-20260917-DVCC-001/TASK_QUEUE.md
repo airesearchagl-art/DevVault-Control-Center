@@ -40,8 +40,10 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 ## Focused Repair P1-1 (Independent FULL Review at `3f99eab`)
 
 - [x] R13.0 Fresh gate PASS → BLOCKED transition checkpoint (RUN_STATE stale entries corrected)
-- [ ] R13.1 Fail-closed start-up gate (`instance.rs`, `lib.rs`) + structural contract tests
-- [ ] R13.2 Deterministic `NotOwned` verification against the release binary (timeout, `CreateMutexW` failure)
-- [ ] R13.3 Focused race regression (2-process zero / staggered, 3-process staggered, abandoned owner)
-- [ ] R13.4 P3 URL contract cleanup (`:443` canonical default; non-default port rejected)
-- [ ] R13.5 Targeted checks → Hard Check re-evaluation → checkpoint → PR body → COMPLETE_PENDING_FULL_VERIFY
+- [x] R13.1 Fail-closed start-up gate (`instance.rs`, `lib.rs`) + structural contract tests; mutation 7 / 7 (`948de00`)
+- [x] R13.2 Deterministic `NotOwned` verification against the release binary (timeout, `CreateMutexW` failure) PASS; negative control (3f99eab gate) FAIL as expected
+- [x] R13.3 Focused race regression 25 / 25 (2-process zero / staggered, 3-process staggered); abandoned owner 3 / 3
+- [x] R13.4 P3 URL contract cleanup (`:443` canonical default; non-default port rejected) (`948de00`)
+- [x] R13.5 Targeted checks PASS → Hard Checks re-evaluated → evidence checkpoint → PR body → COMPLETE_PENDING_FULL_VERIFY
+- [ ] R14 Focused Independent Re-review (independent context)
+- [ ] R15 Independent UI-driven verification (AC-02 / 03 / 06 / 07 / 12 / 13, interactive halves of AC-09 / 14)

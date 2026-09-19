@@ -472,3 +472,68 @@ State transition: `COMPLETE_PENDING_FULL_VERIFY` → **BLOCKED — Independent F
 Fresh gate before any change (2026-09-20): PR #1 `OPEN`, `isDraft: true`, `mergedAt: null`; PR head = local HEAD = `origin/feat/review-hub-v0.1` = `3f99eaba27df5946cfc017542d8d8ea81d5babc3`; branch `feat/review-hub-v0.1`; base `main` @ `bbffea1177b80dfe46a0f6887a9fc05dd5e4f05d` (= merge base); working tree clean (0 tracked changes, 0 untracked); Task Packet rev 2 SHA-256 `624ef4d3716e7490d035e2b5dc599fb3c3d59cacb60d0827f298dbc7a391567b` (match), rev 1 `4200048dd5535f596af25e588f0c572c4ca611464aff7bf221686c5759a1124b` (match).
 
 RUN_STATE correction at this checkpoint: the stale "R-F3: … Independent Verification #3 pending" and the unverified items "Full diff review of the final head; Independent Verification #3" (both completed, see "Independent Verification #3" and "Final convergence at the frozen head") were replaced; the "all repairs independently verified" current-state text was withdrawn because P1-1 reopens F-3.
+
+### Focused Repair implementation — 2026-09-20 (code head `948de0038e08ef11b611135c5a1d35a1111a2767`)
+
+Changes (all inside the Human-listed repair scope; dependencies, `Cargo.lock`, `package-lock.json`, capability and `tauri.conf.json` unchanged versus `3f99eab`):
+
+| File | Change |
+|---|---|
+| `src-tauri/src/instance.rs` | `StartupLockState::permits_build()` (only `Owned` / `OwnedAfterAbandon`); `with_startup_gate(name, wait, build)` → `run_gated`: `NotOwned` returns `Err(NotOwned)` without calling `build`; `build` receives a `StartupGate` token whose constructor is private to the module; gate released right after `build` on the same thread; pure `state_after_wait` mapping (anything but `WAIT_OBJECT_0` / `WAIT_ABANDONED` → `NotOwned`); `StartupLock` / `acquire` private; `STARTUP_GATE_REFUSED_EXIT_CODE = 75`; non-Windows `acquire` stays `NotOwned` (fail closed; v0.1 is Windows-only). |
+| `src-tauri/src/lib.rs` | The Builder moved into `build_app(&StartupGate) -> tauri::App`; `run()` calls `with_startup_gate(.., build_app)` and on `Err` calls `std::process::exit(75)` (no panic, no dialog, no storage). |
+| tests (`instance.rs`) | `contract_tests` (platform independent): literal contract table Owned → build, OwnedAfterAbandon → build, NotOwned → no build, checked against `permits_build` and against `run_gated` with a build closure that counts calls. Windows tests: real timeout (another thread holds the mutex) never calls the build; `CreateMutexW` failure (name taken by a named event) never calls the build and returns at once; wait-result mapping incl. `WAIT_TIMEOUT` / `WAIT_FAILED` / unknown values; abandoned owner → `OwnedAfterAbandon` → build runs; the gate is held during the build (a contender gets `NotOwned`) and released after it. |
+| `scripts/verify-single-instance.ps1` | Phase 0 / `-FailClosedOnly`: DVCC started on a hidden isolated desktop with the start-up mutex (a) held by the verifier, (b) taken by a named event; pass = exits by itself with 75, held case waited at least 14 s, uncreatable case under 5 s, 0 windows (visible or hidden), 0 child processes, plugin mutex `com.devvault.controlcenter-sim` never observed, per-case data folder never created. |
+| P3 (`launcher.rs`, `validation.ts`, tests, README, data contract) | Contract text: non-default explicit port rejected; `:443` (https default, normalized away by the parser) accepted and never stored / opened with the port. Error text "URLs with a non-default port are not allowed". Tests: `accepts_the_https_default_port_443_as_canonical`, `rejects_a_non_default_explicit_port` (8443, 80, 444, 0); Vitest equivalents. Accepted set unchanged. |
+| README / data contract | Fail-closed start-up lock (exit 75, no window / WebView2 / data access) replaces "continue and be refused by `DATA_DIR_IN_USE`"; `-FailClosedOnly` usage. |
+
+Mutation probe on the gate (each applied alone, `cargo test instance::`, sources restored and verified byte-identical): M1 `NotOwned => true` in `permits_build` — killed; M2 early return removed in `run_gated` — killed; M3 unexpected wait result → `Owned` — killed; M4 `CreateMutexW` null handle → `Owned` — killed; M5 `WAIT_ABANDONED` → `NotOwned` — killed; M6 gate released before the build — killed; M7 `run()` forging `StartupGate(())` on `Err` — rejected by the compiler (E0603, private constructor). **7 / 7.**
+
+Required / targeted checks (sequential; available memory at least 14 GiB before every heavy step):
+
+| Check | Result |
+|---|---|
+| `cargo fmt --check` | PASS |
+| `cargo clippy --all-targets` | PASS — 0 warnings |
+| `cargo check` | PASS |
+| `cargo test` | PASS — 47 passed, 1 ignored (was 39 / 1; +6 instance, +2 launcher) |
+| `npx tsc --noEmit` | PASS |
+| `npx vitest run` | PASS — 13 files, 426 tests (was 421) |
+| `npm run build` | PASS |
+| `npm run tauri build -- --no-bundle` | PASS — no `bundle` directory; final release exe SHA-256 `3b2fb6aacd9a420100114ea9390fcb874951ec11d8160310f65dc1a8b66f00ed` (built from `948de00` after the control build below) |
+
+Deterministic `NotOwned` verification — `scripts/verify-single-instance.ps1 -FailClosedOnly` against the release exe (run on the first fixed build and again on the final build; identical results):
+
+| Case | exited by itself | exit code | elapsed | windows | child processes | plugin mutex seen | data folder untouched | Result |
+|---|---|---|---|---|---|---|---|---|
+| held (wait timeout) | yes | 75 | 15.7 s | 0 | 0 | no | yes | PASS |
+| uncreatable (`CreateMutexW` failure) | yes | 75 | 0.8 / 0.9 s | 0 | 0 | no | yes | PASS |
+
+Negative control: the same check against a control exe built from the `3f99eab` `lib.rs` / `instance.rs` (sources restored from git afterwards; control exe kept only in the scratchpad, SHA-256 `42f57e51…4b6212`): both cases **FAIL** — not exited after 45 s (force-stopped by the verifier), 11 windows, 1 child process (WebView2), plugin mutex seen, data folder created. This reproduces P1-1 at runtime and shows the check detects it. No DVCC or DVCC WebView2 process was left afterwards.
+
+Focused race regression — existing scratch harness `diag/race-desktop.ps1` (byte-identical copy, SHA-256 `68df545f…3b2157`), isolated desktop, criteria unchanged (exactly one survivor, every loser exit code 0, one DVCC process on the machine, `.dvcc.lock` held, survivor window on the isolated desktop, data unchanged):
+
+| Batch | Configuration | Rounds | Result |
+|---|---|---|---|
+| A | 2 processes, back to back (0 ms) | 5 | 5 / 5 PASS |
+| B | 2 processes, staggered 0 / 0 / 10 / 20 / 50 / 100 / 200 / 300 / 500 / 1000 ms | 10 | 10 / 10 PASS |
+| C | 3 processes, same staggers | 10 | 10 / 10 PASS |
+
+25 rounds, **0 product failures**, 0 timeouts (round duration 3.3–5.4 s, as before); every loser exited with 0 (hand-over); no exit 75 occurred in a normal race.
+
+Abandoned owner at runtime (scratch `diag/abandoned-owner.ps1`, isolated desktop, 3 rounds): a helper process takes the start-up mutex; DVCC waits (alive, 0 windows, no plugin mutex, no `.dvcc.lock`); the helper is terminated without releasing; DVCC then owns the gate (`OwnedAfterAbandon`) and became the running instance within 0.4 s (titled window, `.dvcc.lock` held, plugin mutex, one DVCC process). **3 / 3 PASS.**
+
+Implementation UI smoke (not an independent UI verification): release exe on an isolated desktop with a fresh data folder and a localhost CDP port; no clipboard write, no URL / folder opened. 18 assertions PASS: title, app shell, no fatal, data dir shown, empty state; project form rejects `:8443` with "URLs with a non-default port are not allowed"; `:443` accepted and stored as `https://github.com/example-org/project-alpha`; review created, NEW → READY_FOR_REVIEW with the resource unchanged, `session.json` on disk matches, `chatgptThreadUrl` stored without `:443`; `open_external_url` rejects `:8443`, `:444`, `javascript:`, `http:` (Rust message names the non-default port); no error toast; screenshot reviewed.
+
+Harness observation (not a product failure): the scratch harnesses close a survivor by posting `WM_CLOSE` to every visible window of the process on the isolated desktop (incl. the tao event-target and plugin windows); the process then does not exit within 15 s and is force-stopped. Posting `WM_CLOSE` to the main `Tauri Window` only exits gracefully at once, and the `3f99eab` control exe behaves the same as the fixed exe, so this is harness behaviour that predates the repair; it does not affect any pass criterion (data is checked before cleanup).
+
+Hard Checks re-evaluated (implementer view, pending the Focused Independent Re-review):
+
+- Data integrity: **PASS** — `NotOwned` fail-closed established structurally (token), by tests (contract + real timeout / creation failure + mutation 7 / 7), deterministically at runtime (exit 75, no Builder, no window / WebView2, data folder untouched) with a failing negative control; normal hand-over unchanged (25 / 25 races, abandoned owner 3 / 3); `.dvcc.lock` layer unchanged.
+- Security: **PASS** — no new surface; launcher accepted set unchanged (only message / comment / test names); no dependency, capability or config change; production `unsafe` unchanged in substance (wait-result mapping moved into a pure function); test-only `CreateEventW` FFI.
+- Permission: **PASS** — capability still exactly `core:default` + `clipboard-manager:allow-write-text`; no manifest change.
+- Irreversible-data safety: **PASS** — no storage code changed; the refused path performs no storage operation (verified: data folder never created); no delete path added.
+- Privacy / Authentication: unchanged (no new data, no authentication surface); tracked-diff hygiene scan clean.
+
+Operator disturbance: every GUI process ran on a hidden isolated desktop; no window on the operator desktop, no clipboard write, no browser / GitHub / ChatGPT / Explorer / IDE opened; only processes started by this session were stopped; builds, verifiers and races ran one at a time.
+
+Verification material for the Focused Independent Re-review (committed): `scripts/verify-single-instance.ps1 -FailClosedOnly` (deterministic `NotOwned`), `cargo test instance::` (contract + runtime-path tests). UI-driven verification of AC-02 / AC-03 / AC-06 / AC-07 / AC-12 / AC-13 and the interactive halves of AC-09 / AC-14 remains for the independent context; this session did not perform it.
