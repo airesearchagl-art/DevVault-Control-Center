@@ -24,7 +24,8 @@ export function isIsoTimestamp(value: unknown): value is string {
 
 /**
  * Security decision by URL parsing (never by string prefix): https only, no credentials,
- * no explicit port, exact host match.
+ * no non-default port, exact host match. An explicit `:443` is the https default: the URL parser
+ * normalizes it away (`url.port === ""`), so it is accepted and never kept in the canonical form.
  */
 export function parseAllowedHttpsUrl(raw: string, allowedHosts: readonly string[]): Result<URL> {
   let url: URL;
@@ -35,7 +36,7 @@ export function parseAllowedHttpsUrl(raw: string, allowedHosts: readonly string[
   }
   if (url.protocol !== "https:") return err("Only https URLs are allowed");
   if (url.username !== "" || url.password !== "") return err("URLs with embedded credentials are not allowed");
-  if (url.port !== "") return err("URLs with an explicit port are not allowed");
+  if (url.port !== "") return err("URLs with a non-default port are not allowed");
   if (!allowedHosts.includes(url.hostname)) return err(`Host must be one of: ${allowedHosts.join(", ")}`);
   return ok(url);
 }

@@ -39,8 +39,9 @@ restarting the app.
   conversations; it stores only the thread title / URL, the request you copy and the result you paste.
 - No paid API (OpenAI / Anthropic) is used or required. No network calls besides opening URLs in your browser.
 - The clipboard is **write-only** for DVCC (copy prompt). Results are pasted manually.
-- URLs open only if they are `https` on `github.com`, `chatgpt.com` or `chat.openai.com`
-  (checked by URL parsing). Folders open only if they are existing absolute local directories on
+- URLs open only if they are `https` on `github.com`, `chatgpt.com` or `chat.openai.com`, without
+  credentials or a non-default port (`:443`, the https default, is accepted and dropped; checked by
+  URL parsing). Folders open only if they are existing absolute local directories on
   a local drive whose final target — after resolving symbolic links, junctions and mapped drives —
   is also local; UNC / network locations are never opened, and links pointing to them are refused
   before they are followed. No shell commands are executed.
@@ -48,9 +49,11 @@ restarting the app.
 - One DVCC process per Windows session: processes start one at a time (start-up lock), so a later
   or simultaneous launch hands over to the running instance (its window is focused) and exits
   before creating a window or touching data; the data folder is also locked (`.dvcc.lock`) while
-  DVCC runs. If the running instance stops responding, a new launch waits up to 15 seconds for the
-  start-up lock and is then refused by the data folder lock (`DATA_DIR_IN_USE`) instead. Debug and
-  release builds share this identity, so a running debug build also blocks a release build.
+  DVCC runs. A launch that cannot obtain the start-up lock within 15 seconds (for example while
+  another launch is stuck handing over to a running instance that stopped responding), or cannot
+  create it at all, exits quietly without creating a window or touching data (fail closed, exit
+  code 75). Debug and release builds share this identity, so a running debug build also blocks a
+  release build.
 - Out of scope for v0.1: Git / GitHub freshness detection, GitHub API, Claude Code / Codex session
   discovery, terminal embedding, Notion / Vault sync, SQLite, REST / MCP, authentication,
   installers and releases.
@@ -94,6 +97,8 @@ npm run tauri build -- --no-bundle
 
 # Evidence that a second process is refused, including simultaneous starts (isolated data folder)
 .\scripts\verify-single-instance.ps1 -Exe .\src-tauri\target\release\devvault-control-center.exe -DataDir D:\scratch\dvcc-si-data
+# Only the fail-closed start-up gate (held / uncreatable start-up lock; no window is expected)
+.\scripts\verify-single-instance.ps1 -Exe .\src-tauri\target\release\devvault-control-center.exe -DataDir D:\scratch\dvcc-si-data -FailClosedOnly
 
 # Network-drive launcher boundary (needs a temporary mapping, e.g. net use W: \\localhost\C$ /persistent:no)
 $env:DVCC_TEST_MAPPED_DRIVE_DIR = "W:\Windows"; cd src-tauri; cargo test mapped_network_drive -- --ignored; cd ..

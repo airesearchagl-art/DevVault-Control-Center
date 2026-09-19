@@ -12,6 +12,11 @@
 //! build (which runs the plugin set-up) is complete. A later process therefore always finds a
 //! fully registered instance and hands over to it inside the plugin set-up, before any window of
 //! its own exists.
+//!
+//! The gate fails closed (P1-1): a process that does not own the mutex — the wait timed out, the
+//! mutex could not be created, or the wait returned anything unexpected — never builds the app.
+//! [`with_startup_gate`] runs the build only for `Owned` / `OwnedAfterAbandon`, and the build
+//! receives a [`StartupGate`] token that no other code can create.
 
 use std::time::Duration;
 
@@ -19,9 +24,12 @@ use std::time::Duration;
 pub const STARTUP_MUTEX_NAME: &str = "Local\\com.devvault.controlcenter.startup";
 
 /// Upper bound for waiting on another process's start-up. Building the app normally takes well
-/// under a second; after the timeout the process continues and the data-folder lock remains the
-/// last line of defence.
+/// under a second; after the timeout the process exits without building the app (fail closed).
 pub const STARTUP_WAIT: Duration = Duration::from_secs(15);
+
+/// Exit code of a process that did not obtain the start-up gate and therefore exited without
+/// building the app (distinct from the plugin hand-over, which exits with 0).
+pub const STARTUP_GATE_REFUSED_EXIT_CODE: i32 = 75;
 
 #[cfg(windows)]
 mod ffi {
@@ -51,12 +59,61 @@ pub enum StartupLockState {
     /// A previous owner ended without releasing it (e.g. a process that handed over and exited);
     /// this thread owns it now.
     OwnedAfterAbandon,
-    /// Not obtained within the wait bound (or the mutex could not be created).
+    /// Not obtained: the wait timed out, the mutex could not be created, or the wait returned an
+    /// unexpected result.
     NotOwned,
 }
 
+impl StartupLockState {
+    /// Whether a process in this state may build the app. Only an owner of the gate may.
+    pub fn permits_build(self) -> bool {
+        match self {
+            Self::Owned | Self::OwnedAfterAbandon => true,
+            Self::NotOwned => false,
+        }
+    }
+}
+
+/// Proof that this thread owns the start-up gate. Only [`with_startup_gate`] creates it, so code
+/// that requires it (the app build) cannot run in a process without the gate.
+pub struct StartupGate(());
+
+/// Acquires the start-up gate and runs `build` while holding it; the gate is released right after
+/// `build` returns, on this thread. Without the gate (`NotOwned`) `build` is never called and the
+/// state is returned as the error.
+pub fn with_startup_gate<T>(
+    name: &str,
+    wait: Duration,
+    build: impl FnOnce(&StartupGate) -> T,
+) -> Result<T, StartupLockState> {
+    run_gated(StartupLock::acquire(name, wait), build)
+}
+
+fn run_gated<T>(
+    lock: StartupLock,
+    build: impl FnOnce(&StartupGate) -> T,
+) -> Result<T, StartupLockState> {
+    if !lock.state.permits_build() {
+        return Err(lock.state);
+    }
+    let built = build(&StartupGate(()));
+    drop(lock);
+    Ok(built)
+}
+
+/// Maps a `WaitForSingleObject` result: anything other than signalled or abandoned (timeout,
+/// `WAIT_FAILED`, unknown values) is `NotOwned`.
+#[cfg(windows)]
+fn state_after_wait(result: u32) -> StartupLockState {
+    match result {
+        ffi::WAIT_OBJECT_0 => StartupLockState::Owned,
+        ffi::WAIT_ABANDONED => StartupLockState::OwnedAfterAbandon,
+        _ => StartupLockState::NotOwned,
+    }
+}
+
 /// Start-up lock. Released when dropped, which must happen on the thread that acquired it.
-pub struct StartupLock {
+struct StartupLock {
     #[cfg(windows)]
     handle: *mut std::ffi::c_void,
     state: StartupLockState,
@@ -64,7 +121,7 @@ pub struct StartupLock {
 
 impl StartupLock {
     #[cfg(windows)]
-    pub fn acquire(name: &str, wait: Duration) -> Self {
+    fn acquire(name: &str, wait: Duration) -> Self {
         let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
         let millis = u32::try_from(wait.as_millis()).unwrap_or(u32::MAX - 1);
         // SAFETY: `wide` is a NUL-terminated UTF-16 string that outlives the call; a null security
@@ -78,25 +135,18 @@ impl StartupLock {
                     state: StartupLockState::NotOwned,
                 };
             }
-            let state = match ffi::WaitForSingleObject(handle, millis) {
-                ffi::WAIT_OBJECT_0 => StartupLockState::Owned,
-                ffi::WAIT_ABANDONED => StartupLockState::OwnedAfterAbandon,
-                _ => StartupLockState::NotOwned,
-            };
+            let state = state_after_wait(ffi::WaitForSingleObject(handle, millis));
             Self { handle, state }
         }
     }
 
+    /// No start-up mutex exists on other platforms (v0.1 is Windows-only), so the gate is never
+    /// owned there and the app is not built (fail closed).
     #[cfg(not(windows))]
-    pub fn acquire(_name: &str, _wait: Duration) -> Self {
+    fn acquire(_name: &str, _wait: Duration) -> Self {
         Self {
             state: StartupLockState::NotOwned,
         }
-    }
-
-    #[cfg(test)]
-    pub fn state(&self) -> StartupLockState {
-        self.state
     }
 }
 
@@ -117,11 +167,69 @@ impl Drop for StartupLock {
     }
 }
 
+#[cfg(test)]
+mod contract_tests {
+    use super::*;
+
+    /// A lock in the given state that owns no OS handle.
+    fn detached(state: StartupLockState) -> StartupLock {
+        StartupLock {
+            #[cfg(windows)]
+            handle: std::ptr::null_mut(),
+            state,
+        }
+    }
+
+    /// The F-3 contract, stated independently of the implementation: only an owner of the start-up
+    /// gate may build the app.
+    const CONTRACT: [(StartupLockState, bool); 3] = [
+        (StartupLockState::Owned, true),
+        (StartupLockState::OwnedAfterAbandon, true),
+        (StartupLockState::NotOwned, false),
+    ];
+
+    #[test]
+    fn only_an_owner_of_the_start_up_gate_is_permitted_to_build() {
+        for (state, permitted) in CONTRACT {
+            assert_eq!(state.permits_build(), permitted, "{state:?}");
+        }
+    }
+
+    #[test]
+    fn the_build_runs_exactly_when_the_contract_permits_it() {
+        for (state, permitted) in CONTRACT {
+            let mut builds = 0;
+            let result = run_gated(detached(state), |_gate| {
+                builds += 1;
+                "app"
+            });
+            if permitted {
+                assert_eq!(builds, 1, "{state:?} must build the app once");
+                assert_eq!(result, Ok("app"));
+            } else {
+                assert_eq!(builds, 0, "{state:?} must never reach the build");
+                assert_eq!(result, Err(StartupLockState::NotOwned));
+            }
+        }
+    }
+}
+
 #[cfg(all(test, windows))]
 mod tests {
     use super::*;
     use std::sync::mpsc;
     use std::thread;
+    use std::time::Instant;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CreateEventW(
+            attributes: *const std::ffi::c_void,
+            manual_reset: i32,
+            initial_state: i32,
+            name: *const u16,
+        ) -> *mut std::ffi::c_void;
+    }
 
     fn unique_name() -> String {
         format!(
@@ -134,6 +242,21 @@ mod tests {
         )
     }
 
+    /// Holds the named lock on its own thread until the returned sender is used or dropped.
+    fn hold_on_another_thread(name: &str) -> (mpsc::Sender<()>, thread::JoinHandle<()>) {
+        let (acquired_tx, acquired_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel::<()>();
+        let holder_name = name.to_owned();
+        let holder = thread::spawn(move || {
+            let lock = StartupLock::acquire(&holder_name, Duration::from_secs(5));
+            acquired_tx.send(lock.state).unwrap();
+            let _ = release_rx.recv();
+            drop(lock);
+        });
+        assert_eq!(acquired_rx.recv().unwrap(), StartupLockState::Owned);
+        (release_tx, holder)
+    }
+
     #[test]
     fn a_second_starter_waits_until_the_first_releases() {
         let name = unique_name();
@@ -142,9 +265,9 @@ mod tests {
         let holder_name = name.clone();
         let holder = thread::spawn(move || {
             let lock = StartupLock::acquire(&holder_name, Duration::from_secs(5));
-            acquired_tx.send(lock.state()).unwrap();
+            acquired_tx.send(lock.state).unwrap();
             release_rx.recv().unwrap();
-            let releasing_at = std::time::Instant::now();
+            let releasing_at = Instant::now();
             drop(lock);
             releasing_at
         });
@@ -152,7 +275,7 @@ mod tests {
 
         let blocked_name = name.clone();
         let blocked = thread::spawn(move || {
-            StartupLock::acquire(&blocked_name, Duration::from_millis(200)).state()
+            StartupLock::acquire(&blocked_name, Duration::from_millis(200)).state
         });
         assert_eq!(
             blocked.join().unwrap(),
@@ -163,7 +286,7 @@ mod tests {
         let waiter_name = name.clone();
         let waiter = thread::spawn(move || {
             let lock = StartupLock::acquire(&waiter_name, Duration::from_secs(5));
-            (lock.state(), std::time::Instant::now())
+            (lock.state, Instant::now())
         });
         thread::sleep(Duration::from_millis(300));
         release_tx.send(()).unwrap();
@@ -177,7 +300,7 @@ mod tests {
     }
 
     #[test]
-    fn a_lock_left_by_an_ended_owner_is_taken_over() {
+    fn a_lock_left_by_an_ended_owner_is_taken_over_and_permits_the_build() {
         let name = unique_name();
         let holder_name = name.clone();
         // The owning thread ends without releasing (like a process that exits during start-up).
@@ -187,6 +310,94 @@ mod tests {
         .join()
         .unwrap();
         let lock = StartupLock::acquire(&name, Duration::from_secs(5));
-        assert_eq!(lock.state(), StartupLockState::OwnedAfterAbandon);
+        assert_eq!(lock.state, StartupLockState::OwnedAfterAbandon);
+        assert_eq!(run_gated(lock, |_gate| "app"), Ok("app"));
+    }
+
+    #[test]
+    fn a_start_up_that_times_out_never_reaches_the_build() {
+        let name = unique_name();
+        let (release, holder) = hold_on_another_thread(&name);
+
+        let started = Instant::now();
+        let mut built = false;
+        let result = with_startup_gate(&name, Duration::from_millis(200), |_gate| built = true);
+        assert_eq!(result, Err(StartupLockState::NotOwned));
+        assert!(!built, "a process without the gate must not build the app");
+        assert!(started.elapsed() >= Duration::from_millis(200));
+
+        release.send(()).unwrap();
+        holder.join().unwrap();
+    }
+
+    #[test]
+    fn a_mutex_that_cannot_be_created_never_reaches_the_build() {
+        // A named event under the same name makes CreateMutexW fail (ERROR_INVALID_HANDLE).
+        let name = unique_name();
+        let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+        // SAFETY: `wide` is NUL-terminated and outlives the call; the handle is closed below.
+        let event = unsafe { CreateEventW(std::ptr::null(), 1, 0, wide.as_ptr()) };
+        assert!(!event.is_null());
+        // SAFETY: same NUL-terminated name; the returned handle (expected null) is not used.
+        assert!(unsafe { ffi::CreateMutexW(std::ptr::null(), 0, wide.as_ptr()) }.is_null());
+
+        let started = Instant::now();
+        let mut built = false;
+        let result = with_startup_gate(&name, Duration::from_secs(5), |_gate| built = true);
+        assert_eq!(result, Err(StartupLockState::NotOwned));
+        assert!(!built, "a process without the gate must not build the app");
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "a creation failure is refused at once"
+        );
+
+        // SAFETY: `event` came from CreateEventW above and is closed once.
+        unsafe { ffi::CloseHandle(event) };
+    }
+
+    #[test]
+    fn only_signalled_or_abandoned_waits_own_the_lock() {
+        const WAIT_TIMEOUT: u32 = 0x0000_0102;
+        const WAIT_FAILED: u32 = 0xFFFF_FFFF;
+        assert_eq!(state_after_wait(0x0000_0000), StartupLockState::Owned);
+        assert_eq!(
+            state_after_wait(0x0000_0080),
+            StartupLockState::OwnedAfterAbandon
+        );
+        for unexpected in [WAIT_TIMEOUT, WAIT_FAILED, 0x0000_0001, 0x0000_00C0] {
+            assert_eq!(
+                state_after_wait(unexpected),
+                StartupLockState::NotOwned,
+                "{unexpected:#x}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_gate_is_held_during_the_build_and_released_after_it() {
+        let name = unique_name();
+        let result = with_startup_gate(&name, Duration::from_secs(5), |_gate| {
+            let contender = name.clone();
+            thread::spawn(move || {
+                StartupLock::acquire(&contender, Duration::from_millis(100)).state
+            })
+            .join()
+            .unwrap()
+        });
+        assert_eq!(
+            result,
+            Ok(StartupLockState::NotOwned),
+            "another starter cannot pass while the app is being built"
+        );
+
+        let after =
+            thread::spawn(move || StartupLock::acquire(&name, Duration::from_millis(500)).state)
+                .join()
+                .unwrap();
+        assert_eq!(
+            after,
+            StartupLockState::Owned,
+            "released once the build returned"
+        );
     }
 }

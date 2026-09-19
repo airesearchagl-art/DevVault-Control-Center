@@ -17,8 +17,9 @@ fn url_rejected(message: &str) -> CommandError {
     CommandError::new("URL_REJECTED", message)
 }
 
-/// Parses the URL and accepts only `https` URLs without credentials or explicit ports whose
-/// host is exactly one of `ALLOWED_URL_HOSTS`.
+/// Parses the URL and accepts only `https` URLs without credentials or a non-default port whose
+/// host is exactly one of `ALLOWED_URL_HOSTS`. An explicit `:443` is the https default: the parser
+/// normalizes it away (`port()` is `None`), so it is accepted and opened without it.
 pub fn validate_external_url(raw: &str) -> Result<Url, CommandError> {
     let url = Url::parse(raw.trim()).map_err(|_| url_rejected("not a valid absolute URL"))?;
     if url.scheme() != "https" {
@@ -30,7 +31,7 @@ pub fn validate_external_url(raw: &str) -> Result<Url, CommandError> {
         ));
     }
     if url.port().is_some() {
-        return Err(url_rejected("URLs with an explicit port are not allowed"));
+        return Err(url_rejected("URLs with a non-default port are not allowed"));
     }
     match url.host_str() {
         Some(host) if ALLOWED_URL_HOSTS.contains(&host) => Ok(url),
@@ -300,12 +301,42 @@ mod tests {
             "https://chatgpt.com/c/example-thread-alpha",
             "https://chat.openai.com/c/example-thread-beta",
             "  https://GitHub.com/example-org/project-alpha  ",
-            "https://github.com:443/example-org/project-alpha",
         ] {
             assert!(
                 validate_external_url(good).is_ok(),
                 "{good:?} should be accepted"
             );
+        }
+    }
+
+    #[test]
+    fn accepts_the_https_default_port_443_as_canonical() {
+        for (input, canonical) in [
+            (
+                "https://github.com:443/example-org/project-alpha",
+                "https://github.com/example-org/project-alpha",
+            ),
+            (
+                "https://chatgpt.com:443/c/example-thread-alpha",
+                "https://chatgpt.com/c/example-thread-alpha",
+            ),
+        ] {
+            let url = validate_external_url(input).unwrap();
+            assert_eq!(url.port(), None, "{input:?}");
+            assert_eq!(url.as_str(), canonical);
+        }
+    }
+
+    #[test]
+    fn rejects_a_non_default_explicit_port() {
+        for bad in [
+            "https://github.com:8443/example-org/project-alpha",
+            "https://github.com:80/example-org/project-alpha",
+            "https://chatgpt.com:444/c/example-thread-alpha",
+            "https://github.com:0/example-org/project-alpha",
+        ] {
+            let error = validate_external_url(bad).unwrap_err();
+            assert_eq!(error.code, "URL_REJECTED", "{bad:?} should be rejected");
         }
     }
 

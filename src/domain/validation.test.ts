@@ -19,9 +19,27 @@ describe("parseAllowedHttpsUrl (URL parsing, not prefix matching)", () => {
     "https://chatgpt.com/c/example-thread-alpha",
     "https://chat.openai.com/c/example-thread-beta",
     "https://GitHub.com/example-org/project-alpha",
-    "https://github.com:443/example-org/project-alpha",
   ])("accepts %s", (url) => {
     expect(parseAllowedHttpsUrl(url, LAUNCHER_HOSTS).ok).toBe(true);
+  });
+
+  it.each([
+    ["https://github.com:443/example-org/project-alpha", "https://github.com/example-org/project-alpha"],
+    ["https://chatgpt.com:443/c/example-thread-alpha", "https://chatgpt.com/c/example-thread-alpha"],
+  ])("accepts the https default port :443 as canonical (%s)", (input, canonical) => {
+    const parsed = parseAllowedHttpsUrl(input, LAUNCHER_HOSTS);
+    if (!parsed.ok) throw new Error(parsed.error);
+    expect(parsed.value.port).toBe("");
+    expect(parsed.value.href).toBe(canonical);
+  });
+
+  it.each([
+    "https://github.com:8443/example-org/project-alpha",
+    "https://github.com:80/example-org/project-alpha",
+    "https://chatgpt.com:444/c/example-thread-alpha",
+    "https://github.com:0/example-org/project-alpha",
+  ])("rejects a non-default explicit port: %s", (url) => {
+    expect(parseAllowedHttpsUrl(url, LAUNCHER_HOSTS).ok).toBe(false);
   });
 
   it.each([

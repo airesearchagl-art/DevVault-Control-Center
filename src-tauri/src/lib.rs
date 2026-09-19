@@ -26,11 +26,25 @@ impl CommandError {
 pub fn run() {
     // DVCC processes build the app one at a time (E-1): the plugin set-up inside `build` either
     // registers this process as the running instance or hands over to the one that registered
-    // before and exits, before any window exists. Released right after `build`, on this thread.
-    let startup =
-        instance::StartupLock::acquire(instance::STARTUP_MUTEX_NAME, instance::STARTUP_WAIT);
+    // before and exits, before any window exists. The start-up gate is released right after
+    // `build`, on this thread. Without the gate (timeout, mutex failure) the process exits here
+    // quietly: no Builder, no window, no WebView2, no data folder access (fail closed, P1-1).
+    let app = match instance::with_startup_gate(
+        instance::STARTUP_MUTEX_NAME,
+        instance::STARTUP_WAIT,
+        build_app,
+    ) {
+        Ok(app) => app,
+        Err(_not_owned) => std::process::exit(instance::STARTUP_GATE_REFUSED_EXIT_CODE),
+    };
 
-    let app = tauri::Builder::default()
+    // The plugin set-up has run: this process now owns the single-instance registration.
+    app.run(|_, _| {});
+}
+
+/// The only place the Tauri app is built; requires the start-up gate.
+fn build_app(_gate: &instance::StartupGate) -> tauri::App {
+    tauri::Builder::default()
         // Must be registered first: a second DVCC process hands over to the running instance
         // (its window is focused) and exits here (F-3).
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
@@ -66,9 +80,5 @@ pub fn run() {
             launcher::open_data_dir,
         ])
         .build(tauri::generate_context!())
-        .expect("error while building DevVault Control Center");
-
-    // The plugin set-up has run: this process now owns the single-instance registration.
-    drop(startup);
-    app.run(|_, _| {});
+        .expect("error while building DevVault Control Center")
 }

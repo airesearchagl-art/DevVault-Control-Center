@@ -24,7 +24,9 @@ One DVCC process per Windows session uses the data, enforced in three layers:
 1. **Start-up lock** (named mutex `Local\com.devvault.controlcenter.startup`): DVCC processes
    build the app one at a time, and the single-instance plugin registers the running instance
    during that build. A process started later, or at the same moment, therefore always finds a
-   fully registered instance.
+   fully registered instance. The lock fails closed: a process that does not own it within 15 s,
+   cannot create it, or gets any other wait result exits (code 75) before the app is built — no
+   window, no WebView2, no data folder access.
 2. **Single-instance plugin**: such a process hands over to the registered instance (its window is
    brought to the front) and exits inside the plugin set-up, before it creates any window or
    resolves the data folder.
@@ -228,8 +230,10 @@ warning is shown. Broken or unknown lines are skipped with a warning; the file i
 
 ## Launcher boundary
 
-- URLs open only if they are `https` without credentials or explicit port on `github.com`,
-  `chatgpt.com` or `chat.openai.com` (decided by URL parsing).
+- URLs open only if they are `https` without credentials or a non-default port on `github.com`,
+  `chatgpt.com` or `chat.openai.com` (decided by URL parsing). An explicit `:443` is the https
+  default port: URL parsing normalizes it away, so it is accepted and never stored or opened with
+  the port; any other explicit port is refused.
 - Folders open only if the input is an absolute local drive path of an existing directory on a
   non-network drive, and the final target after resolving symbolic links, junctions and mapped
   drives is also on a local drive. UNC / network targets are refused (`NETWORK_TARGET`). The

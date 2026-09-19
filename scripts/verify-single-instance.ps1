@@ -1,5 +1,12 @@
 # Reproducible verification that DVCC refuses a second simultaneous process (F-3 / E-1).
 #
+# Phase 0 (fail-closed start-up gate, P1-1): starts DVCC on a hidden, isolated Windows desktop while
+# the start-up lock is (a) held by this script, so the process's wait times out, and (b) taken by a
+# named event, so the process cannot create the mutex. In both cases DVCC must exit by itself with
+# exit code 75 (the refused-gate exit) without reaching the app build: the single-instance plugin's
+# mutex never appears, the process owns no window (visible or hidden) and starts no child process
+# (WebView2), and its data folder is never created. -FailClosedOnly runs only this phase.
+#
 # Phase 1 (sequential): starts instance A with an isolated data folder, then instance B with the
 # same data folder, and checks that:
 #   - A holds the data-folder lock (.dvcc.lock cannot be opened by another process),
@@ -23,7 +30,10 @@ param(
   [ValidateRange(2, 8)][int] $RaceSize = 2,
   # Pause between consecutive starts, cycled per round. Non-zero pauses hit the window in which the
   # first process is registering while the next one starts.
-  [int[]] $DelaysMs = @(0, 0, 10, 20, 50, 100, 200, 300, 500, 1000)
+  [int[]] $DelaysMs = @(0, 0, 10, 20, 50, 100, 200, 300, 500, 1000),
+  [switch] $FailClosedOnly,
+  # Must match STARTUP_WAIT in src-tauri/src/instance.rs.
+  [int] $StartupWaitSeconds = 15
 )
 
 $ErrorActionPreference = "Stop"
@@ -114,6 +124,150 @@ New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
 $env:DVCC_DATA_DIR = (Resolve-Path -LiteralPath $DataDir).Path
 $dataRoot = $env:DVCC_DATA_DIR
 
+# Phase 0: fail-closed start-up gate. Names and exit code must match src-tauri/src/instance.rs and
+# the single-instance plugin (`<identifier>-sim`).
+$startupMutexName = "Local\com.devvault.controlcenter.startup"
+$pluginMutexName = "com.devvault.controlcenter-sim"
+$gateRefusedExitCode = 75
+
+Add-Type -TypeDefinition @"
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+
+public static class DvccGate {
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  struct STARTUPINFO {
+    public int cb; public string lpReserved; public string lpDesktop; public string lpTitle;
+    public int dwX, dwY, dwXSize, dwYSize, dwXCountChars, dwYCountChars, dwFillAttribute, dwFlags;
+    public short wShowWindow, cbReserved2; public IntPtr lpReserved2, hStdInput, hStdOutput, hStdError;
+  }
+  [StructLayout(LayoutKind.Sequential)]
+  struct PROCESS_INFORMATION { public IntPtr hProcess, hThread; public int dwProcessId, dwThreadId; }
+
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  static extern bool CreateProcessW(string app, string cmd, IntPtr pa, IntPtr ta, bool inherit,
+    uint flags, IntPtr env, string cwd, ref STARTUPINFO si, out PROCESS_INFORMATION pi);
+  [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+  [DllImport("kernel32.dll")] static extern bool GetExitCodeProcess(IntPtr h, out uint code);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  static extern IntPtr CreateDesktopW(string name, IntPtr dev, IntPtr dm, int flags, uint access, IntPtr sa);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  static extern IntPtr OpenDesktopW(string name, int flags, bool inherit, uint access);
+  [DllImport("user32.dll")] static extern bool CloseDesktop(IntPtr h);
+  delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lparam);
+  [DllImport("user32.dll")] static extern bool EnumDesktopWindows(IntPtr desktop, EnumWindowsProc cb, IntPtr lparam);
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+
+  const uint GENERIC_ALL = 0x10000000;
+  public const long StillActive = 259;
+  static IntPtr desktop = IntPtr.Zero;
+  static Dictionary<int, IntPtr> handles = new Dictionary<int, IntPtr>();
+
+  public static void CreateDesktop(string name) {
+    desktop = CreateDesktopW(name, IntPtr.Zero, IntPtr.Zero, 0, GENERIC_ALL, IntPtr.Zero);
+    if (desktop == IntPtr.Zero) throw new Exception("CreateDesktopW failed: " + Marshal.GetLastWin32Error());
+  }
+  public static void Release() {
+    foreach (IntPtr h in handles.Values) CloseHandle(h);
+    handles.Clear();
+    if (desktop != IntPtr.Zero) { CloseDesktop(desktop); desktop = IntPtr.Zero; }
+  }
+  /// Starts `exe` (inheriting this process's environment) on the named desktop; returns its PID.
+  public static int Start(string exe, string desktopName) {
+    var si = new STARTUPINFO();
+    si.cb = Marshal.SizeOf(typeof(STARTUPINFO));
+    si.lpDesktop = desktopName;
+    PROCESS_INFORMATION pi;
+    if (!CreateProcessW(exe, null, IntPtr.Zero, IntPtr.Zero, false, 0, IntPtr.Zero, null, ref si, out pi))
+      throw new Exception("CreateProcessW failed: " + Marshal.GetLastWin32Error());
+    CloseHandle(pi.hThread);
+    handles[pi.dwProcessId] = pi.hProcess;
+    return pi.dwProcessId;
+  }
+  /// Exit code read from the creation handle (259 = still running).
+  public static long ExitCode(int pid) {
+    uint code;
+    if (!GetExitCodeProcess(handles[pid], out code)) return -2;
+    return (long)code;
+  }
+  /// Number of top-level windows, visible or hidden, that `pid` owns on the named desktop.
+  public static int WindowCount(string desktopName, int pid) {
+    int count = 0;
+    IntPtr h = OpenDesktopW(desktopName, 0, false, GENERIC_ALL);
+    if (h == IntPtr.Zero) throw new Exception("OpenDesktopW failed: " + Marshal.GetLastWin32Error());
+    try {
+      EnumDesktopWindows(h, delegate (IntPtr hwnd, IntPtr lp) {
+        uint owner; GetWindowThreadProcessId(hwnd, out owner);
+        if (owner == (uint)pid) count++;
+        return true;
+      }, IntPtr.Zero);
+    } finally { CloseDesktop(h); }
+    return count;
+  }
+}
+"@
+
+function Test-FailClosedStart([string] $case, [string] $desktopName) {
+  # Never created by a passing run: the process must not reach the data folder.
+  $caseRoot = Join-Path $dataRoot "fail-closed-$case-$([guid]::NewGuid().ToString('N'))"
+  $env:DVCC_DATA_DIR = $caseRoot
+  $createdNew = $false
+  if ($case -eq "held") {
+    $blocker = [System.Threading.Mutex]::new($true, $startupMutexName, [ref]$createdNew)
+  }
+  else {
+    $blocker = [System.Threading.EventWaitHandle]::new($false, [System.Threading.EventResetMode]::ManualReset, $startupMutexName, [ref]$createdNew)
+  }
+  try {
+    if (-not $createdNew) { throw "the start-up lock name is already in use; close every DVCC process first" }
+    $started = Get-Date
+    $childId = [DvccGate]::Start($exePath, $desktopName)
+    $deadline = $started.AddSeconds($StartupWaitSeconds + $TimeoutSeconds)
+    $windows = 0
+    $children = 0
+    $pluginSeen = $false
+    do {
+      Start-Sleep -Milliseconds 250
+      $windows = [math]::Max($windows, [DvccGate]::WindowCount($desktopName, $childId))
+      $children = [math]::Max($children, @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$childId").Count)
+      $pluginMutex = $null
+      if ([System.Threading.Mutex]::TryOpenExisting($pluginMutexName, [ref]$pluginMutex)) { $pluginSeen = $true; $pluginMutex.Dispose() }
+      $code = [DvccGate]::ExitCode($childId)
+    } while ($code -eq [DvccGate]::StillActive -and (Get-Date) -lt $deadline)
+    $elapsed = ((Get-Date) - $started).TotalSeconds
+    $exitedByItself = $code -ne [DvccGate]::StillActive
+    if (-not $exitedByItself) { Stop-Process -Id $childId -Force }
+    $waitedAsExpected = if ($case -eq "held") { $elapsed -ge ($StartupWaitSeconds - 1) } else { $elapsed -lt 5 }
+    $dataUntouched = -not (Test-Path -LiteralPath $caseRoot)
+    $pass = $exitedByItself -and $code -eq $gateRefusedExitCode -and $waitedAsExpected -and $windows -eq 0 -and $children -eq 0 -and (-not $pluginSeen) -and $dataUntouched
+    "fail-closed {0}: exitedByItself={1} exitCode={2} elapsed={3:n1}s windows={4} childProcesses={5} pluginMutexSeen={6} dataFolderUntouched={7} -> {8}" -f $case, $exitedByItself, $(if ($exitedByItself) { $code } else { 'n/a' }), $elapsed, $windows, $children, $pluginSeen, $dataUntouched, $(if ($pass) { "PASS" } else { "FAIL" })
+    return $pass
+  }
+  finally {
+    if ($case -eq "held" -and $createdNew) { try { $blocker.ReleaseMutex() } catch { } }
+    $blocker.Dispose()
+    $env:DVCC_DATA_DIR = $dataRoot
+  }
+}
+
+$failClosedDesktop = "dvcc-fail-closed-$PID"
+[DvccGate]::CreateDesktop($failClosedDesktop)
+try {
+  $failClosedPass = $true
+  foreach ($case in @("held", "uncreatable")) {
+    $output = @(Test-FailClosedStart $case $failClosedDesktop)
+    $output | Select-Object -SkipLast 1
+    if (-not $output[-1]) { $failClosedPass = $false }
+    if (-not (Wait-ForNoProcess 15)) { throw "a $processName process is still running after the fail-closed $case case" }
+  }
+}
+finally {
+  [DvccGate]::Release()
+}
+"FAIL-CLOSED START-UP GATE: $(if ($failClosedPass) { 'PASS' } else { 'FAIL' })"
+if ($FailClosedOnly) { if ($failClosedPass) { exit 0 } else { exit 1 } }
+
 # Phase 1: sequential second launch.
 $results = [ordered]@{}
 $a = Start-Process -FilePath $exePath -PassThru
@@ -185,4 +339,4 @@ for ($round = 1; $round -le $RaceRounds; $round++) {
 }
 "RACE ($RaceRounds rounds of $RaceSize): $(if ($racePass) { 'PASS' } else { 'FAIL' })"
 
-if ($sequentialPass -and $racePass) { "SINGLE INSTANCE: PASS" } else { "SINGLE INSTANCE: FAIL"; exit 1 }
+if ($failClosedPass -and $sequentialPass -and $racePass) { "SINGLE INSTANCE: PASS" } else { "SINGLE INSTANCE: FAIL"; exit 1 }
