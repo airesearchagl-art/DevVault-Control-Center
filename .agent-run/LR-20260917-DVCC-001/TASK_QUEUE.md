@@ -36,3 +36,12 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 - [x] R10 Independent Verification #3 → all focus items PASS, all six Hard Checks PASS; N-1 fixed with a test, N-2 → QD-013, N-3 → README
 - [x] R11 Implementation freeze → full diff review → Required Checks PASS → Hard Checks PASS → Quality Debt and unverified items review → final checkpoint
 - [x] R12 Draft PR created (base main, head feat/review-hub-v0.1) → STOP
+
+## Focused Repair P1-1 (Independent FULL Review at `3f99eab`)
+
+- [x] R13.0 Fresh gate PASS → BLOCKED transition checkpoint (RUN_STATE stale entries corrected)
+- [ ] R13.1 Fail-closed start-up gate (`instance.rs`, `lib.rs`) + structural contract tests
+- [ ] R13.2 Deterministic `NotOwned` verification against the release binary (timeout, `CreateMutexW` failure)
+- [ ] R13.3 Focused race regression (2-process zero / staggered, 3-process staggered, abandoned owner)
+- [ ] R13.4 P3 URL contract cleanup (`:443` canonical default; non-default port rejected)
+- [ ] R13.5 Targeted checks → Hard Check re-evaluation → checkpoint → PR body → COMPLETE_PENDING_FULL_VERIFY

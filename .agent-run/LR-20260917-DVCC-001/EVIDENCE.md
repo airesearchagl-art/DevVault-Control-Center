@@ -455,3 +455,20 @@ Draft PR conditions checked one by one before creating it: F-1 resolved, F-2 res
 
 - Draft PR: https://github.com/airesearchagl-art/DevVault-Control-Center/pull/1 — draft, base `main`, head `feat/review-hub-v0.1`, code head `c250b409587217792191d6610e8db9b4b4688ebd`.
 - `gh pr view 1` confirms `isDraft: true`, `state: OPEN`. Ready for Review, merge, release and production were not performed and remain prohibited without a new Human authorization.
+
+## Focused Repair P1-1 — Independent FULL Review required fix
+
+### Independent FULL Review result and BLOCKED transition — 2026-09-20
+
+Reviewed head `3f99eaba27df5946cfc017542d8d8ea81d5babc3` (PR #1, Draft). Result: **NOT READY — REQUIRED FIX**.
+
+| ID | Severity | Finding |
+|---|---|---|
+| P1-1 | Hard Gate (Data integrity, F-3 boundary) | `StartupLock::acquire()` returns `Owned` / `OwnedAfterAbandon` / `NotOwned`, but `run()` in `src-tauri/src/lib.rs` did not inspect it and always went on to `tauri::Builder::default()` → `build()`. After the 15 s `STARTUP_WAIT` timeout, a `CreateMutexW` failure or an unexpected `WaitForSingleObject` result, a process without the start-up gate therefore still created the configured window / WebView2 (the E-1 / F-3 failure mechanism). `.dvcc.lock` kept storage safe, but the F-3 property "a loser never reaches Tauri build / window / WebView" did not hold. The race suites never exercised the `NotOwned` branch. |
+| P3 | documentation | Launcher comment / data contract said "explicit port rejected", while `https://github.com:443/...` is accepted (the URL parser normalises the default port away). |
+
+State transition: `COMPLETE_PENDING_FULL_VERIFY` → **BLOCKED — Independent FULL Review P1-1 / F-3 startup timeout path** → REPAIRING under the Human authorization "DVCC PR #1 Focused Long-Run Repair — Independent Review P1-1". The failure stays a Hard Gate failure; it is not converted into Quality Debt. No Task Packet revision 3.
+
+Fresh gate before any change (2026-09-20): PR #1 `OPEN`, `isDraft: true`, `mergedAt: null`; PR head = local HEAD = `origin/feat/review-hub-v0.1` = `3f99eaba27df5946cfc017542d8d8ea81d5babc3`; branch `feat/review-hub-v0.1`; base `main` @ `bbffea1177b80dfe46a0f6887a9fc05dd5e4f05d` (= merge base); working tree clean (0 tracked changes, 0 untracked); Task Packet rev 2 SHA-256 `624ef4d3716e7490d035e2b5dc599fb3c3d59cacb60d0827f298dbc7a391567b` (match), rev 1 `4200048dd5535f596af25e588f0c572c4ca611464aff7bf221686c5759a1124b` (match).
+
+RUN_STATE correction at this checkpoint: the stale "R-F3: … Independent Verification #3 pending" and the unverified items "Full diff review of the final head; Independent Verification #3" (both completed, see "Independent Verification #3" and "Final convergence at the frozen head") were replaced; the "all repairs independently verified" current-state text was withdrawn because P1-1 reopens F-3.
