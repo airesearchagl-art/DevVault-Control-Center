@@ -39,9 +39,9 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 
 ## Wave 4 — verification
 
-- [~] Scratch synthetic repositories (harness written; Rust-level cases already covered) — UI run pending
-- [~] Release build + isolated-desktop UI smoke (incl. restart → UNKNOWN) — blocked until the operator's own DVCC instance closes
-- [ ] Phase 1 regression
+- [x] Scratch synthetic repositories (clean, dirty, untracked, detached, not-a-repo, no localRoot, timeout, Git unavailable)
+- [x] Release build + isolated-desktop UI smoke (incl. restart → UNKNOWN) — three parts PASS at `5ec54a9`
+- [x] Phase 1 regression (487 TS / 62 Rust tests, restart restore in the smoke)
 - [x] README / `docs/data-contract-v1.md` update (Phase 2 statements) — `5e991a8`
 - [ ] Checkpoint
 
@@ -49,6 +49,6 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 
 ## Final
 
-- [ ] Final Convergence (freeze, full diff review, all Required Checks, Hard Checks, Quality Debt, unverified items)
+- [x] Final Convergence (freeze, full diff review, all Required Checks, Hard Checks, Quality Debt, unverified items)
 - [ ] Independent Verification (separate context)
 - [ ] Draft PR → STOP

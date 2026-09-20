@@ -3,13 +3,13 @@
 - Run ID: LR-20260920-DVCC-002
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — Wave 4 in progress (documentation and mutation probes done; release build and isolated UI smoke waiting for the operator's own DVCC instance to close)
+- Current state: RUNNING — Wave 4 complete (release build, isolated-desktop UI smoke and regression PASS at the frozen head); entering Final Convergence / Independent Verification
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/evidence-freshness-v0.2
 - Base SHA: f557aa6f15222099f54790180e0ff71c5291734a
-- Current head: Wave 4 part-1 checkpoint commit (after `edd8868` Wave 3, `5e991a8` docs, `80fcc21` strengthened read-only test)
-- Current wave: Wave 4 (docs and mutation probes complete; release build + isolated UI smoke pending an environment condition)
-- Last successful checkpoint: Wave 4 part-1 checkpoint
+- Current head: Wave 4 checkpoint commit (code frozen at `5ec54a9`)
+- Current wave: Wave 4 complete → Final Convergence
+- Last successful checkpoint: Wave 4 checkpoint
 - Task Packet ID: LRP-20260920-DVCC-002
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260920-DVCC-002/TASK_PACKET_SNAPSHOT.md
@@ -21,24 +21,24 @@ Phase 2 — Evidence / Freshness v0.2: observe current **local** Git facts read-
 
 ## Acceptance Criteria
 
-- [ ] AC2-01 feature branch created from the fresh `origin/main` merge commit — evidence: branch `feat/evidence-freshness-v0.2` created from `origin/main` @ f557aa6 (preflight, EVIDENCE.md)
-- [x] AC2-02 current full HEAD of a local Git repository obtained read-only — Rust test `observes_a_clean_repository` (40-char SHA); UI half pending Wave 3
-- [x] AC2-03 branch / detached state determined — Rust tests `observes_a_clean_repository`, `a_detached_head_is_reported_without_a_branch`
-- [x] AC2-04 clean / dirty working tree determined — Rust tests for clean, modified tracked file and untracked file
+- [x] AC2-01 feature branch created from the fresh `origin/main` merge commit — `feat/evidence-freshness-v0.2` from `origin/main` @ f557aa6
+- [x] AC2-02 current full HEAD obtained read-only — Rust test `observes_a_clean_repository`; UI smoke shows the observed HEAD equals the repository HEAD
+- [x] AC2-03 branch / detached state determined — Rust tests plus the UI smoke (branch `dvcc-main` shown)
+- [x] AC2-04 clean / dirty working tree determined — Rust tests plus the UI smoke (Clean / Uncommitted changes)
 - [x] AC2-05 UNC / network localRoot not inspected — `the_local_folder_boundary_refuses_network_and_invalid_paths` (refused before any Git process, Phase 1 validator reused)
-- [x] AC2-06 Git unavailable / not-a-repo / timeout fail closed — Rust tests for `GIT_UNAVAILABLE`, `NOT_A_GIT_REPOSITORY`, `TIMEOUT`, `NO_LOCAL_ROOT`; the UNKNOWN mapping itself is Wave 2
-- [x] AC2-07 a refresh never changes expectedHead / reviewedHead — derivation returns them unchanged; the observation action touches no review data (reducer test)
+- [x] AC2-06 Git unavailable / not-a-repo / timeout fail closed — Rust tests incl. a stand-in Git that never answers (bound honoured); the UNKNOWN mapping is covered by the Freshness oracle and shown in the UI smoke (not-a-repository row)
+- [x] AC2-07 a refresh never changes expectedHead / reviewedHead — derivation returns them unchanged, the observation action touches no review data, and the UI smoke re-checked the recorded HEAD after refreshes and a restart
 - [x] AC2-08 the five Freshness states derived exactly as contracted — 29-row independent oracle in `src/test/freshnessContract.ts` checked against `deriveFreshness`
 - [x] AC2-09 a Freshness change never changes Review State — the `gitObserved` action writes only the observation slice; reducer test asserts every other slice keeps its identity
-- [~] AC2-10 Refresh Git State works for the selected project — wired (`action-refresh-git`); runtime half in Wave 4
-- [~] AC2-11 Refresh All runs sequentially — `observeSequentially` proven single-flight by `src/services/git.test.ts` and wired to `btn-refresh-all-git`; runtime half in Wave 4
-- [~] AC2-12 Freshness and its reason visible in queue and detail — badge + explanation in the detail card, badge with tooltip on queue rows; runtime half in Wave 4
-- [~] AC2-13 after an app restart the observation is UNKNOWN again — no start-up observation and an empty initial slice (reducer test); runtime half in Wave 4
-- [x] AC2-14 no unintended mutation of a test repository — `observing_does_not_modify_the_repository` (content hashes of every file incl. `.git`, three observations)
-- [x] AC2-15 no network operation — only four read-only local subcommands; `GIT_TERMINAL_PROMPT=0`; no remote-contacting command exists in the module (re-checked in Final Convergence)
-- [ ] AC2-16 no regression in Phase 1 persistence / review workflow
-- [ ] AC2-17 Windows release build and isolated UI smoke PASS
-- [ ] AC2-18 runtime fixtures contain no real user project and no secret
+- [x] AC2-10 Refresh Git State works for the selected project — UI smoke: only the selected project becomes observed
+- [x] AC2-11 Refresh All runs sequentially — single-flight unit test plus the UI smoke observing all three projects in one pass
+- [x] AC2-12 Freshness and its reason visible in queue and detail — UI smoke asserts both badges and the exact explanations
+- [x] AC2-13 after an app restart the observation is UNKNOWN again — UI smoke part 2 (all badges UNKNOWN after restart, recorded HEADs intact)
+- [x] AC2-14 no unintended mutation — Rust test (every file except Git's own index byte-identical, recorded index entries unchanged, no lock left) and a runtime snapshot of 58 files around a real Refresh All
+- [x] AC2-15 no network operation — `every_invocation_runs_read_only_and_offline` checks the whole invocation list for read-only verbs and remote-reaching flags, and asserts `GIT_TERMINAL_PROMPT=0`
+- [x] AC2-16 no regression in Phase 1 persistence / review workflow — full suites green (487 TS / 62 Rust) and the UI smoke restored projects, reviews and recorded values across a restart
+- [x] AC2-17 Windows release build and isolated UI smoke PASS — build at `5ec54a9`, three smoke parts on a hidden isolated desktop
+- [x] AC2-18 runtime fixtures contain no real user project and no secret — synthetic repositories created per run in the scratch folder; the operator's real data folder was untouched; product code carries no absolute local path
 
 ## Completed
 
@@ -50,7 +50,7 @@ Waves 1-3 complete: `src-tauri/src/git.rs` (read-only observation, bounded timeo
 
 ## Checks
 
-Wave 1: `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (61 passed, 1 ignored). Wave 2: `npx tsc --noEmit` PASS, `npx vitest run` PASS (16 files, 485 tests; was 426 at `f557aa6`). Wave 3: tsc PASS, vitest PASS (487 tests), `npm run build` PASS. Wave 4 so far: `cargo test` PASS (62 passed, 1 ignored) with the strengthened read-only test; mutation probes 9 / 9 killed.
+Wave 1: `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (61 passed, 1 ignored). Wave 2: `npx tsc --noEmit` PASS, `npx vitest run` PASS (16 files, 485 tests; was 426 at `f557aa6`). Wave 3: tsc PASS, vitest PASS (487 tests), `npm run build` PASS. Wave 4 at the frozen head `5ec54a9`: `cargo fmt --check`, `cargo clippy --all-targets` (0 warnings), `cargo check`, `cargo test` (62 passed / 1 ignored, four consecutive runs), `npx tsc --noEmit`, `npx vitest run` (16 files, 487 tests), `npm run build`, `npm run tauri build -- --no-bundle` — all PASS; isolated-desktop UI smoke PASS (three parts); mutation probes all killed.
 
 ## Quality Debt
 
@@ -79,7 +79,7 @@ Wave 1 (Rust Git inspection boundary), Wave 2 (TypeScript model + Freshness deri
 
 ## Next action
 
-Run `npm run tauri build -- --no-bundle` and the two-part isolated-desktop UI smoke (seed + restart) as soon as the operator's own DVCC instance is closed; then Final Convergence, Independent Verification and the Draft PR.
+Independent Verification (separate context, read-only), then the Draft PR and STOP.
 
 ## Stop conditions status
 
