@@ -185,3 +185,22 @@ An independent context (separate session, read-only, no build or app launch) aud
 Overstated claims the verifier found in this file were corrected in place: the behavioural index-rewrite kill (no longer true at `5ec54a9`, true again after the repair), "one deadline for the whole observation" (was only true for the running-child path), the row count of the contract table, and the Wave-1 sentence about hashing every file including `.git`.
 
 Its verdicts on everything else matched the implementer's: no Phase 1 regression, no write path for the observation, no persistence, no caller influence on the Git program or arguments (it probed a planted `git.bat` in the working directory and the real Git still ran), and no leak of paths in error messages.
+
+### Wave 5 verification at the repaired head `161903e`
+
+Clean build (`cargo clean -p devvault-control-center` first, so no stale binary can be served):
+
+| Check | Result |
+|---|---|
+| `cargo fmt --check` | PASS |
+| `cargo clippy --all-targets` | PASS — 0 warnings |
+| `cargo test` | PASS — **66 passed, 2 ignored** (the mapped-drive launcher test and the new mapped-drive repository test) |
+| `npx tsc --noEmit` | PASS |
+| `npx vitest run` | PASS — 16 files, **493 tests** |
+| `npm run build` | PASS |
+| `npm run tauri build -- --no-bundle` | PASS — release exe SHA-256 `e4c086690389c6b069eb86af7b5954e4da6abd175ac4202018197a69b1dde1a7` |
+| `a_resolved_repository_on_a_mapped_drive_is_refused` (ignored test, run once with a temporary `net use W: \\localhost\C$` mapping) | PASS — a work tree whose Git directory resolves onto the mapped drive is refused by the boundary with no facts; the mapping and its scratch folder were removed afterwards |
+
+Mutation probes, re-run with a harness that rewrites sources with a fresh timestamp (so Cargo always rebuilds): **15 / 16 killed**, including deadline ignored, kill skipped, **drain unbounded**, optional locks dropped, redirecting `GIT_*` kept, **resolved location unchecked** (killed by the mapped-drive test), detached guessed, dirty always false, and six Freshness / observation mutations. The single survivor — removing the `--is-inside-work-tree` check — is an equivalent mutant: the resolution step that follows refuses exactly the same folders (`NOT_A_GIT_REPOSITORY`).
+
+Isolated-desktop UI smoke re-run on the repaired binary: seed **PASS**, restart **PASS**, refresh-only with a repository snapshot **PASS** (58 files byte-identical before and after a real Refresh All). No DVCC or WebView2 process left behind; the operator's real data folder untouched.

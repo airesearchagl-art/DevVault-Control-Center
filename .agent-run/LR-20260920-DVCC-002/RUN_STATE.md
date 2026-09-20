@@ -3,13 +3,13 @@
 - Run ID: LR-20260920-DVCC-002
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — Wave 4 complete (release build, isolated-desktop UI smoke and regression PASS at the frozen head); entering Final Convergence / Independent Verification
+- Current state: **COMPLETE_PENDING_FULL_VERIFY** — Wave 5 repaired everything the independent verification found (two defects, seven hardening items); all Required Checks, the isolated-desktop UI smoke and the mutation probes pass at the repaired head. A focused independent re-review of the repairs and the Human Gate remain.
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/evidence-freshness-v0.2
 - Base SHA: f557aa6f15222099f54790180e0ff71c5291734a
-- Current head: Wave 4 checkpoint commit (code frozen at `5ec54a9`)
-- Current wave: Wave 4 complete → Final Convergence
-- Last successful checkpoint: Wave 4 checkpoint
+- Current head: Wave 5 checkpoint commit (code frozen at `161903e`; `5ec54a9` was the head the independent verification audited)
+- Current wave: Wave 5 (independent verification and repair) complete → Draft PR
+- Last successful checkpoint: Wave 5 checkpoint
 - Task Packet ID: LRP-20260920-DVCC-002
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260920-DVCC-002/TASK_PACKET_SNAPSHOT.md
@@ -50,15 +50,18 @@ Waves 1-3 complete: `src-tauri/src/git.rs` (read-only observation, bounded timeo
 
 ## Checks
 
-Wave 1: `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (61 passed, 1 ignored). Wave 2: `npx tsc --noEmit` PASS, `npx vitest run` PASS (16 files, 485 tests; was 426 at `f557aa6`). Wave 3: tsc PASS, vitest PASS (487 tests), `npm run build` PASS. Wave 4 at the frozen head `5ec54a9`: `cargo fmt --check`, `cargo clippy --all-targets` (0 warnings), `cargo check`, `cargo test` (62 passed / 1 ignored, four consecutive runs), `npx tsc --noEmit`, `npx vitest run` (16 files, 487 tests), `npm run build`, `npm run tauri build -- --no-bundle` — all PASS; isolated-desktop UI smoke PASS (three parts); mutation probes all killed.
+Wave 1: `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (61 passed, 1 ignored). Wave 2: `npx tsc --noEmit` PASS, `npx vitest run` PASS (16 files, 485 tests; was 426 at `f557aa6`). Wave 3: tsc PASS, vitest PASS (487 tests), `npm run build` PASS. Wave 4 at `5ec54a9`: `cargo fmt --check`, `cargo clippy --all-targets` (0 warnings), `cargo check`, `cargo test` (62 passed / 1 ignored, four consecutive runs), `npx tsc --noEmit`, `npx vitest run` (16 files, 487 tests), `npm run build`, `npm run tauri build -- --no-bundle` — all PASS; isolated-desktop UI smoke PASS (three parts); mutation probes all killed. Wave 5 at the repaired head `161903e` (clean build): fmt / clippy (0 warnings) / check PASS, cargo test 66 passed / 2 ignored, tsc PASS, vitest 493, `npm run build` PASS, release build PASS, UI smoke three parts PASS, mutation probes 15 / 16 killed (one documented equivalent mutant).
 
 ## Quality Debt
 
-None open (see QUALITY_DEBT.md).
+QD-001 (reader threads detached on a timeout until the pipes close) and QD-002 (`git status` executes filters / file-system monitors configured in the observed repository — partially mitigated by `-c core.fsmonitor=false`, documented, Human decision pending). Both low risk, neither blocks final verification. See QUALITY_DEBT.md.
 
 ## Explicit unverified items
 
-- Runtime halves of AC2-02..AC2-06 and AC2-10..AC2-13 (Wave 4 UI smoke), AC2-16..AC2-18 (Wave 4).
+- Focused independent re-review of the Wave 5 repairs (pending; the first independent verification covered `5ec54a9`).
+- Behaviour against a real network share beyond the loopback mapping used for the ignored test.
+- Whether a real `git status` with a repository-configured file-system monitor still triggers the drain path now that `-c core.fsmonitor=false` is set (the bound itself is proven with a stand-in child).
+- No GitHub CI exists for this repository (0 status checks, no Actions workflow); every check was local.
 - No GitHub CI exists for this repository (0 status contexts, no Actions workflow); every check is local.
 
 ## Known failures
@@ -79,7 +82,7 @@ Wave 1 (Rust Git inspection boundary), Wave 2 (TypeScript model + Freshness deri
 
 ## Next action
 
-Independent Verification (separate context, read-only), then the Draft PR and STOP.
+Focused independent re-review of the Wave 5 repairs, then the Draft PR and STOP. The implementation session does not declare the re-review itself.
 
 ## Stop conditions status
 
