@@ -81,12 +81,11 @@ None of the following is a Ready blocker on its own; they are recorded so no cla
 - No GitHub CI: the repository has 0 status contexts and no Actions workflow, so no GitHub CI result exists (it must never be reported as PASS). All checks were run locally.
 - Rust-side mutation testing outside the start-up gate (the gate itself: 7 / 7 mutations killed in this repair; Verification #3 verified the rest of the Rust boundary by full source reading, cargo tests and real-binary runs).
 - Cross-Windows-session single instance (only the `.dvcc.lock` layer was exercised directly).
-- Round-2 comparison build: NOT REQUIRED (L-032, Human decision).
 - Default `%APPDATA%` data folder not exercised at runtime (protected); verified by code + dependency source.
 - Literal `Ctrl+V` paste not exercised (automation sets the value; the clipboard write contract itself was verified byte-for-byte in AC-12).
 - Launcher actual-open (really opening a URL / folder) intentionally not executed: outside the required UI Acceptance Criteria for this verification, and the rejection paths were exercised instead.
 
-(Corrected at this checkpoint: "Full diff review of the final head" and "Independent Verification #3" were stale — both were completed, see EVIDENCE.md "Independent Verification #3" and "Final convergence at the frozen head".)
+(Corrected earlier: "Full diff review of the final head" and "Independent Verification #3" were stale — both were completed, see EVIDENCE.md "Independent Verification #3" and "Final convergence at the frozen head". Corrected at this checkpoint: "Round-2 comparison build" was removed from this list — the Human decided it is NOT REQUIRED (L-032), so it is not a current unverified requirement; the decision itself stays recorded in DECISIONS.md.)
 
 ## Known failures
 
