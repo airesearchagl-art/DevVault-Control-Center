@@ -64,9 +64,15 @@ restarting the app.
 - Git observation is **read-only and local**: DVCC runs `git rev-parse`, `git symbolic-ref` and
   `git status` in your project folder (no shell, no arguments built from text you typed), with
   `GIT_OPTIONAL_LOCKS=0` so it cannot even write an index refresh. It never fetches, pulls, checks
-  out, commits or contacts a remote, and a stuck Git is abandoned after 5 seconds, leaving the
-  Freshness `UNKNOWN`. Repositories on network locations are refused by the same folder boundary as
-  the launcher.
+  out, commits or contacts a remote, and a Git that does not answer is abandoned after 5 seconds,
+  leaving the Freshness `UNKNOWN`. The folder is checked by the same boundary as the launcher, and
+  the work tree and Git directory Git actually resolves (a `.git` file can point elsewhere) are
+  checked again before any fact is used, so a repository on a network location is refused.
+- What DVCC cannot control: `git status` reads **your** repository's configuration, so a clean
+  filter (`.gitattributes` + `filter.*.clean`) or a file-system monitor configured in that
+  repository runs as part of the observation, exactly as it would for any Git command you run
+  yourself. DVCC switches the file-system monitor off for its own calls and removes the `GIT_*`
+  variables that could redirect Git elsewhere, but it does not otherwise change your configuration.
 - Out of scope for v0.2: GitHub API and any network Git operation, Claude Code / Codex session
   discovery, terminal embedding, Notion / Vault sync, SQLite, REST / MCP, authentication,
   installers and releases.

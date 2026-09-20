@@ -122,47 +122,40 @@ export function deriveFreshness({ observation, expectedHead, reviewedHead }: Fre
     };
   }
 
-  if (recorded.reviewedHead !== null) {
-    const comparison = compareHead(recorded.reviewedHead, currentHead);
-    if (comparison === "differs") {
-      return {
-        status: "REVIEW_STALE",
-        explanation: `Reviewed HEAD ${shortHead(recorded.reviewedHead)} differs from current HEAD ${shortHead(currentHead)}.`,
-        currentHead,
-        ...recorded,
-      };
-    }
-    if (comparison === "unknown") {
-      return {
-        status: "UNKNOWN",
-        explanation: "The recorded reviewed HEAD cannot be compared with the current HEAD.",
-        currentHead,
-        ...recorded,
-      };
-    }
+  // Both recorded values are compared before anything is decided: a value that cannot be
+  // compared must not hide a difference the other one shows.
+  const reviewed = recorded.reviewedHead === null ? null : compareHead(recorded.reviewedHead, currentHead);
+  const expected = recorded.expectedHead === null ? null : compareHead(recorded.expectedHead, currentHead);
+
+  if (reviewed === "differs") {
+    return {
+      status: "REVIEW_STALE",
+      explanation: `Reviewed HEAD ${shortHead(recorded.reviewedHead)} differs from current HEAD ${shortHead(currentHead)}.`,
+      currentHead,
+      ...recorded,
+    };
+  }
+  if (expected === "differs") {
+    return {
+      status: "HEAD_CHANGED",
+      explanation: `Expected HEAD ${shortHead(recorded.expectedHead)} differs from current HEAD ${shortHead(currentHead)}.`,
+      currentHead,
+      ...recorded,
+    };
+  }
+  if (reviewed === "unknown" || expected === "unknown") {
+    return {
+      status: "UNKNOWN",
+      explanation:
+        reviewed === "unknown"
+          ? "The recorded reviewed HEAD cannot be compared with the current HEAD."
+          : "The recorded expected HEAD cannot be compared with the current HEAD.",
+      currentHead,
+      ...recorded,
+    };
   }
 
-  if (recorded.expectedHead !== null) {
-    const comparison = compareHead(recorded.expectedHead, currentHead);
-    if (comparison === "differs") {
-      return {
-        status: "HEAD_CHANGED",
-        explanation: `Expected HEAD ${shortHead(recorded.expectedHead)} differs from current HEAD ${shortHead(currentHead)}.`,
-        currentHead,
-        ...recorded,
-      };
-    }
-    if (comparison === "unknown") {
-      return {
-        status: "UNKNOWN",
-        explanation: "The recorded expected HEAD cannot be compared with the current HEAD.",
-        currentHead,
-        ...recorded,
-      };
-    }
-  }
-
-  if (recorded.expectedHead === null && recorded.reviewedHead === null) {
+  if (reviewed === null && expected === null) {
     return {
       status: "UNKNOWN",
       explanation: "No expected or reviewed HEAD is recorded for this round.",
@@ -178,15 +171,6 @@ export function deriveFreshness({ observation, expectedHead, reviewedHead }: Fre
     ...recorded,
   };
 }
-
-/** Attention order inside one Review State: the states that need a look come first. */
-export const FRESHNESS_ATTENTION: Record<Freshness, number> = {
-  WORKTREE_DIRTY: 0,
-  REVIEW_STALE: 1,
-  HEAD_CHANGED: 2,
-  UNKNOWN: 3,
-  ALIGNED: 4,
-};
 
 export const FRESHNESS_LABELS: Record<Freshness, string> = {
   ALIGNED: "Aligned",

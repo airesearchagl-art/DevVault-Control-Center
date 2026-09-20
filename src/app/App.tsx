@@ -3,6 +3,7 @@ import { Banner, Toasts } from "../components/Banner";
 import { ConfirmDialog } from "../components/Dialog";
 import { emptyProjectForm, projectToForm, type ProjectFormInput } from "../domain/project";
 import { deriveFreshness, type FreshnessResult } from "../domain/freshness";
+import { observationForRoot, type GitObservation } from "../domain/git";
 import { buildQueue } from "../domain/queue";
 import {
   currentRound,
@@ -132,6 +133,13 @@ export default function App() {
 
   // Freshness is derived per review from the recorded HEADs and the observed facts; it never
   // feeds back into the review data (Phase 2 state separation).
+  // An observation is only shown while it still describes the project's current local root.
+  const observationFor = useCallback(
+    (projectId: string): GitObservation | undefined =>
+      observationForRoot(state.gitObservations[projectId], projectById.get(projectId)?.localRoot ?? null),
+    [state.gitObservations, projectById],
+  );
+
   const freshnessByReview = useMemo(() => {
     const map = new Map<string, FreshnessResult>();
     for (const review of state.reviews) {
@@ -140,23 +148,23 @@ export default function App() {
       map.set(
         review.reviewId,
         deriveFreshness({
-          observation: state.gitObservations[review.session.projectId],
+          observation: observationFor(review.session.projectId),
           expectedHead: round.expectedHead,
           reviewedHead: round.reviewedHead,
         }),
       );
     }
     return map;
-  }, [state.reviews, state.gitObservations]);
+  }, [state.reviews, observationFor]);
 
-  const selectedObservation = selectedProject ? state.gitObservations[selectedProject.projectId] : undefined;
+  const selectedObservation = selectedProject ? observationFor(selectedProject.projectId) : undefined;
   const selectedFreshness = selected ? freshnessByReview.get(selected.reviewId) : undefined;
 
   // One project at a time, only when the Human asks: no observation happens at start-up.
   const refreshGit = useCallback(
     async (projectId: string, localRoot: string | null) => {
       const observation = await track(gitObserver.observe(localRoot));
-      dispatch({ type: "gitObserved", projectId, observation });
+      dispatch({ type: "gitObserved", projectId, localRoot, observation });
       return observation;
     },
     [track],
@@ -169,7 +177,14 @@ export default function App() {
       return;
     }
     await track(
-      observeSequentially(gitObserver, targets, (projectId, observation) => dispatch({ type: "gitObserved", projectId, observation })),
+      observeSequentially(gitObserver, targets, (projectId, observation) =>
+        dispatch({
+          type: "gitObserved",
+          projectId,
+          localRoot: targets.find((target) => target.projectId === projectId)?.localRoot ?? null,
+          observation,
+        }),
+      ),
     );
     notify("info", `Git state refreshed for ${targets.length} project${targets.length === 1 ? "" : "s"}.`);
   }, [state.projects, track, notify]);

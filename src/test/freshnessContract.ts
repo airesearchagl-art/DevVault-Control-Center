@@ -77,6 +77,9 @@ export const FRESHNESS_CONTRACT: readonly FreshnessContractRow[] = [
   { label: "clean tree, nothing recorded", observation: clean(HEAD_A), expectedHead: null, reviewedHead: null, expected: "UNKNOWN" },
   { label: "working tree state unknown", observation: { status: "OK", head: HEAD_A, dirty: null }, expectedHead: HEAD_A, reviewedHead: null, expected: "UNKNOWN" },
   { label: "recorded expected HEAD is malformed", observation: clean(HEAD_A), expectedHead: "not-a-sha", reviewedHead: null, expected: "UNKNOWN" },
+  { label: "expected differs while the reviewed value cannot be compared", observation: clean(HEAD_A), expectedHead: HEAD_B, reviewedHead: "not-a-sha", expected: "HEAD_CHANGED" },
+  { label: "reviewed differs while the expected value cannot be compared", observation: clean(HEAD_A), expectedHead: "111", reviewedHead: HEAD_B, expected: "REVIEW_STALE" },
+  { label: "reviewed matches but the expected value cannot be compared", observation: clean(HEAD_A), expectedHead: "not-a-sha", reviewedHead: HEAD_A, expected: "UNKNOWN" },
   { label: "recorded reviewed HEAD is too short", observation: clean(HEAD_A), expectedHead: null, reviewedHead: "111", expected: "UNKNOWN" },
   { label: "current head is not a full SHA", observation: clean("1111111"), expectedHead: HEAD_A, reviewedHead: null, expected: "UNKNOWN" },
 ];

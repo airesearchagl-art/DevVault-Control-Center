@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { asGitObservation, failedObservation, isGitStatus } from "./git";
+import { asGitObservation, failedObservation, isGitStatus, observationForRoot } from "./git";
 
 /** Phase 2: an observation is accepted fail closed — anything unexpected carries no facts. */
 
@@ -61,6 +61,32 @@ describe("asGitObservation", () => {
     expect(observation.detached).toBeNull();
     expect(observation.dirty).toBeNull();
     expect(observation.observedAt).toBe(OBSERVED_AT);
+  });
+});
+
+describe("observationForRoot", () => {
+  const observation = {
+    status: "OK" as const,
+    head: "1".repeat(40),
+    branch: "main",
+    detached: false,
+    dirty: false,
+    observedAt: OBSERVED_AT,
+  };
+
+  it("returns the observation while it still describes the project's root", () => {
+    expect(observationForRoot({ localRoot: "C:\\repos\\alpha", observation }, "C:\\repos\\alpha")).toEqual(observation);
+    expect(observationForRoot({ localRoot: null, observation }, null)).toEqual(observation);
+  });
+
+  it("drops it once the recorded root changed, rather than showing facts about another folder", () => {
+    expect(observationForRoot({ localRoot: "C:\\repos\\alpha", observation }, "C:\\repos\\beta")).toBeUndefined();
+    expect(observationForRoot({ localRoot: "C:\\repos\\alpha", observation }, null)).toBeUndefined();
+    expect(observationForRoot({ localRoot: null, observation }, "C:\\repos\\alpha")).toBeUndefined();
+  });
+
+  it("is undefined when nothing was observed", () => {
+    expect(observationForRoot(undefined, "C:\\repos\\alpha")).toBeUndefined();
   });
 });
 

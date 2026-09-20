@@ -1,4 +1,4 @@
-//! Read-only observation of a local Git repository (Phase 2 — Evidence / Freshness).
+﻿//! Read-only observation of a local Git repository (Phase 2 窶・Evidence / Freshness).
 //!
 //! The app never changes a repository and never touches the network: only `rev-parse`,
 //! `symbolic-ref` and `status` are run, always through `std::process::Command` (no shell, no
@@ -7,8 +7,8 @@
 //! observed path is passed as the child's working directory, so no caller-supplied text ever
 //! reaches a command line.
 //!
-//! Every failure — no recorded folder, a rejected path, a missing Git, a folder that is not a
-//! repository, a timeout, an unexpected error — is reported as a status rather than as an app
+//! Every failure 窶・no recorded folder, a rejected path, a missing Git, a folder that is not a
+//! repository, a timeout, an unexpected error 窶・is reported as a status rather than as an app
 //! error, and unknown fields stay `null` instead of being guessed. The derived Freshness in the
 //! frontend turns each of those into `UNKNOWN` (fail closed).
 
@@ -31,11 +31,54 @@ const MAX_CAPTURED_BYTES: usize = 8 * 1024;
 
 /// Every Git invocation an observation may make. Read-only by construction: `rev-parse`,
 /// `symbolic-ref` and `status` cannot change a repository, and no other command is ever run.
-const READ_ONLY_INVOCATIONS: [&[&str]; 4] = [
-    &["rev-parse", "--is-inside-work-tree"],
-    &["rev-parse", "--verify", "--quiet", "HEAD"],
-    &["symbolic-ref", "--quiet", "--short", "HEAD"],
-    &["status", "--porcelain=v1"],
+///
+/// `-c core.fsmonitor=false` keeps Git from starting (or talking to) a file-system monitor daemon
+/// for the observed repository: that daemon would outlive the observation and hold its pipes.
+const READ_ONLY_INVOCATIONS: [&[&str]; 6] = [
+    &[
+        "-c",
+        "core.fsmonitor=false",
+        "rev-parse",
+        "--is-inside-work-tree",
+    ],
+    &["-c", "core.fsmonitor=false", "rev-parse", "--show-toplevel"],
+    &[
+        "-c",
+        "core.fsmonitor=false",
+        "rev-parse",
+        "--absolute-git-dir",
+    ],
+    &[
+        "-c",
+        "core.fsmonitor=false",
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        "HEAD",
+    ],
+    &[
+        "-c",
+        "core.fsmonitor=false",
+        "symbolic-ref",
+        "--quiet",
+        "--short",
+        "HEAD",
+    ],
+    &["-c", "core.fsmonitor=false", "status", "--porcelain=v1"],
+];
+
+/// Environment variables that would send Git to a different repository, work tree, index or
+/// configuration than the folder being observed. They are removed from every child.
+const REDIRECTING_GIT_VARIABLES: [&str; 9] = [
+    "GIT_DIR",
+    "GIT_COMMON_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_NAMESPACE",
+    "GIT_DISCOVERY_ACROSS_FILESYSTEM",
 ];
 
 /// Shared limits contract: the same `contract/limits.json` the TypeScript side reads.
@@ -200,8 +243,46 @@ fn observe_repository(
         return GitObservation::unknown(GitStatus::NotAGitRepository, observed_at);
     }
 
+    // The folder passed the boundary, but a `.git` file (`gitdir: 窶ｦ`), `core.worktree` or an
+    // alternates entry can point Git at a completely different location. The work tree and the
+    // Git directory Git actually resolved must therefore pass the same local-folder boundary
+    // (F-9) before any fact is trusted.
+    for (invocation, what) in [
+        (READ_ONLY_INVOCATIONS[1], "work tree"),
+        (READ_ONLY_INVOCATIONS[2], "Git directory"),
+    ] {
+        let resolved = match run_git(program, folder, invocation, deadline) {
+            GitRun::Completed {
+                success, stdout, ..
+            } if success => stdout.trim().to_owned(),
+            GitRun::Completed { .. } => {
+                return GitObservation::unknown(GitStatus::NotAGitRepository, observed_at)
+            }
+            GitRun::Timeout => return timed_out(observed_at, "rev-parse (repository location)"),
+            GitRun::Unavailable | GitRun::Failed(_) => {
+                return GitObservation::failed(
+                    GitStatus::Error,
+                    observed_at,
+                    "GIT_FAILED",
+                    format!("resolving the repository {what} failed"),
+                )
+            }
+        };
+        if let Err(error) = validate_project_folder(&resolved) {
+            return GitObservation::failed(
+                GitStatus::Error,
+                observed_at,
+                error.code,
+                format!(
+                    "the repository {what} is not a local folder: {}",
+                    error.message
+                ),
+            );
+        }
+    }
+
     // A repository without any commit has no HEAD: that stays `null` instead of being guessed.
-    let head = match run_git(program, folder, READ_ONLY_INVOCATIONS[1], deadline) {
+    let head = match run_git(program, folder, READ_ONLY_INVOCATIONS[3], deadline) {
         GitRun::Completed {
             success, stdout, ..
         } => {
@@ -219,17 +300,8 @@ fn observe_repository(
         }
     };
 
-    let (branch, detached) = match run_git(program, folder, READ_ONLY_INVOCATIONS[2], deadline) {
-        GitRun::Completed {
-            success, stdout, ..
-        } => {
-            let name = stdout.trim().to_owned();
-            if success && !name.is_empty() {
-                (Some(name), Some(false))
-            } else {
-                (None, Some(true))
-            }
-        }
+    let (branch, detached) = match run_git(program, folder, READ_ONLY_INVOCATIONS[4], deadline) {
+        GitRun::Completed { code, stdout, .. } => branch_from_symbolic_ref(code, &stdout),
         GitRun::Timeout => return timed_out(observed_at, "symbolic-ref HEAD"),
         GitRun::Unavailable | GitRun::Failed(_) => {
             return GitObservation::failed(
@@ -241,11 +313,12 @@ fn observe_repository(
         }
     };
 
-    let dirty = match run_git(program, folder, READ_ONLY_INVOCATIONS[3], deadline) {
+    let dirty = match run_git(program, folder, READ_ONLY_INVOCATIONS[5], deadline) {
         GitRun::Completed {
             success,
             stdout,
             stderr,
+            ..
         } => {
             if !success {
                 return GitObservation::failed(
@@ -280,6 +353,20 @@ fn observe_repository(
     }
 }
 
+/// What `git symbolic-ref --quiet --short HEAD` says about the current branch.
+///
+/// Exit 0 with a name is a branch; exit 1 is Git's way of saying HEAD is not a symbolic ref, which
+/// is exactly a detached HEAD. Any other outcome (an unreadable HEAD, a killed process) is unknown
+/// 窶・it is never reported as "detached", which would be a guessed fact.
+fn branch_from_symbolic_ref(code: Option<i32>, stdout: &str) -> (Option<String>, Option<bool>) {
+    let name = stdout.trim().to_owned();
+    match code {
+        Some(0) if !name.is_empty() => (Some(name), Some(false)),
+        Some(1) => (None, Some(true)),
+        _ => (None, None),
+    }
+}
+
 fn timed_out(observed_at: String, step: &str) -> GitObservation {
     GitObservation::failed(
         GitStatus::Timeout,
@@ -305,6 +392,8 @@ fn first_line(text: &str, fallback: &str) -> String {
 enum GitRun {
     Completed {
         success: bool,
+        /// Exit code, or `None` when the process was ended by a signal / could not report one.
+        code: Option<i32>,
         stdout: String,
         stderr: String,
     },
@@ -334,6 +423,11 @@ fn git_command(program: &str, folder: &Path, args: &[&str]) -> Command {
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // The child must describe the folder it was given, not a repository an inherited variable
+    // points at (DVCC could itself have been started from a Git hook or `git -c 窶ｦ` context).
+    for variable in REDIRECTING_GIT_VARIABLES {
+        command.env_remove(variable);
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -363,7 +457,7 @@ fn run_git(program: &str, folder: &Path, args: &[&str], deadline: Instant) -> Gi
             Ok(Some(status)) => break status,
             Ok(None) => {
                 if Instant::now() >= deadline {
-                    // Only the child this call started is terminated — never a kill by name.
+                    // Only the child this call started is terminated 窶・never a kill by name.
                     let _ = child.kill();
                     let _ = child.wait();
                     // The readers are left to finish on their own: a killed process can leave
@@ -385,10 +479,35 @@ fn run_git(program: &str, folder: &Path, args: &[&str], deadline: Instant) -> Gi
         }
     };
 
+    // The process is gone, but a child it started can still hold the pipes open. Draining is
+    // therefore bounded by the same deadline: an observation never waits for someone else's
+    // process, it fails closed instead.
+    let Some(stdout) = join_bounded(stdout_reader, deadline) else {
+        return GitRun::Timeout;
+    };
+    let Some(stderr) = join_bounded(stderr_reader, deadline) else {
+        return GitRun::Timeout;
+    };
+
     GitRun::Completed {
         success: status.success(),
-        stdout: stdout_reader.join().unwrap_or_default(),
-        stderr: stderr_reader.join().unwrap_or_default(),
+        code: status.code(),
+        stdout,
+        stderr,
+    }
+}
+
+/// Waits for a reader thread until the deadline. `None` means it is still blocked 窶・the thread is
+/// then detached and ends on its own once every write end of the pipe is closed.
+fn join_bounded(reader: std::thread::JoinHandle<String>, deadline: Instant) -> Option<String> {
+    loop {
+        if reader.is_finished() {
+            return reader.join().ok();
+        }
+        if Instant::now() >= deadline {
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(15));
     }
 }
 
@@ -565,6 +684,129 @@ mod tests {
     }
 
     #[test]
+    fn the_branch_mapping_never_guesses_a_detached_head() {
+        assert_eq!(
+            branch_from_symbolic_ref(Some(0), "dvcc-main\n"),
+            (Some("dvcc-main".to_owned()), Some(false))
+        );
+        // Exit 1 is "HEAD is not a symbolic ref": a detached HEAD.
+        assert_eq!(branch_from_symbolic_ref(Some(1), ""), (None, Some(true)));
+        // Everything else is unknown, never a guessed fact.
+        for code in [Some(128), Some(2), Some(-1), None] {
+            assert_eq!(
+                branch_from_symbolic_ref(code, ""),
+                (None, None),
+                "exit {code:?} must leave the branch state unknown"
+            );
+        }
+        // A success without a name is not a branch either.
+        assert_eq!(branch_from_symbolic_ref(Some(0), "  \n"), (None, None));
+    }
+
+    #[test]
+    fn an_unreadable_head_is_never_reported_as_detached() {
+        let (_dir, root) = repository_with_commit();
+        fs::write(root.join(".git").join("HEAD"), "not a valid head\n").unwrap();
+        let observation = observed(&root);
+        assert_ne!(
+            observation.detached,
+            Some(true),
+            "a HEAD that cannot be read is unknown, not a detached HEAD"
+        );
+        assert_eq!(observation.branch, None);
+        assert_eq!(observation.head, None);
+    }
+
+    /// A work tree whose `.git` is a file pointing at another repository is followed by Git, so the
+    /// resolved location is re-checked against the local-folder boundary.
+    #[test]
+    fn a_repository_pointed_at_from_a_git_file_is_resolved_and_checked() {
+        let (_dir, real) = repository_with_commit();
+        let linked_dir = TempDir::new();
+        let linked = linked_dir.0.clone();
+        fs::create_dir_all(&linked).unwrap();
+        fs::write(
+            linked.join(".git"),
+            format!("gitdir: {}\n", real.join(".git").to_string_lossy()),
+        )
+        .unwrap();
+
+        let observation = observed(&linked);
+        assert_eq!(observation.status, GitStatus::Ok);
+        assert_eq!(
+            observation.head,
+            observed(&real).head,
+            "the facts describe the repository Git actually resolved"
+        );
+    }
+
+    /// The local-folder boundary has to catch a repository that *Git* resolves onto a network
+    /// location, not only a local root that is one. Needs a temporary drive mapping, e.g.
+    /// `net use W: \\\\localhost\\C$ /persistent:no`, then
+    /// `$env:DVCC_TEST_MAPPED_DRIVE_DIR = "W:\\dvcc-test"` and
+    /// `cargo test resolved_repository_on_a_mapped_drive -- --ignored`.
+    #[test]
+    #[ignore = "requires a temporary network drive mapping (see doc comment)"]
+    fn a_resolved_repository_on_a_mapped_drive_is_refused() {
+        let Some(mapped) = std::env::var_os("DVCC_TEST_MAPPED_DRIVE_DIR") else {
+            eprintln!("MAPPED DRIVE TEST: SKIPPED (DVCC_TEST_MAPPED_DRIVE_DIR not set)");
+            return;
+        };
+        let remote_root = PathBuf::from(&mapped).join(format!(
+            "dvcc-git-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&remote_root).expect("the mapped drive must be writable");
+        git(&remote_root, &["init", "--initial-branch=dvcc-test-main"]);
+        fs::write(remote_root.join("tracked.txt"), "first\n").unwrap();
+        git(&remote_root, &["add", "tracked.txt"]);
+        git(&remote_root, &["commit", "--no-gpg-sign", "-m", "initial"]);
+
+        // A local work tree whose Git directory lives on the mapped drive.
+        let local_dir = TempDir::new();
+        let local = local_dir.0.clone();
+        fs::create_dir_all(&local).unwrap();
+        let remote_git_dir = remote_root.join(".git");
+        fs::write(
+            local.join(".git"),
+            format!("gitdir: {}\n", remote_git_dir.to_string_lossy()),
+        )
+        .unwrap();
+        git(
+            &remote_root,
+            &[
+                "config",
+                "core.worktree",
+                &local.to_string_lossy().replace('\\', "/"),
+            ],
+        );
+
+        let observation = observed(&local);
+        let _ = fs::remove_dir_all(&remote_root);
+
+        assert_eq!(
+            observation.status,
+            GitStatus::Error,
+            "a repository resolved onto a network location must be refused: {observation:?}"
+        );
+        assert!(
+            matches!(
+                observation.error_code.as_deref(),
+                Some("NETWORK_TARGET") | Some("FOLDER_REJECTED")
+            ),
+            "refused by the local-folder boundary: {:?}",
+            observation.error_code
+        );
+        assert_eq!(observation.head, None);
+        assert_eq!(observation.branch, None);
+        assert_eq!(observation.dirty, None);
+    }
+
+    #[test]
     fn a_folder_without_a_repository_is_not_a_git_repository() {
         let dir = TempDir::new();
         fs::create_dir_all(&dir.0).unwrap();
@@ -621,6 +863,38 @@ mod tests {
         let script = dir.join("dvcc-hanging-git.cmd");
         fs::write(&script, "@echo off\r\nping -n 20 127.0.0.1 > nul\r\n").unwrap();
         script
+    }
+
+    /// A stand-in for Git that exits immediately but leaves a child of its own holding the pipes
+    /// open 窶・what a file-system monitor or a filter helper does in a real repository.
+    fn git_leaving_a_lingering_child(dir: &Path) -> PathBuf {
+        let script = dir.join("dvcc-lingering-git.cmd");
+        fs::write(
+            &script,
+            "@echo off\r\nstart /b \"\" ping -n 20 127.0.0.1\r\nexit /b 0\r\n",
+        )
+        .unwrap();
+        script
+    }
+
+    #[test]
+    fn a_git_that_leaves_a_lingering_child_still_ends_at_the_bound() {
+        let (_dir, root) = repository_with_commit();
+        let script = git_leaving_a_lingering_child(&root);
+        let started = Instant::now();
+        let observation = observe(
+            &script.to_string_lossy(),
+            Some(&root.to_string_lossy()),
+            Duration::from_millis(300),
+        );
+        let elapsed = started.elapsed();
+        assert_eq!(observation.status, GitStatus::Timeout);
+        assert_eq!(observation.head, None);
+        assert_eq!(observation.dirty, None);
+        assert!(
+            elapsed < Duration::from_secs(10),
+            "draining the pipes must not outlast the bound: {elapsed:?}"
+        );
     }
 
     #[test]
@@ -681,7 +955,7 @@ mod tests {
         fs::write(root.join("untracked.txt"), "new\n").unwrap();
         // Rewrite a tracked file with the same content a second later: its stat information no
         // longer matches the index, which is exactly when `git status` would refresh (and rewrite)
-        // `.git/index` — unless it runs without optional locks, as the observation does.
+        // `.git/index` 窶・unless it runs without optional locks, as the observation does.
         let tracked = root.join("tracked.txt");
         let content = fs::read(&tracked).unwrap();
         std::thread::sleep(Duration::from_millis(1100));
@@ -704,16 +978,12 @@ mod tests {
             after.len(),
             "no file may be added or removed by an observation"
         );
-        // `.git/index` is Git's own stat cache. `GIT_OPTIONAL_LOCKS=0` stops `status` from
-        // refreshing it (see `every_invocation_runs_read_only_and_offline`), but a refresh would
-        // still only rewrite cached stat data, so the assertion here is on what the index records:
-        // the staged entries must be identical, and no lock may be left behind.
-        let index = Path::new(".git").join("index");
-        let index_key = index.to_string_lossy().into_owned();
+        // Every file, including `.git/index`: with `GIT_OPTIONAL_LOCKS=0` Git does not even
+        // refresh its own stat cache, and the fixture above leaves the index in exactly the state
+        // where it otherwise would. (An earlier version of this test excluded the index after it
+        // seemed to flake; the flake was a stale test binary left by a mutation probe that restored
+        // sources with their original timestamps, not a real race.)
         for (path, state) in &before {
-            if path == &index_key {
-                continue;
-            }
             assert_eq!(
                 after.get(path),
                 Some(state),
@@ -744,7 +1014,15 @@ mod tests {
         let folder = Path::new("C:\\repos\\example");
         assert!(!READ_ONLY_INVOCATIONS.is_empty());
         for invocation in READ_ONLY_INVOCATIONS {
-            let verb = invocation[0];
+            // Only `-c <key>=<value>` may precede the verb, and only to switch something off.
+            let verb = match invocation {
+                ["-c", setting, verb, ..] => {
+                    assert_eq!(*setting, "core.fsmonitor=false", "unexpected -c setting");
+                    *verb
+                }
+                [verb, ..] => *verb,
+                [] => panic!("an empty invocation"),
+            };
             assert!(
                 READ_ONLY_VERBS.contains(&verb),
                 "unexpected Git verb: {verb}"
@@ -787,6 +1065,24 @@ mod tests {
             assert!(
                 environment.contains(&("GIT_TERMINAL_PROMPT".to_owned(), Some("0".to_owned()))),
                 "GIT_TERMINAL_PROMPT=0 keeps Git from waiting for credentials: {environment:?}"
+            );
+            for variable in REDIRECTING_GIT_VARIABLES {
+                assert!(
+                    environment.contains(&(variable.to_owned(), None)),
+                    "{variable} must be removed so the child cannot be sent elsewhere: {environment:?}"
+                );
+            }
+        }
+
+        // The repository Git resolves is re-checked, not just the folder that was handed in.
+        let resolution: Vec<&str> = READ_ONLY_INVOCATIONS
+            .iter()
+            .flat_map(|invocation| invocation.iter().copied())
+            .collect();
+        for expected in ["--show-toplevel", "--absolute-git-dir"] {
+            assert!(
+                resolution.contains(&expected),
+                "{expected} is needed to re-check the resolved repository location"
             );
         }
     }

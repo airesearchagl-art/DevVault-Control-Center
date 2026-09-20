@@ -242,7 +242,7 @@ One observation of a project's local root yields:
 | `status` | `OK` / `NO_LOCAL_ROOT` / `NOT_A_GIT_REPOSITORY` / `GIT_UNAVAILABLE` / `TIMEOUT` / `ERROR` |
 | `head` | full 40-character SHA, or `null` (e.g. a repository without any commit) |
 | `branch` | branch name, or `null` when detached or unknown |
-| `detached` | whether HEAD is detached, or `null` when unknown |
+| `detached` | `true` only when Git reports that HEAD is not a symbolic ref, `false` for a branch, `null` when HEAD could not be read |
 | `dirty` | uncommitted changes including untracked files, or `null` when unknown |
 | `observedAt` | ISO-8601 UTC, millisecond precision |
 | `errorCode`, `errorMessage` | why an observation failed (e.g. the folder boundary's `NETWORK_TARGET`) |
@@ -251,12 +251,23 @@ Anything other than `status = OK` leaves every fact `null`; nothing is guessed.
 
 How it is obtained: the recorded local root passes the same folder boundary as the launcher (absolute
 local path, existing directory, no UNC, no mapped network drive, every link target checked without
-following it), and `git rev-parse --is-inside-work-tree`, `git rev-parse --verify --quiet HEAD`,
-`git symbolic-ref --quiet --short HEAD` and `git status --porcelain=v1` are then run in that folder
-through `std::process::Command` — no shell, no argument built from typed text, stdin closed,
-`GIT_OPTIONAL_LOCKS=0` (so not even an index refresh is written), `GIT_TERMINAL_PROMPT=0`, and one
-5 s bound (`contract/limits.json` `gitObservationTimeoutMs`) after which only that child process is
-terminated. No command contacts a remote.
+following it). Git is then asked where the repository actually is (`rev-parse --show-toplevel` and
+`--absolute-git-dir`) and **those** locations pass the same boundary again, because a `.git` file,
+`core.worktree` or an alternates entry can point Git somewhere else. Only then are
+`rev-parse --verify --quiet HEAD`, `symbolic-ref --quiet --short HEAD` and `status --porcelain=v1`
+trusted. Every invocation runs through `std::process::Command` — no shell, no argument built from
+typed text, stdin closed, `-c core.fsmonitor=false`, `GIT_OPTIONAL_LOCKS=0` (so not even an index
+refresh is written), `GIT_TERMINAL_PROMPT=0`, and the `GIT_*` variables that would redirect Git to
+another repository, work tree, index or configuration removed. One 5 s bound
+(`contract/limits.json` `gitObservationTimeoutMs`) covers the whole observation, including draining
+the child's output, after which only the process DVCC started is terminated and the observation
+fails closed. No command contacts a remote.
+
+What the boundary does not cover: `git status` honours the observed repository's own configuration,
+so a clean filter or a file-system monitor configured **in that repository** is executed by Git as
+part of the observation, like for any other Git command run in that folder. DVCC disables the
+file-system monitor for its own calls and cannot be redirected by inherited `GIT_*` variables, but
+it does not sandbox a repository's own hooks or filters.
 
 Freshness is derived from the observation and the current round's recorded HEADs, in this fixed
 priority:
