@@ -1,3 +1,4 @@
+import type { Locale } from "../i18n/locale";
 import type { Project, ProjectFormInput } from "../domain/project";
 import type { ReviewFormInput, ReviewSession } from "../domain/review";
 import { message } from "../domain/message";
@@ -153,13 +154,13 @@ export class ReviewHub {
     });
   }
 
-  saveRequest(reviewId: string): Promise<Result<SaveOutcome & { text: string }>> {
+  saveRequest(reviewId: string, locale?: Locale): Promise<Result<SaveOutcome & { text: string }>> {
     return this.run(async () => {
       const session = this.session(reviewId);
       if (!session) return invalid("service.reviewUnavailable", { id: reviewId });
       const project = this.projects.find((p) => p.projectId === session.projectId);
       if (!project) return invalid("service.projectMissing", { id: session.projectId });
-      const result = await saveReviewRequest(this.storage, project, session, this.now());
+      const result = await saveReviewRequest(this.storage, project, session, this.now(), locale);
       if (result.ok) {
         this.storeSession(result.value.session);
         this.commit();

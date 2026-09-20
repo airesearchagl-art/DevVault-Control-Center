@@ -1,5 +1,6 @@
 import { createProject, updateProject, type Project, type ProjectFormInput } from "../domain/project";
 import { buildReviewRequest } from "../domain/prompt";
+import { DEFAULT_LOCALE, type Locale } from "../i18n/locale";
 import {
   ARCHIVE_CANDIDATES,
   archivedResultFileName,
@@ -122,10 +123,12 @@ export async function saveReviewRequest(
   project: Project,
   session: ReviewSession,
   now: string,
+  /** The request is written in the language the Human is working in; saved requests never change. */
+  locale: Locale = DEFAULT_LOCALE,
 ): Promise<Result<SaveOutcome & { text: string }>> {
   const guard = guardAction(session, "recordRequestSaved");
   if (guard !== null) return err(guard);
-  const text = buildReviewRequest(project, session);
+  const text = buildReviewRequest(project, session, locale);
   await ensureSessionUnchanged(backend, session.reviewSessionId);
   await writeRoundArtifact(backend, session.reviewSessionId, "request", session.reviewRound, text);
   const saved = await performReviewAction(backend, session, { type: "recordRequestSaved" }, now);

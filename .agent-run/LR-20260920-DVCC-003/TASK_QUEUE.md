@@ -42,11 +42,11 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 
 ## Wave 4 — prompt, formatting, audit
 
-- [ ] Review request generated in the current locale (JA / EN), data identical
-- [ ] Timestamp formatting per locale; accessibility labels
-- [ ] Hard-coded user-facing text audit + documented rule + static test
-- [ ] README / data contract updates
-- [ ] Targeted checks → checkpoint
+- [x] Review request generated in the current locale (JA / EN), data identical
+- [x] Timestamp formatting per locale; accessibility labels
+- [x] Hard-coded user-facing text audit + documented rule + static test
+- [x] README / data contract updates
+- [x] Targeted checks → checkpoint
 
 ## Wave 5 — verification
 

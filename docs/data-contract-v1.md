@@ -42,6 +42,8 @@ also stops a release build from starting (and vice versa), even though their dat
 ```text
 <data root>/
   .dvcc.lock                        empty; held open exclusively while DVCC runs (see above)
+  settings.json                     interface preferences (language); written only when you change one
+  settings.json.bak                 previous valid settings.json (written automatically)
   projects.json
   projects.json.bak                 previous valid projects.json (written automatically)
   projects.json.corrupt-<ms>[-n]    unusable file set aside (kept, never deleted)
@@ -62,6 +64,35 @@ also stops a release build from starting (and vice versa), even though their dat
 - `N` is `1..maxReviewRounds` from `contract/limits.json` (currently 999), without leading zeros.
 - Temporary files are named `<file>.tmp-<pid>-<n>`; they are never read as data. A leftover temp
   file after a crash can be deleted by hand.
+
+## settings.json
+
+Interface preferences only. No project or review data is read or written on this path, and the file
+is written only when the Human changes the language.
+
+```json
+{
+  "schemaVersion": 1,
+  "locale": "ja"
+}
+```
+
+| Field | Type | Rule |
+|---|---|---|
+| `schemaVersion` | number | Must be exactly `1`. A missing, mistyped, `0` or later version makes the file unusable. |
+| `locale` | string | `"ja"` or `"en"`. Anything else makes the file unusable. |
+
+- Missing file: the normal case for a fresh install. The interface is Japanese and nothing is written.
+- Unusable file (unreadable, not JSON, wrong schema version, unknown locale): the interface is
+  Japanese, a warning is shown, and **the file is left exactly as it is** — loading never writes, so
+  a file belonging to a later version of DVCC survives being opened by this one.
+- The language is a display choice only. Every stored value — review state, resource state,
+  freshness, event type, schema field, file name, error code — stays language-neutral, and text the
+  Human typed is never translated. A saved `request-r<N>.md` keeps the language it was written in;
+  changing the language never rewrites an artifact.
+- Writes of this file are serialized, so switching the language repeatedly cannot leave a different
+  language on disk than the one on screen. A write that fails takes the interface back to the
+  language that is still stored and says so.
 
 ## projects.json
 

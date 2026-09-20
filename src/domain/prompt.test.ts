@@ -29,26 +29,61 @@ function session(overrides: Partial<ReturnType<typeof emptyReviewForm>> = {}) {
 }
 
 describe("buildReviewRequest", () => {
-  it("includes the Artifact facts", () => {
-    const text = buildReviewRequest(project, session({ prNumber: "45", expectedHead: "abcdef1234567" }));
+  it("includes the Artifact facts in English", () => {
+    const text = buildReviewRequest(project, session({ prNumber: "45", expectedHead: "abcdef1234567" }), "en");
     expect(text).toContain("# Independent Review Request — Project Alpha / R1");
     expect(text).toContain("- Repository: https://github.com/example-org/project-alpha");
     expect(text).toContain("- Pull Request: #45 — https://github.com/example-org/project-alpha/pull/45");
     expect(text).toContain("- Expected HEAD: abcdef1234567");
     expect(text).toContain("- Review Round: R1");
-    expect(text).toContain("- Previous round verdict: なし（初回Round）");
+    expect(text).toContain("- Previous round verdict: none (first round)");
     expect(text).toContain("## Stage 2 — Fresh Assessment");
   });
 
-  it("marks missing facts as 未記録 instead of guessing", () => {
-    const text = buildReviewRequest({ ...project, repositoryUrl: null }, session());
-    expect(text).toContain("- Repository: 未記録");
-    expect(text).toContain("- Pull Request: 未記録");
-    expect(text).toContain("- Expected HEAD: 未記録");
+  it("includes the same Artifact facts in Japanese, which is the default", () => {
+    const input = session({ prNumber: "45", expectedHead: "abcdef1234567" });
+    const text = buildReviewRequest(project, input);
+    expect(text).toBe(buildReviewRequest(project, input, "ja"));
+    expect(text).toContain("# 独立レビュー依頼 — Project Alpha / R1");
+    expect(text).toContain("- リポジトリ: https://github.com/example-org/project-alpha");
+    expect(text).toContain("- Pull Request: #45 — https://github.com/example-org/project-alpha/pull/45");
+    expect(text).toContain("- レビュー予定HEAD: abcdef1234567");
+    expect(text).toContain("- ラウンド: R1");
+    expect(text).toContain("- 前ラウンドの判定: なし（初回Round）");
+    expect(text).toContain("## Stage 2 — Fresh Assessment（独立評価）");
   });
 
-  it("excludes local root, notes and next actions", () => {
-    const text = buildReviewRequest(project, session({ prNumber: "45" }));
+  it("carries the same values in both languages", () => {
+    const input = session({ prNumber: "45", expectedHead: "abcdef1234567" });
+    const ja = buildReviewRequest(project, input, "ja");
+    const en = buildReviewRequest(project, input, "en");
+    for (const value of [
+      "Project Alpha (project-alpha)",
+      "https://github.com/example-org/project-alpha",
+      "#45 — https://github.com/example-org/project-alpha/pull/45",
+      "abcdef1234567",
+    ]) {
+      expect(ja).toContain(value);
+      expect(en).toContain(value);
+    }
+    // Same number of lines in the same order: the two versions differ in words, not in structure.
+    expect(ja.split("\n").length).toBe(en.split("\n").length);
+  });
+
+  it("marks missing facts as not recorded instead of guessing", () => {
+    const ja = buildReviewRequest({ ...project, repositoryUrl: null }, session(), "ja");
+    expect(ja).toContain("- リポジトリ: 未記録");
+    expect(ja).toContain("- Pull Request: 未記録");
+    expect(ja).toContain("- レビュー予定HEAD: 未記録");
+
+    const en = buildReviewRequest({ ...project, repositoryUrl: null }, session(), "en");
+    expect(en).toContain("- Repository: not recorded");
+    expect(en).toContain("- Pull Request: not recorded");
+    expect(en).toContain("- Expected HEAD: not recorded");
+  });
+
+  it.each(["ja", "en"] as const)("excludes local root, notes and next actions (%s)", (locale) => {
+    const text = buildReviewRequest(project, session({ prNumber: "45" }), locale);
     expect(text).not.toContain("secret-local-root");
     expect(text).not.toContain("PRIVATE-NOTES");
     expect(text).not.toContain("PRIVATE-NEXT-ACTION");
@@ -68,8 +103,10 @@ describe("buildReviewRequest", () => {
       if (!out.ok) throw new Error(JSON.stringify(out.error));
       s = out.value.session;
     }
-    const text = buildReviewRequest(project, s);
+    expect(buildReviewRequest(project, s)).toContain("- 前ラウンドの判定: R1: FIX_REQUIRED");
+    const text = buildReviewRequest(project, s, "en");
     expect(text).toContain("/ R2");
+    // The verdict is a stored value: it is reported as it is, in either language.
     expect(text).toContain("- Previous round verdict: R1: FIX_REQUIRED");
   });
 });

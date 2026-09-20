@@ -119,3 +119,13 @@ The Git evidence card, the Git status labels and the Freshness badges moved with
 The freshness contract test now asserts the key and the parameters — the oracle table stays independent of the wording — and additionally renders the two difference sentences in both languages to show the same two SHAs land in each.
 
 Checks: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, 534 tests), `npm run build` PASS. `src-tauri/` unchanged.
+
+## Wave 4 — review request, the gate against new English, documentation (2026-09-20)
+
+- **Review request per language.** `buildReviewRequest(project, session, locale)` builds one set of facts and renders them in Japanese or English; the locale travels from the language selector through `ReviewHub.saveRequest` to the file. Both versions carry the same values in the same order — asserted by a test that compares the interpolated values and the line count of the two renderings — and the Japanese version replaces the mixed English/Japanese template that existed before. A saved request is never rewritten when the language changes (L3-006).
+- **Timestamps and accessibility** moved with their components in Wave 2: the locale-aware formatter is the only one left, and every `aria-label` in the app is a translation.
+- **Static gate** (`src/i18n/noHardCodedText.test.ts`, 12 cases): every `.tsx` under `src/app`, `src/components` and `src/features` is scanned for text written straight into JSX and for `placeholder` / `title` / `aria-label` / `label` / `hint` / `confirmLabel` / `reasonLabel` / `alt`. All eleven components pass with an allowlist of fourteen things that are not language (file names and fragments, `Ctrl`, `V`, punctuation and glyphs). The test also checks itself: three shapes it must catch, three it must not.
+- **Mutation probe**: replacing the banner body with the literal `Something went wrong` fails the gate at `src/components/Banner.tsx` (1 failed / 11 passed); reverted immediately, 12 pass again.
+- **Documentation**: README gains the bilingual interface in *What it does*, the no-translation-API boundary, `settings.json` under *Data location*, `i18n/` in the repository layout and a *Where words live* section stating the rule, the gates and what is deliberately not translated. `docs/data-contract-v1.md` gains `settings.json` in the layout and a section with its schema, its fail-safe behaviour, the neutrality rule and the serialized-write guarantee.
+
+Checks: `npx tsc --noEmit` PASS, `npx vitest run` PASS (19 files, **549 tests**), `npm run build` PASS. `src-tauri/` unchanged.

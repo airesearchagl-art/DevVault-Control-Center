@@ -3,13 +3,13 @@
 - Run ID: LR-20260920-DVCC-003
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — Wave 3 (Phase 2 UI migration) complete
+- Current state: RUNNING — Wave 4 (request per language, static gate, documentation) complete
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/localization-foundation-v0.2.1
 - Base SHA: 318e273a1afe66c605da897a4f7603aaa921fc83
-- Current head: Wave 3 checkpoint commit (parent a5ad92c)
-- Current wave: Wave 3 → Wave 4 (review request per locale, hard-coded text gate, documentation)
-- Last successful checkpoint: Wave 3 checkpoint
+- Current head: Wave 4 checkpoint commit (parent 64ea873)
+- Current wave: Wave 4 → Wave 5 (UI verification on the isolated desktop)
+- Last successful checkpoint: Wave 4 checkpoint
 - Task Packet ID: LRP-20260920-DVCC-003
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260920-DVCC-003/TASK_PACKET_SNAPSHOT.md
@@ -47,13 +47,15 @@ Make the whole Phase 1 + Phase 2 interface available in Japanese (default) and E
 
 The localization layer exists and is wired: dictionaries, translator, label maps, React context, language selector, `settings.json` persistence through a new storage target, and `document.documentElement.lang`. No existing UI string has been migrated yet — that is Waves 2 and 3, so the interface is still English until then.
 
-Every Phase 1 surface now renders from the dictionaries, and text produced outside React (validation, transition guards, service failures, file health, recovery notices) travels as a named `Message` that the interface renders. The Freshness explanations and the review request template are still English; they are Waves 3 and 4.
+The whole interface, both Phase 1 and Phase 2, now renders from the dictionaries, and the review request is written in the language in use. Every Phase 1 surface renders from the dictionaries, and text produced outside React (validation, transition guards, service failures, file health, recovery notices) travels as a named `Message` that the interface renders. The Freshness explanations and the review request template are still English; they are Waves 3 and 4.
 
 The preference path is hardened: `settings.json` is accepted only at `schemaVersion === 1`, a failed save takes the interface back to the stored language and says so, and preference writes are serialized so rapid switching cannot land out of order.
 
 ## Checks
 
 Wave 1: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, 524 tests), `npm run build` PASS, `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (68 passed, 2 ignored).
+
+Wave 4: `npx tsc --noEmit` PASS, `npx vitest run` PASS (19 files, 549 tests), `npm run build` PASS (`src-tauri/` unchanged).
 
 Wave 3: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, 534 tests), `npm run build` PASS (`src-tauri/` unchanged).
 
@@ -88,7 +90,7 @@ Wave 1 (i18n core, dictionaries, selector, persistence, parity tests), Wave 2 (P
 
 ## Next action
 
-Wave 4: the review request in the current language (`src/domain/prompt.ts`), the static gate against new hard-coded user-facing text, and the README / data-contract updates.
+Wave 5: the UI verification on the isolated desktop — Japanese by default, switch to English, restart persistence, back to Japanese, review state untouched by a language change, and the review prompt verified in both languages from the written artifact (the Human's clipboard is not touched).
 
 ## Stop conditions status
 

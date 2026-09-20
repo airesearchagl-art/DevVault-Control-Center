@@ -346,7 +346,7 @@ export default function App() {
 
   const copyPrompt = async (session: ReviewSession) => {
     try {
-      const result = await track(hub.saveRequest(session.reviewSessionId));
+      const result = await track(hub.saveRequest(session.reviewSessionId, locale));
       if (!result.ok) {
         notify("error", translate(t, result.error));
         return;
