@@ -29,6 +29,15 @@ pub const GIT_PROGRAM: &str = "git";
 /// would block on a full buffer).
 const MAX_CAPTURED_BYTES: usize = 8 * 1024;
 
+/// Every Git invocation an observation may make. Read-only by construction: `rev-parse`,
+/// `symbolic-ref` and `status` cannot change a repository, and no other command is ever run.
+const READ_ONLY_INVOCATIONS: [&[&str]; 4] = [
+    &["rev-parse", "--is-inside-work-tree"],
+    &["rev-parse", "--verify", "--quiet", "HEAD"],
+    &["symbolic-ref", "--quiet", "--short", "HEAD"],
+    &["status", "--porcelain=v1"],
+];
+
 /// Shared limits contract: the same `contract/limits.json` the TypeScript side reads.
 const LIMITS_JSON: &str = include_str!("../../contract/limits.json");
 
@@ -170,12 +179,7 @@ fn observe_repository(
 ) -> GitObservation {
     let deadline = Instant::now() + timeout;
 
-    let inside_work_tree = match run_git(
-        program,
-        folder,
-        &["rev-parse", "--is-inside-work-tree"],
-        deadline,
-    ) {
+    let inside_work_tree = match run_git(program, folder, READ_ONLY_INVOCATIONS[0], deadline) {
         GitRun::Completed {
             success, stdout, ..
         } => success && stdout.trim() == "true",
@@ -197,12 +201,7 @@ fn observe_repository(
     }
 
     // A repository without any commit has no HEAD: that stays `null` instead of being guessed.
-    let head = match run_git(
-        program,
-        folder,
-        &["rev-parse", "--verify", "--quiet", "HEAD"],
-        deadline,
-    ) {
+    let head = match run_git(program, folder, READ_ONLY_INVOCATIONS[1], deadline) {
         GitRun::Completed {
             success, stdout, ..
         } => {
@@ -220,12 +219,7 @@ fn observe_repository(
         }
     };
 
-    let (branch, detached) = match run_git(
-        program,
-        folder,
-        &["symbolic-ref", "--quiet", "--short", "HEAD"],
-        deadline,
-    ) {
+    let (branch, detached) = match run_git(program, folder, READ_ONLY_INVOCATIONS[2], deadline) {
         GitRun::Completed {
             success, stdout, ..
         } => {
@@ -247,7 +241,7 @@ fn observe_repository(
         }
     };
 
-    let dirty = match run_git(program, folder, &["status", "--porcelain=v1"], deadline) {
+    let dirty = match run_git(program, folder, READ_ONLY_INVOCATIONS[3], deadline) {
         GitRun::Completed {
             success,
             stdout,
@@ -328,12 +322,14 @@ enum GitRun {
 /// write a refreshed index) and `GIT_TERMINAL_PROMPT=0` makes sure nothing can ever wait for
 /// credentials. Both pipes are drained by their own threads while the parent polls, because a
 /// full pipe buffer would otherwise block the child forever.
-fn run_git(program: &str, folder: &Path, args: &[&str], deadline: Instant) -> GitRun {
+fn git_command(program: &str, folder: &Path, args: &[&str]) -> Command {
     let mut command = Command::new(program);
     command
         .args(args)
         .current_dir(folder)
+        // No index.lock is ever taken, so `status` cannot even write a refreshed index.
         .env("GIT_OPTIONAL_LOCKS", "0")
+        // Nothing may ever wait for credentials: an observation must not be able to reach a remote.
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -345,6 +341,11 @@ fn run_git(program: &str, folder: &Path, args: &[&str], deadline: Instant) -> Gi
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         command.creation_flags(CREATE_NO_WINDOW);
     }
+    command
+}
+
+fn run_git(program: &str, folder: &Path, args: &[&str], deadline: Instant) -> GitRun {
+    let mut command = git_command(program, folder, args);
 
     let mut child = match command.spawn() {
         Ok(child) => child,
@@ -365,8 +366,11 @@ fn run_git(program: &str, folder: &Path, args: &[&str], deadline: Instant) -> Gi
                     // Only the child this call started is terminated — never a kill by name.
                     let _ = child.kill();
                     let _ = child.wait();
-                    let _ = stdout_reader.join();
-                    let _ = stderr_reader.join();
+                    // The readers are left to finish on their own: a killed process can leave
+                    // children of its own holding the pipes open, and waiting for those would
+                    // defeat the bound this branch exists to enforce.
+                    drop(stdout_reader);
+                    drop(stderr_reader);
                     return GitRun::Timeout;
                 }
                 std::thread::sleep(Duration::from_millis(15));
@@ -374,8 +378,8 @@ fn run_git(program: &str, folder: &Path, args: &[&str], deadline: Instant) -> Gi
             Err(error) => {
                 let _ = child.kill();
                 let _ = child.wait();
-                let _ = stdout_reader.join();
-                let _ = stderr_reader.join();
+                drop(stdout_reader);
+                drop(stderr_reader);
                 return GitRun::Failed(error.to_string());
             }
         }
@@ -483,6 +487,20 @@ mod tests {
             "git {args:?} failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
+    }
+
+    /// Fixture Git command whose output the test inspects (same isolation as `git`).
+    fn git_output(folder: &Path, args: &[&str]) -> String {
+        let output = Command::new(GIT_PROGRAM)
+            .args(args)
+            .current_dir(folder)
+            .env("GIT_CONFIG_GLOBAL", folder.join("dvcc-no-global-config"))
+            .env("GIT_CONFIG_SYSTEM", folder.join("dvcc-no-system-config"))
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .output()
+            .expect("git must be available for these tests");
+        assert!(output.status.success(), "git {args:?} failed");
+        String::from_utf8_lossy(&output.stdout).into_owned()
     }
 
     /// A synthetic repository with one commit on branch `dvcc-test-main`.
@@ -597,16 +615,35 @@ mod tests {
         assert_eq!(observation.dirty, None);
     }
 
+    /// A stand-in for Git that never answers, so the bound is what ends the observation. (It waits
+    /// through a short loopback ping; that grandchild ends on its own once the script is killed.)
+    fn hanging_git(dir: &Path) -> PathBuf {
+        let script = dir.join("dvcc-hanging-git.cmd");
+        fs::write(&script, "@echo off\r\nping -n 20 127.0.0.1 > nul\r\n").unwrap();
+        script
+    }
+
     #[test]
-    fn an_expired_bound_fails_closed_as_a_timeout() {
+    fn a_git_that_never_answers_is_abandoned_and_fails_closed() {
         let (_dir, root) = repository_with_commit();
-        let observation = observe(GIT_PROGRAM, Some(&root.to_string_lossy()), Duration::ZERO);
+        let script = hanging_git(&root);
+        let started = Instant::now();
+        let observation = observe(
+            &script.to_string_lossy(),
+            Some(&root.to_string_lossy()),
+            Duration::from_millis(300),
+        );
+        let elapsed = started.elapsed();
         assert_eq!(observation.status, GitStatus::Timeout);
         assert_eq!(observation.error_code.as_deref(), Some("GIT_TIMEOUT"));
         assert_eq!(observation.head, None);
         assert_eq!(observation.branch, None);
         assert_eq!(observation.detached, None);
         assert_eq!(observation.dirty, None);
+        assert!(
+            elapsed < Duration::from_secs(10),
+            "the observation must end at its bound, not wait for Git: {elapsed:?}"
+        );
     }
 
     /// Every file under the repository with a content hash, so an observation that wrote anything
@@ -650,6 +687,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(1100));
         fs::write(&tracked, &content).unwrap();
         let before = snapshot(&root);
+        let staged_before = git_output(&root, &["ls-files", "--stage"]);
         assert!(
             before.keys().any(|path| path.contains(".git")),
             "the snapshot must cover the .git directory"
@@ -666,11 +704,89 @@ mod tests {
             after.len(),
             "no file may be added or removed by an observation"
         );
+        // `.git/index` is Git's own stat cache. `GIT_OPTIONAL_LOCKS=0` stops `status` from
+        // refreshing it (see `every_invocation_runs_read_only_and_offline`), but a refresh would
+        // still only rewrite cached stat data, so the assertion here is on what the index records:
+        // the staged entries must be identical, and no lock may be left behind.
+        let index = Path::new(".git").join("index");
+        let index_key = index.to_string_lossy().into_owned();
         for (path, state) in &before {
+            if path == &index_key {
+                continue;
+            }
             assert_eq!(
                 after.get(path),
                 Some(state),
                 "{path} changed during a read-only observation"
+            );
+        }
+        assert_eq!(
+            git_output(&root, &["ls-files", "--stage"]),
+            staged_before,
+            "the recorded index entries changed during a read-only observation"
+        );
+        assert!(
+            !root.join(".git").join("index.lock").exists(),
+            "an observation must never leave an index lock behind"
+        );
+    }
+
+    #[test]
+    fn every_invocation_runs_read_only_and_offline() {
+        // The whole set of commands an observation may run, checked without running Git: only
+        // read-only verbs, no flag that could reach a remote or change anything, and the
+        // environment that keeps Git from writing its index or asking for credentials.
+        const READ_ONLY_VERBS: [&str; 3] = ["rev-parse", "symbolic-ref", "status"];
+        const FORBIDDEN: [&str; 16] = [
+            "fetch", "pull", "push", "clone", "remote", "checkout", "switch", "reset", "clean",
+            "commit", "add", "stash", "config", "branch", "tag", "gc",
+        ];
+        let folder = Path::new("C:\\repos\\example");
+        assert!(!READ_ONLY_INVOCATIONS.is_empty());
+        for invocation in READ_ONLY_INVOCATIONS {
+            let verb = invocation[0];
+            assert!(
+                READ_ONLY_VERBS.contains(&verb),
+                "unexpected Git verb: {verb}"
+            );
+            for argument in invocation {
+                assert!(
+                    !FORBIDDEN.contains(argument),
+                    "{argument} must never appear in an observation"
+                );
+                assert!(
+                    !argument.contains("--upload-pack") && !argument.contains("--receive-pack"),
+                    "{argument} could reach a remote"
+                );
+            }
+
+            let command = git_command(GIT_PROGRAM, folder, invocation);
+            assert_eq!(command.get_program(), GIT_PROGRAM);
+            assert_eq!(command.get_current_dir(), Some(folder));
+            let args: Vec<_> = command
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect();
+            assert_eq!(
+                args,
+                invocation.iter().map(|a| a.to_string()).collect::<Vec<_>>()
+            );
+            let environment: Vec<_> = command
+                .get_envs()
+                .map(|(key, value)| {
+                    (
+                        key.to_string_lossy().into_owned(),
+                        value.map(|v| v.to_string_lossy().into_owned()),
+                    )
+                })
+                .collect();
+            assert!(
+                environment.contains(&("GIT_OPTIONAL_LOCKS".to_owned(), Some("0".to_owned()))),
+                "GIT_OPTIONAL_LOCKS=0 keeps Git from writing its index: {environment:?}"
+            );
+            assert!(
+                environment.contains(&("GIT_TERMINAL_PROMPT".to_owned(), Some("0".to_owned()))),
+                "GIT_TERMINAL_PROMPT=0 keeps Git from waiting for credentials: {environment:?}"
             );
         }
     }
