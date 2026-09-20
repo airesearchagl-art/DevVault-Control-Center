@@ -58,6 +58,6 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 
 ## Final
 
-- [ ] Final Convergence (freeze, full diff review, Required Checks, Hard Checks, Quality Debt, unverified items)
+- [x] Final Convergence (freeze, full diff review, Required Checks, Hard Checks, Quality Debt, unverified items)
 - [ ] Independent Verification (separate context)
-- [ ] Draft PR → STOP
+- [x] Draft PR → STOP — PR #3 (Draft)

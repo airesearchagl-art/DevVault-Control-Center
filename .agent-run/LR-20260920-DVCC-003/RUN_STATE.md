@@ -7,7 +7,7 @@
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/localization-foundation-v0.2.1
 - Base SHA: 318e273a1afe66c605da897a4f7603aaa921fc83
-- Current head: Wave 5 checkpoint commit (parent 6d849f6)
+- Current head: 3117414 (Wave 5 checkpoint); Draft PR #3
 - Current wave: Wave 5 complete → Final Convergence and Draft PR
 - Last successful checkpoint: Wave 5 checkpoint
 - Task Packet ID: LRP-20260920-DVCC-003
@@ -92,7 +92,7 @@ Wave 1 (i18n core, dictionaries, selector, persistence, parity tests), Wave 2 (P
 
 ## Next action
 
-Open the Draft PR against `origin/main` (`318e273`) and stop. Independent verification runs in a separate context; Phase 3 does not start until this merges.
+Stop. Draft PR #3 is open against `main` (`318e273`); independent verification runs in a separate context, and Phase 3 does not start until this merges.
 
 ## Stop conditions status
 
