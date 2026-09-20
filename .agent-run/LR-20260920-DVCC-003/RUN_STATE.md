@@ -3,13 +3,13 @@
 - Run ID: LR-20260920-DVCC-003
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — Wave 2 (Phase 1 UI migration) complete
+- Current state: RUNNING — Wave 3 (Phase 2 UI migration) complete
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/localization-foundation-v0.2.1
 - Base SHA: 318e273a1afe66c605da897a4f7603aaa921fc83
-- Current head: Wave 2 checkpoint commit (parent 8bd82d4)
-- Current wave: Wave 2 → Wave 3 (Phase 2 UI migration: freshness explanations, Git card wording)
-- Last successful checkpoint: Wave 2 checkpoint
+- Current head: Wave 3 checkpoint commit (parent a5ad92c)
+- Current wave: Wave 3 → Wave 4 (review request per locale, hard-coded text gate, documentation)
+- Last successful checkpoint: Wave 3 checkpoint
 - Task Packet ID: LRP-20260920-DVCC-003
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260920-DVCC-003/TASK_PACKET_SNAPSHOT.md
@@ -55,6 +55,8 @@ The preference path is hardened: `settings.json` is accepted only at `schemaVers
 
 Wave 1: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, 524 tests), `npm run build` PASS, `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (68 passed, 2 ignored).
 
+Wave 3: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, 534 tests), `npm run build` PASS (`src-tauri/` unchanged).
+
 Wave 2: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, 534 tests), `npm run build` PASS (`src-tauri/` unchanged in this wave).
 
 Wave 1.5: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, 534 tests), `npm run build` PASS, `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (68 passed, 2 ignored — `src-tauri/` is byte-unchanged in this wave). Three mutation probes, each reverted: see EVIDENCE.
@@ -86,7 +88,7 @@ Wave 1 (i18n core, dictionaries, selector, persistence, parity tests), Wave 2 (P
 
 ## Next action
 
-Wave 3: the Phase 2 surfaces — the Freshness explanation sentences (`src/domain/freshness.ts` and its contract test), the queue freshness badge, and anything left in the Git evidence card.
+Wave 4: the review request in the current language (`src/domain/prompt.ts`), the static gate against new hard-coded user-facing text, and the README / data-contract updates.
 
 ## Stop conditions status
 

@@ -82,7 +82,7 @@ export function ReviewQueue({
                       {freshnessByReview.get(item.reviewId) && (
                         <FreshnessBadge
                           status={freshnessByReview.get(item.reviewId)!.status}
-                          explanation={freshnessByReview.get(item.reviewId)!.explanation}
+                          explanation={translate(t, freshnessByReview.get(item.reviewId)!.explanation)}
                           testId="queue-freshness"
                         />
                       )}

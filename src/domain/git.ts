@@ -59,7 +59,7 @@ export function asGitObservation(value: unknown, observedAt: string): GitObserva
       dirty: null,
       observedAt,
       errorCode: "MALFORMED_OBSERVATION",
-      errorMessage: "The Git observation could not be read.",
+      // The code says what happened; the sentence for it lives in the dictionaries.
     };
   }
   const errorCode = optionalString(record.errorCode);

@@ -16,6 +16,7 @@ import {
   RESOURCE_HINT_KEYS,
   RESOURCE_STATE_KEYS,
   REVIEW_STATE_KEYS,
+  translate,
   VERDICT_KEYS,
   type Translator,
 } from "../../i18n";
@@ -348,7 +349,7 @@ export function ReviewDetail({
         <div className="freshness-line">
           <FreshnessBadge status={freshness.status} testId="detail-freshness" />
           <span className="small" data-testid="detail-freshness-explanation">
-            {freshness.explanation}
+            {translate(t, freshness.explanation)}
           </span>
         </div>
         <dl>

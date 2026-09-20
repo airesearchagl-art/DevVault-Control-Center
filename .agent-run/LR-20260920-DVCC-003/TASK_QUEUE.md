@@ -37,8 +37,8 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 
 ## Wave 3 — Phase 2 UI migration
 
-- [ ] Git evidence card, Freshness badges, explanations, queue badge, Git status labels
-- [ ] Targeted checks → checkpoint
+- [x] Git evidence card, Freshness badges, explanations, queue badge, Git status labels
+- [x] Targeted checks → checkpoint
 
 ## Wave 4 — prompt, formatting, audit
 

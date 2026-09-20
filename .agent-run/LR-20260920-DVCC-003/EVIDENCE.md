@@ -107,3 +107,15 @@ Still English, by wave: the Freshness explanation sentences (`src/domain/freshne
 Checks at this checkpoint: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, **534 tests**), `npm run build` PASS. `src-tauri/` unchanged in this wave. A grep of `src/app`, `src/components` and `src/features` for JSX text and the usual text attributes finds no English literal left; the static gate that enforces this is Wave 4.
 
 Test changes: assertions that printed a failed `Result` now stringify it (6 files), the queue fixture builds its problem as a message, the event-append warning is asserted by key, and the two recovery-notice assertions check the key and the quarantined file name parameter instead of an English sentence.
+
+## Wave 3 — Phase 2 UI migration (2026-09-20)
+
+The Git evidence card, the Git status labels and the Freshness badges moved with their file in Wave 2; what was left is the part the domain produces.
+
+- `deriveFreshness` returns its explanation as a `Message`. All thirteen sentences are named keys; the two that carry values (`reviewStale`, `headChanged`) pass both short HEADs as parameters, so the same two SHAs read correctly in either word order.
+- A Git error that came back with a reason keeps the reason exactly as Git reported it, inside a localized frame. A malformed observation no longer invents an English sentence: `asGitObservation` leaves `errorMessage` unset and the explanation is chosen from `errorCode`, which is the part that carries the meaning.
+- The queue badge and the detail pane render the explanation through `translate`.
+
+The freshness contract test now asserts the key and the parameters — the oracle table stays independent of the wording — and additionally renders the two difference sentences in both languages to show the same two SHAs land in each.
+
+Checks: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, 534 tests), `npm run build` PASS. `src-tauri/` unchanged.
