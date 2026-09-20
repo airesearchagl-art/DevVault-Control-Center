@@ -8,7 +8,7 @@
 - Working branch: feat/review-hub-v0.1
 - Base SHA: bbffea1177b80dfe46a0f6887a9fc05dd5e4f05d
 - Reviewed head (Independent FULL Review): 3f99eaba27df5946cfc017542d8d8ea81d5babc3
-- Current head: evidence-only commit (parent 8c24bf9530426f244786a1119267151ad5a44783; no product file changed). Repair code commit: 948de0038e08ef11b611135c5a1d35a1111a2767; product tree unchanged since it. BLOCKED-transition checkpoint 505d6039b977249374eb96959f50b8d75b6f6f44
+- Current head: the latest evidence-only commit on `feat/review-hub-v0.1` (chain after the verified head: 8c24bf9 → 05bda0b evidence of the independent re-review / UI verification → this final evidence consistency correction; no product file in any of them). Repair code commit: 948de0038e08ef11b611135c5a1d35a1111a2767; product tree unchanged since it. BLOCKED-transition checkpoint 505d6039b977249374eb96959f50b8d75b6f6f44
 - Independently verified head (re-review + UI verification): 8c24bf9530426f244786a1119267151ad5a44783
 - Current wave: R14 / R15 complete (independent re-review and UI verification recorded); code frozen
 - Last successful checkpoint: evidence-only commit (commit "chore(run): record independent UI verification")
