@@ -7,13 +7,15 @@
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/evidence-freshness-v0.2
 - Base SHA: f557aa6f15222099f54790180e0ff71c5291734a
-- Current head: Wave 6 checkpoint commit (code frozen at the Wave 6 repair commit; `5ec54a9` and `161903e` were the heads the two independent reviews audited)
-- Current wave: Wave 6 (focused re-review and repair) complete → Draft PR
-- Last successful checkpoint: Wave 6 checkpoint
+- Current head: final checkpoint commit (parent `b386add4afbfe65375df3646a5266483b388ca32`, the head the Draft PR points at; `5ec54a9` and `161903e` were the heads the two independent reviews audited)
+- Current wave: complete — Draft PR #2 open
+- Last successful checkpoint: final checkpoint (Draft PR #2)
 - Task Packet ID: LRP-20260920-DVCC-002
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260920-DVCC-002/TASK_PACKET_SNAPSHOT.md
 - Task Packet SHA-256: b9ecd5c0d1a9d8388cc212072c3c08a5a57a45af90035c4f2a2232688a6f9dd8 (verified at this checkpoint: match)
+
+- Draft PR: https://github.com/airesearchagl-art/DevVault-Control-Center/pull/2 (draft, base main, head feat/evidence-freshness-v0.2 @ b386add)
 
 ## Objective
 
@@ -82,7 +84,7 @@ Wave 1 (Rust Git inspection boundary), Wave 2 (TypeScript model + Freshness deri
 
 ## Next action
 
-Draft PR, then STOP. Two independent reviews have run and their findings are repaired and re-verified; this session does not declare a review of its own Wave 6 repairs.
+None by the agent. Draft PR #2 (https://github.com/airesearchagl-art/DevVault-Control-Center/pull/2) is open for the Human Gate; Ready for Review, merge, release and production remain prohibited.
 
 ## Stop conditions status
 

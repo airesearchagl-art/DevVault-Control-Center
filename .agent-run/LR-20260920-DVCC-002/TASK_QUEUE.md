@@ -52,5 +52,5 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 - [x] Final Convergence (freeze, full diff review, all Required Checks, Hard Checks, Quality Debt, unverified items)
 - [x] Independent Verification (separate context) — found two defects and seven hardening items at `5ec54a9`
 - [x] Wave 5 repair of every finding + re-verification at `161903e`
-- [ ] Focused independent re-review of the repairs
-- [ ] Draft PR → STOP
+- [x] Focused independent re-review of the repairs — found four unmet claims, one broken file and the branch violation; all repaired in Wave 6
+- [x] Draft PR #2 → STOP

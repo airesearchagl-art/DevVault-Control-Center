@@ -232,3 +232,11 @@ Clean build again (`cargo clean -p devvault-control-center`): `cargo fmt --check
 Isolated-desktop UI smoke re-run on that binary: seed **PASS**, restart **PASS**, refresh-only **PASS** with the three synthetic repositories **byte-identical** (58 files) before and after a real Refresh All. No DVCC or WebView2 process left behind; `%APPDATA%\DevVault-Control` still shows its pre-run timestamp (17:06:50, from the operator's own instance).
 
 Git state after the branch correction: `feat/evidence-freshness-v0.2` = the work (12 commits ahead of `main` at that point), local `main` = `origin/main` = `f557aa6f15222099f54790180e0ff71c5291734a`, working tree clean, and the branch pushed to the remote for the first time.
+
+### Draft PR — 2026-09-20
+
+Conditions checked before creating it: every Acceptance Criterion has evidence, all Required Checks pass at the frozen head after a clean build, both independent reviews' findings are repaired and re-verified, the two open Quality Debt items are low and non-blocking, the explicit unverified items are listed, and the Hard Boundary state is correct (`origin/main` untouched at `f557aa6`, all work on `feat/evidence-freshness-v0.2`, nothing merged, no force push, no branch deleted).
+
+- Draft PR: https://github.com/airesearchagl-art/DevVault-Control-Center/pull/2 — `OPEN`, `isDraft: true`, base `main`, head `feat/evidence-freshness-v0.2` @ `b386add4afbfe65375df3646a5266483b388ca32`, `mergedAt: null`.
+- `gh pr checks 2`: no checks reported (the repository has no GitHub CI; no CI result may be read as PASS).
+- Task Packet digest re-verified at this checkpoint: `b9ecd5c0d1a9d8388cc212072c3c08a5a57a45af90035c4f2a2232688a6f9dd8` (match).
