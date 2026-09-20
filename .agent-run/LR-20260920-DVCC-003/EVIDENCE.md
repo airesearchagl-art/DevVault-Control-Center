@@ -56,3 +56,16 @@ Findings that shape the design (each is answered by a decision in DECISIONS.md):
 7. **Pluralisation by string surgery** in three places (`project${n===1?"":"s"}`, "reviews", "line(s)") needs a real rule for English and none for Japanese (L3-016).
 8. Punctuation that is effectively a locale setting: `—` placeholders, `…`, `·`, `→`, `∅`, typographic quotes and the `": "` joiner in the resource tooltip.
 9. Must stay literal: persisted enum values (also used as CSS class fragments and `data-state`), schema field names, file names, error codes, Tauri command names, product and tool names, the IDE suggestion list, and every `data-testid`.
+
+## Wave 1 — i18n core, persistence and the language switch (2026-09-20)
+
+- `src/i18n/`: `locale.ts` (ja / en, Japanese default, native names), `ja.ts` (the key set, covering Phase 1 and Phase 2), `en.ts` (typed as a full record of that set, so a missing or unknown key is a compile error), `types.ts`, `index.ts` (translator with `{placeholder}` substitution and a `_one` plural variant, `formatParts` for rich messages, label-key maps for every persisted enum, locale-aware timestamp), `context.ts` (React context, `useT`).
+- `src/components/LanguageSelector.tsx`: always in the top bar, options written in their own language.
+- Persistence: a new `settings` storage target in Rust (`<data root>/settings.json`) mirrored in the TypeScript port and the in-memory test double; `src/services/settings.ts` loads and saves the preference only. Missing file means Japanese; unreadable or invalid means Japanese, a warning, and the file is left exactly as it was.
+- `App.tsx` reads the preference once at start-up, provides the context, mirrors the locale into `document.documentElement.lang`, and saves on change without touching any other state.
+
+Tests (24 new): locale set and default; parity of the key sets; no blank values; no duplicate key in either source file; identical placeholders in both languages; every key actually translated except a named list of shared technical terms; a plural variant present in both dictionaries; a label key for every persisted enum value; parameter substitution; the English singular variant; `formatParts` in both word orders; locale-aware timestamps. Settings: fresh install, round trip, five kinds of unusable content, an unreadable file, and proof that no other file is read or written.
+
+Checks at this checkpoint: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, **524 tests**), `npm run build` PASS, `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (68 passed, 2 ignored).
+
+Note: `npx prettier --write` was run once by mistake on `src/app/App.tsx` (this repository does not use Prettier); the file was restored from Git and the wiring re-applied, so its diff contains only the intended 48 added lines.

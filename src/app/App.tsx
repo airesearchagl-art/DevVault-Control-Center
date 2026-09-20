@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Banner, Toasts } from "../components/Banner";
+import { LanguageSelector } from "../components/LanguageSelector";
 import { ConfirmDialog } from "../components/Dialog";
 import { emptyProjectForm, projectToForm, type Project, type ProjectFormInput } from "../domain/project";
 import { deriveFreshness, type FreshnessResult } from "../domain/freshness";
@@ -28,7 +29,10 @@ import { tauriLauncher } from "../services/launcher";
 import { describeHealthProblem, isWritable } from "../services/persistence";
 import { ReviewHub } from "../services/reviewHub";
 import type { SaveOutcome } from "../services/reviewService";
+import { loadSettings, saveLocale } from "../services/settings";
 import { tauriStorage, toStorageError } from "../services/storage";
+import { createTranslator, DEFAULT_LOCALE, type Locale } from "../i18n";
+import { I18nContext, type I18n } from "../i18n/context";
 import { appReducer, initialAppState, type ToastKind } from "./appState";
 import { describeError } from "./format";
 import "./App.css";
@@ -60,6 +64,7 @@ export default function App() {
   const [state, dispatch] = useReducer(appReducer, initialAppState);
   const [dialog, setDialog] = useState<DialogState>(null);
   const [pending, setPending] = useState(0);
+  const [locale, setLocaleState] = useState<Locale>(DEFAULT_LOCALE);
   const loadStarted = useRef(false);
   const hubRef = useRef<ReviewHub | null>(null);
   if (hubRef.current === null) hubRef.current = new ReviewHub(tauriStorage);
@@ -99,6 +104,46 @@ export default function App() {
     loadStarted.current = true;
     void reload();
   }, [reload]);
+
+  // The interface language is read once at start-up; a file that cannot be used means Japanese and
+  // says so, and no other file is read on this path.
+  useEffect(() => {
+    let cancelled = false;
+    void loadSettings(tauriStorage).then(
+      (settings) => {
+        if (cancelled) return;
+        setLocaleState(settings.locale);
+        if (settings.problem !== null) {
+          dispatch({
+            type: "toast",
+            kind: "warning",
+            message: createTranslator(settings.locale)("notice.settingsInvalid", { file: "settings.json" }),
+          });
+        }
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
+
+  const i18n = useMemo<I18n>(
+    () => ({
+      locale,
+      t: createTranslator(locale),
+      setLocale: (next: Locale) => {
+        // Only the preference changes: no review, project or Git state is touched.
+        setLocaleState(next);
+        void saveLocale(tauriStorage, next).catch(() => undefined);
+      },
+    }),
+    [locale],
+  );
 
   const selected = state.reviews.find((review) => review.reviewId === state.selectedReviewId) ?? null;
   const selectedSession = selected?.session ?? null;
@@ -485,12 +530,14 @@ export default function App() {
   }
 
   return (
+    <I18nContext.Provider value={i18n}>
     <div className="app">
       <header className="topbar">
         <h1>
           DevVault Control Center <span className="subtitle">Review Hub</span>
         </h1>
         <div className="topbar-actions">
+          <LanguageSelector disabled={busy} />
           <button type="button" onClick={() => setDialog({ kind: "createProject" })} disabled={!projectsWritable} data-testid="btn-new-project">
             + Project
           </button>
@@ -680,5 +727,6 @@ export default function App() {
         />
       )}
     </div>
+    </I18nContext.Provider>
   );
 }

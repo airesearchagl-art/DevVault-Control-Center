@@ -3,13 +3,13 @@
 - Run ID: LR-20260920-DVCC-003
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — Wave 0 (preflight, Task Packet binding, UI string inventory, architecture) in progress
+- Current state: RUNNING — Wave 1 (i18n core, dictionaries, language switch, settings persistence) complete
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/localization-foundation-v0.2.1
 - Base SHA: 318e273a1afe66c605da897a4f7603aaa921fc83
-- Current head: Wave 0 checkpoint commit (parent 318e273a1afe66c605da897a4f7603aaa921fc83)
-- Current wave: Wave 0 → Wave 1 (i18n core, dictionaries, selector, persistence, parity tests)
-- Last successful checkpoint: Wave 0 checkpoint
+- Current head: Wave 1 checkpoint commit (parent 050dc786d248b32a0bb5c64131d11cc6e848bec6)
+- Current wave: Wave 1 → Wave 2 (Phase 1 UI migration)
+- Last successful checkpoint: Wave 1 checkpoint
 - Task Packet ID: LRP-20260920-DVCC-003
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260920-DVCC-003/TASK_PACKET_SNAPSHOT.md
@@ -29,13 +29,13 @@ Make the whole Phase 1 + Phase 2 interface available in Japanese (default) and E
 - [ ] L10N-06 every Phase 1 user-facing surface exists in JA and EN
 - [ ] L10N-07 every Phase 2 user-facing surface exists in JA and EN
 - [ ] L10N-08 internal state / resource / freshness values unchanged
-- [ ] L10N-09 JA / EN key parity enforced by a test
+- [x] L10N-09 JA / EN key parity enforced by a test — compile-time key type plus parity, blank, duplicate and placeholder tests
 - [ ] L10N-10 a missing translation fails a Required Check
 - [ ] L10N-11 the review request is generated in Japanese and in English
 - [ ] L10N-12 existing runtime data still loads unchanged
 - [ ] L10N-13 a locale switch does not change any domain state
 - [ ] L10N-14 document language matches the locale
-- [ ] L10N-15 no external translation API and no network use
+- [x] L10N-15 no external translation API and no network use — dictionaries are repository files; no dependency added
 - [ ] L10N-16 UI smoke touches no real user data and does not disturb the operator's clipboard
 - [ ] L10N-17 no Phase 1 / Phase 2 regression
 
@@ -45,11 +45,11 @@ Make the whole Phase 1 + Phase 2 interface available in Japanese (default) and E
 
 ## Current implementation state
 
-No product code changed yet. Phase 1 + Phase 2 code is untouched at `318e273`.
+The localization layer exists and is wired: dictionaries, translator, label maps, React context, language selector, `settings.json` persistence through a new storage target, and `document.documentElement.lang`. No existing UI string has been migrated yet — that is Waves 2 and 3, so the interface is still English until then.
 
 ## Checks
 
-None required yet for Wave 0 (no product change). Toolchain: node v24.15.0, npm 11.12.1, rustc 1.95.0, git 2.53.0.windows.2.
+Wave 1: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, 524 tests), `npm run build` PASS, `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (68 passed, 2 ignored).
 
 ## Quality Debt
 
@@ -70,7 +70,7 @@ See DECISIONS.md (L3-001..).
 
 ## Files changed
 
-`.agent-run/LR-20260920-DVCC-003/*` only.
+New: `src/i18n/{locale,types,ja,en,index,context}.ts`, `src/i18n/i18n.test.ts`, `src/components/LanguageSelector.tsx`, `src/services/settings.ts`, `src/services/settings.test.ts`. Changed: `src-tauri/src/storage.rs` (settings target), `src/services/storage.ts`, `src/services/trackedStorage.ts`, `src/test/memoryStorage.ts`, `src/app/App.tsx` (+48 lines: locale state, provider, selector, document language). Plus `.agent-run/LR-20260920-DVCC-003/*`.
 
 ## Remaining tasks
 
@@ -78,7 +78,7 @@ Wave 1 (i18n core, dictionaries, selector, persistence, parity tests), Wave 2 (P
 
 ## Next action
 
-Wave 1: add `src/i18n/` (locale, types, ja, en, index), the language selector, `settings.json` persistence through a new `settings` storage target, and the parity / blank-value tests.
+Wave 2: migrate the Phase 1 user-facing surfaces (app shell, queue, project and review forms, dialogs, toasts, banners, recovery and validation text, state labels) to translation keys.
 
 ## Stop conditions status
 

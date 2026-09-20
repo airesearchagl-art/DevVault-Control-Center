@@ -10,16 +10,16 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 - [x] Storage contract reviewed for a `settings` target
 - [x] UI string inventory (delegated, read-only) - about 390 strings across 18 files
 - [x] Localization architecture and persistence design recorded in DECISIONS.md (L3-001..L3-017)
-- [ ] Wave 0 checkpoint (commit + push)
+- [x] Wave 0 checkpoint (commit + push) — `050dc78`
 
 ## Wave 1 — i18n core
 
-- [ ] `src/i18n/`: `locale.ts`, `types.ts`, `ja.ts`, `en.ts`, `index.ts`
-- [ ] Typed dictionary so a missing key fails to compile
-- [ ] Language selector (native names, always reachable), `document.documentElement.lang`
-- [ ] `settings.json` persistence (new `settings` storage target, missing → ja, invalid → ja + warning)
-- [ ] Parity / blank / duplicate-key tests
-- [ ] Targeted checks → checkpoint
+- [x] `src/i18n/`: `locale.ts`, `types.ts`, `ja.ts`, `en.ts`, `index.ts`
+- [x] Typed dictionary so a missing key fails to compile
+- [x] Language selector (native names, always reachable), `document.documentElement.lang`
+- [x] `settings.json` persistence (new `settings` storage target, missing → ja, invalid → ja + warning)
+- [x] Parity / blank / duplicate-key tests
+- [x] Targeted checks → checkpoint
 
 ## Wave 2 — Phase 1 UI migration
 
