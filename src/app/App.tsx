@@ -31,7 +31,16 @@ import { ReviewHub } from "../services/reviewHub";
 import type { SaveOutcome } from "../services/reviewService";
 import { createLocaleStore, loadSettings } from "../services/settings";
 import { tauriStorage, toStorageError } from "../services/storage";
-import { createTranslator, DEFAULT_LOCALE, type Locale } from "../i18n";
+import {
+  createTranslator,
+  DEFAULT_LOCALE,
+  formatParts,
+  REVIEW_STATE_KEYS,
+  REVIEW_TYPE_SUGGESTION_KEYS,
+  VERDICT_KEYS,
+  type Locale,
+  type Translator,
+} from "../i18n";
 import { I18nContext, type I18n } from "../i18n/context";
 import { appReducer, initialAppState, type ToastKind } from "./appState";
 import { describeError } from "./format";
@@ -49,15 +58,11 @@ type DialogState =
   | { kind: "setAsideProjects" };
 
 // User-facing text for a failed save; conflicts explain that nothing was overwritten.
-function saveFailed(error: unknown): string {
+function saveFailed(t: Translator, error: unknown): string {
   const storageError = toStorageError(error);
-  if (storageError.code === "CONFLICT") {
-    return "Not saved: a file was changed on disk by another program since DVCC loaded it, and DVCC did not overwrite that change. Use Reload to see the current data.";
-  }
-  if (storageError.code === "RECOVERY_REQUIRED") {
-    return "Not saved: the file is missing but its backup exists. Reload to restore it from the backup.";
-  }
-  return `Save failed: ${describeError(error)}`;
+  if (storageError.code === "CONFLICT") return t("error.saveConflict");
+  if (storageError.code === "RECOVERY_REQUIRED") return t("error.saveRecoveryRequired");
+  return t("error.saveFailed", { error: describeError(t, error) });
 }
 
 export default function App() {
@@ -65,6 +70,7 @@ export default function App() {
   const [dialog, setDialog] = useState<DialogState>(null);
   const [pending, setPending] = useState(0);
   const [locale, setLocaleState] = useState<Locale>(DEFAULT_LOCALE);
+  const t = useMemo(() => createTranslator(locale), [locale]);
   const loadStarted = useRef(false);
   const hubRef = useRef<ReviewHub | null>(null);
   if (hubRef.current === null) hubRef.current = new ReviewHub(tauriStorage);
@@ -94,9 +100,9 @@ export default function App() {
       const data = await hub.load();
       dispatch({ type: "loaded", storage, data });
     } catch (error) {
-      dispatch({ type: "fatal", message: describeError(error) });
+      dispatch({ type: "fatal", message: describeError(t, error) });
     }
-  }, [hub]);
+  }, [hub, t]);
 
   useEffect(() => {
     // Single initial load (StrictMode runs effects twice in development).
@@ -140,7 +146,7 @@ export default function App() {
   const i18n = useMemo<I18n>(
     () => ({
       locale,
-      t: createTranslator(locale),
+      t,
       setLocale: (next: Locale) => {
         if (next === locale) return;
         // Only the preference changes: no review, project or Git state is touched. The interface
@@ -158,7 +164,7 @@ export default function App() {
         });
       },
     }),
-    [locale, localeStore],
+    [locale, t, localeStore],
   );
 
   const selected = state.reviews.find((review) => review.reviewId === state.selectedReviewId) ?? null;
@@ -240,7 +246,7 @@ export default function App() {
   const refreshAllGit = useCallback(async () => {
     const targets = state.projects.map((project) => ({ projectId: project.projectId, localRoot: project.localRoot }));
     if (targets.length === 0) {
-      notify("info", "No projects to observe.");
+      notify("info", t("toast.noProjectsToObserve"));
       return;
     }
     await track(
@@ -256,8 +262,8 @@ export default function App() {
         });
       }),
     );
-    notify("info", `Git state refreshed for ${targets.length} project${targets.length === 1 ? "" : "s"}.`);
-  }, [state.projects, projectById, track, notify]);
+    notify("info", t("toast.gitRefreshedAll", { count: targets.length }));
+  }, [state.projects, projectById, track, notify, t]);
 
   const reviewCountByProject = useMemo(() => {
     const counts = new Map<string, number>();
@@ -286,7 +292,7 @@ export default function App() {
       if (success) notify("info", success);
       return null;
     } catch (error) {
-      const message = saveFailed(error);
+      const message = saveFailed(t, error);
       notify("error", message);
       return message;
     }
@@ -297,10 +303,10 @@ export default function App() {
       const result = await track(projectId ? hub.editProject(projectId, input) : hub.createProject(input));
       if (!result.ok) return result.error;
       setDialog(null);
-      notify("info", projectId ? "Project saved" : `Project “${input.displayName.trim()}” created`);
+      notify("info", projectId ? t("toast.projectSaved") : t("toast.projectCreated", { name: input.displayName.trim() }));
       return null;
     } catch (error) {
-      return { _form: saveFailed(error) };
+      return { _form: saveFailed(t, error) };
     }
   };
 
@@ -311,17 +317,17 @@ export default function App() {
       warnIfNeeded(result.value);
       dispatch({ type: "selectReview", reviewId: result.value.session.reviewSessionId });
       setDialog(null);
-      notify("info", "Review created");
+      notify("info", t("toast.reviewCreated"));
       return null;
     } catch (error) {
-      return { _form: saveFailed(error) };
+      return { _form: saveFailed(t, error) };
     }
   };
 
   const submitReviewMetadata = async (session: ReviewSession, input: ReviewMetadataInput): Promise<FieldErrors | null> => {
     const metadata = validateReviewMetadata(input);
     if (!metadata.ok) return metadata.error;
-    const error = await runAction(session, { type: "updateMetadata", metadata: metadata.value }, "Review saved");
+    const error = await runAction(session, { type: "updateMetadata", metadata: metadata.value }, t("toast.reviewSaved"));
     if (error) return { _form: error };
     setDialog(null);
     return null;
@@ -331,7 +337,7 @@ export default function App() {
     try {
       await open();
     } catch (error) {
-      notify("error", `${label} failed: ${describeError(error)}`);
+      notify("error", t("toast.launchFailed", { label, error: describeError(t, error) }));
     }
   };
 
@@ -346,12 +352,12 @@ export default function App() {
       const round = result.value.session.reviewRound;
       try {
         await copyText(result.value.text);
-        notify("info", `Review request saved as request-r${round}.md and copied to the clipboard`);
+        notify("info", t("toast.requestSaved", { round }));
       } catch (error) {
-        notify("error", `Saved request-r${round}.md, but copying to the clipboard failed: ${describeError(error)}`);
+        notify("error", t("toast.requestSavedCopyFailed", { round, error: describeError(t, error) }));
       }
     } catch (error) {
-      notify("error", saveFailed(error));
+      notify("error", saveFailed(t, error));
     }
   };
 
@@ -366,12 +372,12 @@ export default function App() {
       if (!result.ok) return result.error;
       warnIfNeeded(result.value);
       const saved = result.value.session;
-      const kept = result.value.archivedAs ? ` The previous result was kept as ${result.value.archivedAs}.` : "";
-      notify("info", `Result saved as result-r${saved.reviewRound}.md.${kept} The review state is unchanged until you confirm a verdict.`);
+      const kept = result.value.archivedAs ? `${t("toast.resultSavedKept", { file: result.value.archivedAs })} ` : "";
+      notify("info", t("toast.resultSaved", { round: saved.reviewRound, kept }));
       setDialog(saved.reviewState === "REVIEWING" ? { kind: "verdict", reviewId: saved.reviewSessionId } : null);
       return null;
     } catch (error) {
-      return saveFailed(error);
+      return saveFailed(t, error);
     }
   };
 
@@ -380,7 +386,7 @@ export default function App() {
       verdict === "BLOCKED"
         ? { type: "block", reason: note, confirmedByHuman: true }
         : { type: "confirmVerdict", verdict, note: note.trim() === "" ? null : note, confirmedByHuman: true };
-    const error = await runAction(session, action, `Verdict confirmed: ${verdict}`);
+    const error = await runAction(session, action, t("toast.verdictConfirmed", { verdict: t(VERDICT_KEYS[verdict]) }));
     if (!error) setDialog(null);
     return error;
   };
@@ -395,10 +401,10 @@ export default function App() {
     try {
       const kept = await track(hub.setAsideProjects());
       setDialog(null);
-      notify("info", `Kept as ${kept.join(", ")}. Starting with an empty project list.`);
+      notify("info", t("toast.setAsideDone", { files: kept.join(", ") }));
       return null;
     } catch (error) {
-      return `Could not set the files aside: ${describeError(error)}`;
+      return t("toast.setAsideFailed", { error: describeError(t, error) });
     }
   };
 
@@ -414,7 +420,7 @@ export default function App() {
   if (state.phase === "loading") {
     return (
       <div className="fullscreen">
-        <p className="muted">Loading DevVault Control Center…</p>
+        <p className="muted">{t("app.loading")}</p>
       </div>
     );
   }
@@ -422,11 +428,11 @@ export default function App() {
   if (state.phase === "fatal") {
     return (
       <div className="fullscreen" data-testid="fatal">
-        <h1>DevVault Control Center cannot open its data folder</h1>
+        <h1>{t("app.fatal.title")}</h1>
         <p className="error-text">{state.fatalMessage}</p>
-        <p className="muted">Nothing was changed. Check the folder permissions (or DVCC_DATA_DIR) and try again.</p>
+        <p className="muted">{t("app.fatal.body")}</p>
         <button type="button" className="primary" onClick={() => void reload()}>
-          Retry
+          {t("app.fatal.retry")}
         </button>
       </div>
     );
@@ -457,57 +463,54 @@ export default function App() {
           })
         }
         onRefreshGit={() => {
-          if (!selectedProject) return notify("warning", "No project is recorded for this review");
+          if (!selectedProject) return notify("warning", t("toast.noProjectForReview"));
           void refreshGit(selectedProject);
         }}
         onAction={(action) => void runAction(selectedSession, action)}
         onOpenDialog={onDetailDialog}
         onOpenGithub={() => {
           const repo = selectedProject?.repositoryUrl;
-          if (!repo) return notify("warning", "No repository URL recorded for this project");
+          if (!repo) return notify("warning", t("toast.noRepositoryUrl"));
           const url = selectedSession.prNumber !== null ? pullRequestUrl(repo, selectedSession.prNumber) : repo;
-          void launch(() => launcher.openExternalUrl(url), "Open GitHub");
+          void launch(() => launcher.openExternalUrl(url), t("detail.actions.openGithub"));
         }}
         onOpenChatgpt={() => {
           const url = selectedSession.chatgptThreadUrl;
-          if (!url) return notify("warning", "No ChatGPT thread URL recorded for this review");
-          void launch(() => launcher.openExternalUrl(url), "Open ChatGPT");
+          if (!url) return notify("warning", t("toast.noThreadUrl"));
+          void launch(() => launcher.openExternalUrl(url), t("detail.actions.openChatgpt"));
         }}
         onOpenFolder={() => {
           const root = selectedProject?.localRoot;
-          if (!root) return notify("warning", "No local root recorded for this project");
-          void launch(() => launcher.openProjectFolder(root), "Open project folder");
+          if (!root) return notify("warning", t("toast.noLocalRoot"));
+          void launch(() => launcher.openProjectFolder(root), t("detail.actions.openFolder"));
         }}
         onCopyPrompt={() => {
           void copyPrompt(selectedSession);
         }}
-        onSaveNextAction={async (text) => (await runAction(selectedSession, { type: "setNextAction", nextAction: text }, "Next action saved")) === null}
+        onSaveNextAction={async (text) => (await runAction(selectedSession, { type: "setNextAction", nextAction: text }, t("toast.nextActionSaved"))) === null}
       />
     );
   } else if (selected) {
     detail = (
       <div className="empty-state" data-testid="detail-unreadable" data-health={selected.health.status}>
         <h2>
-          Review {selected.reviewId} {selected.health.status === "io_error" ? "cannot be accessed" : "cannot be read"}
+          {selected.health.status === "io_error"
+            ? t("unreadable.title.inaccessible", { id: selected.reviewId })
+            : t("unreadable.title.unreadable", { id: selected.reviewId })}
         </h2>
         <p className="error-text">{describeHealthProblem(selected.health)}</p>
-        {selected.health.status === "io_error" ? (
-          <p className="muted">
-            DVCC could not access <code>reviews/{selected.reviewId}/session.json</code> (for example permissions, a locked file or a device problem). This
-            is not treated as damaged data: nothing was changed. Resolve the access problem, then reload. Other reviews are not affected.
-          </p>
-        ) : (
-          <p className="muted">
-            The file was left unchanged and this review is read-only. Fix or restore <code>reviews/{selected.reviewId}/session.json</code> in the data
-            folder, then reload. Other reviews are not affected.
-          </p>
-        )}
+        <p className="muted">
+          {formatParts(
+            selected.health.status === "io_error" ? t("unreadable.body.inaccessible") : t("unreadable.body.unreadable"),
+            { file: <code key="file">reviews/{selected.reviewId}/session.json</code> },
+          )}
+        </p>
         <div className="empty-actions">
-          <button type="button" onClick={() => void launch(() => launcher.openDataDir(), "Open data folder")}>
-            Open data folder
+          <button type="button" onClick={() => void launch(() => launcher.openDataDir(), t("app.actions.openDataFolder"))}>
+            {t("app.actions.openDataFolder")}
           </button>
           <button type="button" onClick={() => void reload()}>
-            Reload
+            {t("app.actions.reload")}
           </button>
         </div>
       </div>
@@ -515,11 +518,11 @@ export default function App() {
   } else if (state.projects.length === 0 && state.reviews.length === 0) {
     detail = (
       <div className="empty-state" data-testid="empty-no-projects">
-        <h2>Welcome to Review Hub</h2>
-        <p className="muted">Register the projects you review, then create a review for each PR or review thread.</p>
+        <h2>{t("empty.noProjects.title")}</h2>
+        <p className="muted">{t("empty.noProjects.body")}</p>
         <div className="empty-actions">
           <button type="button" className="primary" disabled={!projectsWritable} onClick={() => setDialog({ kind: "createProject" })}>
-            Register your first project
+            {t("empty.noProjects.action")}
           </button>
         </div>
       </div>
@@ -527,11 +530,11 @@ export default function App() {
   } else if (state.reviews.length === 0) {
     detail = (
       <div className="empty-state" data-testid="empty-no-reviews">
-        <h2>No reviews yet</h2>
-        <p className="muted">Create a review to track its PR, HEAD, ChatGPT thread, state and next action.</p>
+        <h2>{t("empty.noReviews.title")}</h2>
+        <p className="muted">{t("empty.noReviews.body")}</p>
         <div className="empty-actions">
           <button type="button" className="primary" onClick={() => setDialog({ kind: "createReview", projectId: "" })} disabled={state.projects.length === 0}>
-            Create a review
+            {t("empty.noReviews.action")}
           </button>
         </div>
       </div>
@@ -539,8 +542,8 @@ export default function App() {
   } else {
     detail = (
       <div className="empty-state" data-testid="empty-no-selection">
-        <h2>Select a review</h2>
-        <p className="muted">Pick a review from the queue to see where it stands and resume it.</p>
+        <h2>{t("empty.noSelection.title")}</h2>
+        <p className="muted">{t("empty.noSelection.body")}</p>
       </div>
     );
   }
@@ -550,12 +553,12 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <h1>
-          DevVault Control Center <span className="subtitle">Review Hub</span>
+          {t("app.name")} <span className="subtitle">{t("app.subtitle")}</span>
         </h1>
         <div className="topbar-actions">
           <LanguageSelector disabled={busy} />
           <button type="button" onClick={() => setDialog({ kind: "createProject" })} disabled={!projectsWritable} data-testid="btn-new-project">
-            + Project
+            {t("app.actions.newProject")}
           </button>
           <button
             type="button"
@@ -564,7 +567,7 @@ export default function App() {
             disabled={state.projects.length === 0}
             data-testid="btn-new-review"
           >
-            + Review
+            {t("app.actions.newReview")}
           </button>
         </div>
       </header>
@@ -576,29 +579,25 @@ export default function App() {
             testId={state.projectsHealth.status === "io_error" ? "banner-projects-io-error" : "banner-projects-unreadable"}
             actions={
               <>
-                <button type="button" onClick={() => void launch(() => launcher.openDataDir(), "Open data folder")}>
-                  Open data folder
+                <button type="button" onClick={() => void launch(() => launcher.openDataDir(), t("app.actions.openDataFolder"))}>
+                  {t("app.actions.openDataFolder")}
                 </button>
                 <button type="button" onClick={() => void reload()}>
-                  Reload
+                  {t("app.actions.reload")}
                 </button>
                 {state.projectsHealth.status === "unreadable" && state.projectsHealth.setAside.length > 0 && (
                   <button type="button" className="danger" onClick={() => setDialog({ kind: "setAsideProjects" })} data-testid="btn-set-aside-projects">
-                    Set aside and start empty…
+                    {t("projects.setAside.action")}
                   </button>
                 )}
               </>
             }
           >
-            {state.projectsHealth.status === "io_error" ? (
-              <>
-                <strong>projects.json cannot be accessed:</strong> {projectsProblem}. This is an access problem (for example permissions, a locked file or a
-                device error), not damaged data. Nothing was changed; project editing is disabled until Reload succeeds.
-              </>
-            ) : (
-              <>
-                <strong>projects.json cannot be used:</strong> {projectsProblem}. Project editing is disabled and the file has not been changed.
-              </>
+            {formatParts(
+              state.projectsHealth.status === "io_error"
+                ? t("banner.projectsIoError", { problem: projectsProblem ?? "" })
+                : t("banner.projectsUnreadable", { problem: projectsProblem ?? "" }),
+              { projects: <strong key="projects">{t("notice.label.projects")}</strong> },
             )}
           </Banner>
         )}
@@ -631,19 +630,22 @@ export default function App() {
 
       <footer className="statusbar">
         <span className="muted small">
-          Data: <span className="mono" data-testid="data-dir">{state.storage?.dataDir}</span>
-          {state.storage?.source === "env" && <span className="tag">DVCC_DATA_DIR</span>}
-          {state.storage?.debugBuild && <span className="tag">debug build</span>}
+          {t("app.dataDir.label")}{" "}
+          <span className="mono" data-testid="data-dir">
+            {state.storage?.dataDir}
+          </span>
+          {state.storage?.source === "env" && <span className="tag">{t("app.dataDir.envTag")}</span>}
+          {state.storage?.debugBuild && <span className="tag">{t("app.dataDir.debugTag")}</span>}
         </span>
         <span className="statusbar-actions">
           <button type="button" className="link-button" onClick={() => void reload()} data-testid="btn-reload">
-            Reload
+            {t("app.actions.reload")}
           </button>
           <button type="button" className="link-button" onClick={() => void refreshAllGit()} disabled={busy} data-testid="btn-refresh-all-git">
-            Refresh Git (all)
+            {t("app.actions.refreshAllGit")}
           </button>
-          <button type="button" className="link-button" onClick={() => void launch(() => launcher.openDataDir(), "Open data folder")}>
-            Open data folder
+          <button type="button" className="link-button" onClick={() => void launch(() => launcher.openDataDir(), t("app.actions.openDataFolder"))}>
+            {t("app.actions.openDataFolder")}
           </button>
         </span>
       </footer>
@@ -662,12 +664,17 @@ export default function App() {
         />
       )}
       {dialog?.kind === "createReview" && (
-        <CreateReviewDialog projects={state.projects} initial={emptyReviewForm(dialog.projectId)} onSubmit={submitReview} onCancel={closeDialog} />
+        <CreateReviewDialog
+          projects={state.projects}
+          initial={emptyReviewForm(dialog.projectId, t(REVIEW_TYPE_SUGGESTION_KEYS[0]))}
+          onSubmit={submitReview}
+          onCancel={closeDialog}
+        />
       )}
       {dialog?.kind === "editReview" && dialogSession && (
         <EditReviewDialog
-          title="Edit review"
-          roundLabel={`R${dialogSession.reviewRound}`}
+          title={t("review.edit.title")}
+          roundLabel={t("detail.value.round", { round: dialogSession.reviewRound })}
           initial={reviewToMetadataForm(dialogSession)}
           onSubmit={(input) => submitReviewMetadata(dialogSession, input)}
           onCancel={closeDialog}
@@ -677,7 +684,7 @@ export default function App() {
         <SuspendDialog
           session={dialogSession}
           onSubmit={(checkpoint, resourceState) =>
-            withDialogClose(runAction(dialogSession, { type: "suspend", resourceState, checkpoint }, "Review suspended — checkpoint saved"))
+            withDialogClose(runAction(dialogSession, { type: "suspend", resourceState, checkpoint }, t("toast.reviewSuspended")))
           }
           onCancel={closeDialog}
         />
@@ -700,42 +707,47 @@ export default function App() {
       {dialog?.kind === "nextRound" && dialogSession && (
         <NextRoundDialog
           session={dialogSession}
-          onSubmit={(expectedHead) => withDialogClose(runAction(dialogSession, { type: "startNextRound", expectedHead }, `Round R${dialogSession.reviewRound + 1} started`))}
+          onSubmit={(expectedHead) =>
+            withDialogClose(
+              runAction(dialogSession, { type: "startNextRound", expectedHead }, t("toast.roundStarted", { round: dialogSession.reviewRound + 1 })),
+            )
+          }
           onCancel={closeDialog}
         />
       )}
       {dialog?.kind === "block" && dialogSession && (
         <ConfirmDialog
-          title="Block review"
-          message="The review moves to Blocked. Use Mark ready when it can continue."
-          confirmLabel="Block review"
-          reasonLabel="Reason (required)"
+          title={t("review.block.title")}
+          message={t("review.block.body", {
+            blockedLabel: t(REVIEW_STATE_KEYS.BLOCKED),
+            markReady: t("detail.actions.markReady"),
+          })}
+          confirmLabel={t("review.block.submit")}
+          reasonLabel={t("review.block.reasonLabel")}
           testId="block-dialog"
-          onConfirm={(reason) => withDialogClose(runAction(dialogSession, { type: "block", reason, confirmedByHuman: true }, "Review blocked"))}
+          onConfirm={(reason) => withDialogClose(runAction(dialogSession, { type: "block", reason, confirmedByHuman: true }, t("toast.reviewBlocked")))}
           onCancel={closeDialog}
         />
       )}
       {dialog?.kind === "close" && dialogSession && (
         <ConfirmDialog
-          title="Close review"
-          message="Closed reviews are hidden from the queue by default. Files and history are kept."
-          confirmLabel="Close review"
+          title={t("review.close.title")}
+          message={t("review.close.body")}
+          confirmLabel={t("review.close.submit")}
           danger
           testId="close-dialog"
-          onConfirm={() => withDialogClose(runAction(dialogSession, { type: "close", confirmedByHuman: true }, "Review closed"))}
+          onConfirm={() => withDialogClose(runAction(dialogSession, { type: "close", confirmedByHuman: true }, t("toast.reviewClosed")))}
           onCancel={closeDialog}
         />
       )}
       {dialog?.kind === "setAsideProjects" && (
         <ConfirmDialog
-          title="Set aside projects.json"
-          message={
-            <>
-              The unusable <code>projects.json</code> (and its unusable backup, if any) is renamed to <code>….corrupt-…</code> in the data folder (not
-              deleted), and DVCC starts with an empty project list. Reviews are not affected.
-            </>
-          }
-          confirmLabel="Set aside and start empty"
+          title={t("projects.setAside.title")}
+          message={formatParts(t("projects.setAside.body"), {
+            projects: <code key="projects">projects.json</code>,
+            corrupt: <code key="corrupt">….corrupt-…</code>,
+          })}
+          confirmLabel={t("projects.setAside.submit")}
           danger
           testId="set-aside-dialog"
           onConfirm={setAsideProjects}

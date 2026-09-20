@@ -1,22 +1,25 @@
-import { FRESHNESS_LABELS, type Freshness } from "../domain/freshness";
-import {
-  RESOURCE_STATE_HINTS,
-  RESOURCE_STATE_LABELS,
-  REVIEW_STATE_LABELS,
-  type ResourceState,
-  type ReviewState,
-} from "../domain/states";
+import type { Freshness } from "../domain/freshness";
+import type { ResourceState, ReviewState } from "../domain/states";
+import { FRESHNESS_KEYS, RESOURCE_HINT_KEYS, RESOURCE_STATE_KEYS, REVIEW_STATE_KEYS } from "../i18n";
+import { useT } from "../i18n/context";
+
+/**
+ * The value stays the value: `data-state` and the class fragment keep the stored enum, and only
+ * what the Human reads is translated.
+ */
 
 export function ReviewStateBadge({ state, testId }: { state: ReviewState; testId?: string }) {
+  const t = useT();
   return (
     <span className={`badge review-${state.toLowerCase().replaceAll("_", "-")}`} data-testid={testId} data-state={state}>
-      {REVIEW_STATE_LABELS[state]}
+      {t(REVIEW_STATE_KEYS[state])}
     </span>
   );
 }
 
 /** Derived Freshness (Phase 2): an informational third axis, never a Review State. */
 export function FreshnessBadge({ status, explanation, testId }: { status: Freshness; explanation?: string; testId?: string }) {
+  const t = useT();
   return (
     <span
       className={`badge freshness-${status.toLowerCase().replaceAll("_", "-")}`}
@@ -24,20 +27,21 @@ export function FreshnessBadge({ status, explanation, testId }: { status: Freshn
       data-testid={testId}
       data-state={status}
     >
-      {FRESHNESS_LABELS[status]}
+      {t(FRESHNESS_KEYS[status])}
     </span>
   );
 }
 
 export function ResourceStateBadge({ state, testId }: { state: ResourceState; testId?: string }) {
+  const t = useT();
   return (
     <span
       className={`badge resource-${state.toLowerCase()}`}
-      title={`${RESOURCE_STATE_LABELS[state]}: ${RESOURCE_STATE_HINTS[state]}`}
+      title={t("state.resource.tooltip", { label: t(RESOURCE_STATE_KEYS[state]), hint: t(RESOURCE_HINT_KEYS[state]) })}
       data-testid={testId}
       data-state={state}
     >
-      {state}
+      {t(RESOURCE_STATE_KEYS[state])}
     </span>
   );
 }

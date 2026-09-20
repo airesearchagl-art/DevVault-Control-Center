@@ -32,15 +32,6 @@ export interface GitObservation {
   errorMessage?: string;
 }
 
-export const GIT_STATUS_LABELS: Record<GitStatus, string> = {
-  OK: "Observed",
-  NO_LOCAL_ROOT: "No local root recorded",
-  NOT_A_GIT_REPOSITORY: "Not a Git repository",
-  GIT_UNAVAILABLE: "Git unavailable",
-  TIMEOUT: "Timed out",
-  ERROR: "Not observed (error)",
-};
-
 export function isGitStatus(value: unknown): value is GitStatus {
   return typeof value === "string" && (GIT_STATUSES as readonly string[]).includes(value);
 }

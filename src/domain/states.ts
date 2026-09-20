@@ -41,26 +41,3 @@ export function isVerdict(value: unknown): value is Verdict {
 export function isResumableState(value: unknown): value is ResumableState {
   return isReviewState(value) && value !== "SUSPENDED" && value !== "CLOSED";
 }
-
-export const REVIEW_STATE_LABELS: Record<ReviewState, string> = {
-  NEW: "New",
-  READY_FOR_REVIEW: "Ready for review",
-  REVIEWING: "Reviewing",
-  FIX_REQUIRED: "Fix required",
-  REVIEW_PASS: "Review pass",
-  BLOCKED: "Blocked",
-  SUSPENDED: "Suspended",
-  CLOSED: "Closed",
-};
-
-export const RESOURCE_STATE_LABELS: Record<ResourceState, string> = {
-  HOT: "Hot",
-  WARM: "Warm",
-  COLD: "Cold",
-};
-
-export const RESOURCE_STATE_HINTS: Record<ResourceState, string> = {
-  HOT: "Working on it now — ChatGPT / IDE may stay open",
-  WARM: "Resuming soon — UI and ChatGPT can be closed",
-  COLD: "Paused — only the saved state is kept",
-};

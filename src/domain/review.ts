@@ -71,7 +71,12 @@ export interface ReviewSession {
   updatedAt: string;
 }
 
-export const REVIEW_TYPE_SUGGESTIONS = ["PR review", "Re-review", "Design review", "Plan review"];
+/**
+ * The neutral fallback for the review type of a brand-new form. The list the Human actually sees is
+ * localized chrome (`REVIEW_TYPE_SUGGESTION_KEYS` in `src/i18n`); whatever is chosen or typed is
+ * Human content from that moment on and is stored verbatim, never translated again.
+ */
+export const DEFAULT_REVIEW_TYPE = "PR review";
 
 export interface ReviewMetadataInput {
   reviewType: string;
@@ -96,10 +101,10 @@ export interface ReviewMetadata {
   chatgptThreadUrl: string | null;
 }
 
-export function emptyReviewForm(projectId = ""): ReviewFormInput {
+export function emptyReviewForm(projectId = "", reviewType: string = DEFAULT_REVIEW_TYPE): ReviewFormInput {
   return {
     projectId,
-    reviewType: REVIEW_TYPE_SUGGESTIONS[0],
+    reviewType,
     prNumber: "",
     expectedHead: "",
     chatgptThreadTitle: "",

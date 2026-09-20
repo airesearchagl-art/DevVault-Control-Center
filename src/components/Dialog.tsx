@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { useT } from "../i18n/context";
 
 interface DialogProps {
   title: string;
@@ -9,6 +10,7 @@ interface DialogProps {
 }
 
 export function Dialog({ title, onClose, children, testId, wide = false }: DialogProps) {
+  const t = useT();
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -22,7 +24,7 @@ export function Dialog({ title, onClose, children, testId, wide = false }: Dialo
       <div className={`dialog${wide ? " dialog-wide" : ""}`} role="dialog" aria-modal="true" aria-label={title} data-testid={testId}>
         <header className="dialog-header">
           <h2>{title}</h2>
-          <button type="button" className="icon-button" onClick={onClose} aria-label="Close dialog">
+          <button type="button" className="icon-button" onClick={onClose} aria-label={t("dialog.closeAriaLabel")}>
             ×
           </button>
         </header>
@@ -80,6 +82,7 @@ export function ConfirmDialog({ title, message, confirmLabel, danger, reasonLabe
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const t = useT();
   const needsReason = reasonLabel !== undefined;
   const disabled = saving || (needsReason && reason.trim() === "");
 
@@ -101,7 +104,7 @@ export function ConfirmDialog({ title, message, confirmLabel, danger, reasonLabe
       <FormError message={error} />
       <div className="dialog-actions">
         <button type="button" onClick={onCancel}>
-          Cancel
+          {t("dialog.cancel")}
         </button>
         <button type="button" className={danger ? "danger" : "primary"} disabled={disabled} onClick={submit} data-testid="confirm-submit">
           {confirmLabel}

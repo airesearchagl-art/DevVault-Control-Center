@@ -2,8 +2,9 @@ import { useState } from "react";
 import { excerpt } from "../../app/format";
 import { Dialog, Field, FormError } from "../../components/Dialog";
 import { currentRound, type ReviewSession } from "../../domain/review";
-import { REVIEW_STATE_LABELS, RESOURCE_STATE_HINTS } from "../../domain/states";
 import { normalizeHead } from "../../domain/validation";
+import { formatParts, RESOURCE_HINT_KEYS, RESOURCE_STATE_KEYS, REVIEW_STATE_KEYS, VERDICT_KEYS, type TranslationKey } from "../../i18n";
+import { useT } from "../../i18n/context";
 
 function useSubmit() {
   const [error, setError] = useState<string | null>(null);
@@ -27,37 +28,45 @@ export function SuspendDialog({
   onSubmit: (checkpoint: string, resourceState: "WARM" | "COLD") => Promise<string | null>;
   onCancel: () => void;
 }) {
+  const t = useT();
+  // A draft the Human edits before saving: it is offered in the interface language, and whatever is
+  // saved into checkpoint.md afterwards stays in the language it was written in.
   const [checkpoint, setCheckpoint] = useState(
-    [`State: ${REVIEW_STATE_LABELS[session.reviewState]} (R${session.reviewRound})`, "Stopped at: ", `Next: ${session.nextAction}`].join("\n"),
+    [
+      t("review.suspend.draft.state", { label: t(REVIEW_STATE_KEYS[session.reviewState]), round: session.reviewRound }),
+      t("review.suspend.draft.stoppedAt"),
+      t("review.suspend.draft.next", { nextAction: session.nextAction }),
+    ].join("\n"),
   );
   const [resource, setResource] = useState<"WARM" | "COLD">("WARM");
   const { error, saving, run } = useSubmit();
 
   return (
-    <Dialog title="Suspend review" onClose={onCancel} testId="suspend-dialog">
+    <Dialog title={t("review.suspend.title")} onClose={onCancel} testId="suspend-dialog">
       <p className="dialog-message">
-        The review becomes <strong>Suspended</strong> and remembers its current state ({REVIEW_STATE_LABELS[session.reviewState]}). Resume restores it.
-        You can close ChatGPT and the IDE afterwards.
+        {formatParts(t("review.suspend.body", { state: t(REVIEW_STATE_KEYS[session.reviewState]) }), {
+          suspendedLabel: <strong key="suspended">{t(REVIEW_STATE_KEYS.SUSPENDED)}</strong>,
+        })}
       </p>
-      <Field label="Checkpoint (saved to checkpoint.md)" htmlFor="suspend-checkpoint">
+      <Field label={t("review.suspend.checkpointLabel")} htmlFor="suspend-checkpoint">
         <textarea id="suspend-checkpoint" rows={6} value={checkpoint} onChange={(e) => setCheckpoint(e.target.value)} data-testid="suspend-checkpoint" />
       </Field>
       <fieldset className="field">
-        <legend>Resource state while suspended</legend>
+        <legend>{t("review.suspend.resourceLegend")}</legend>
         <div className="segmented">
           {(["WARM", "COLD"] as const).map((value) => (
-            <label key={value} className={resource === value ? "selected" : ""} title={RESOURCE_STATE_HINTS[value]}>
+            <label key={value} className={resource === value ? "selected" : ""} title={t(RESOURCE_HINT_KEYS[value])}>
               <input type="radio" name="suspend-resource" checked={resource === value} onChange={() => setResource(value)} data-testid={`suspend-resource-${value}`} />
-              {value}
+              {t(RESOURCE_STATE_KEYS[value])}
             </label>
           ))}
         </div>
-        <p className="hint">{RESOURCE_STATE_HINTS[resource]}</p>
+        <p className="hint">{t(RESOURCE_HINT_KEYS[resource])}</p>
       </fieldset>
       <FormError message={error} />
       <div className="dialog-actions">
         <button type="button" onClick={onCancel}>
-          Cancel
+          {t("dialog.cancel")}
         </button>
         <button
           type="button"
@@ -66,7 +75,7 @@ export function SuspendDialog({
           onClick={() => run(() => onSubmit(checkpoint, resource))}
           data-testid="suspend-submit"
         >
-          Suspend
+          {t("review.suspend.submit")}
         </button>
       </div>
     </Dialog>
@@ -89,6 +98,7 @@ export function CaptureResultDialog({
   const [head, setHead] = useState(round.reviewedHead ?? "");
   const [replaceConfirmed, setReplaceConfirmed] = useState(false);
   const { error, setError, saving, run } = useSubmit();
+  const t = useT();
 
   const submit = () =>
     run(async () => {
@@ -102,21 +112,29 @@ export function CaptureResultDialog({
     });
 
   return (
-    <Dialog title={`Capture review result — R${session.reviewRound}`} onClose={onCancel} testId="capture-dialog" wide>
+    <Dialog title={t("review.capture.title", { round: session.reviewRound })} onClose={onCancel} testId="capture-dialog" wide>
       <p className="dialog-message">
-        Copy the reviewer&apos;s answer in ChatGPT, then paste it below with <kbd>Ctrl</kbd>+<kbd>V</kbd>. It is saved as{" "}
-        <code>result-r{session.reviewRound}.md</code>. The review state does not change until you confirm a verdict.
+        {formatParts(t("review.capture.body"), {
+          paste: (
+            <span key="paste">
+              <kbd>Ctrl</kbd>+<kbd>V</kbd>
+            </span>
+          ),
+          file: <code key="file">result-r{session.reviewRound}.md</code>,
+        })}
       </p>
       {replacing && (
         <label className="checkbox replace-confirm">
           <input type="checkbox" checked={replaceConfirmed} onChange={(e) => setReplaceConfirmed(e.target.checked)} data-testid="capture-replace-confirm" />
           <span>
-            Replace the saved result of R{session.reviewRound}. The current text is kept as{" "}
-            <code>result-r{session.reviewRound}-previous-….md</code>; <code>result-r{session.reviewRound}.md</code> becomes the new latest result.
+            {formatParts(t("review.capture.replaceLabel", { round: session.reviewRound }), {
+              archived: <code key="archived">result-r{session.reviewRound}-previous-….md</code>,
+              file: <code key="file">result-r{session.reviewRound}.md</code>,
+            })}
           </span>
         </label>
       )}
-      <Field label="Review result" htmlFor="capture-text">
+      <Field label={t("review.capture.resultLabel")} htmlFor="capture-text">
         <textarea
           id="capture-text"
           rows={14}
@@ -125,18 +143,18 @@ export function CaptureResultDialog({
             setText(e.target.value);
             setError(null);
           }}
-          placeholder="Paste the ChatGPT review result here (Ctrl+V)"
+          placeholder={t("review.capture.resultPlaceholder")}
           autoFocus
           data-testid="capture-text"
         />
       </Field>
-      <Field label="Reviewed HEAD" htmlFor="capture-reviewed-head" hint="The commit SHA the reviewer states it reviewed (optional; leave empty if not stated).">
+      <Field label={t("review.capture.reviewedHeadLabel")} htmlFor="capture-reviewed-head" hint={t("review.capture.reviewedHeadHint")}>
         <input id="capture-reviewed-head" value={head} onChange={(e) => setHead(e.target.value)} className="mono" data-testid="capture-reviewed-head" />
       </Field>
       <FormError message={error} />
       <div className="dialog-actions">
         <button type="button" onClick={onCancel}>
-          Cancel
+          {t("dialog.cancel")}
         </button>
         <button
           type="button"
@@ -145,7 +163,7 @@ export function CaptureResultDialog({
           onClick={submit}
           data-testid="capture-submit"
         >
-          {replacing ? "Replace result" : "Save result"}
+          {replacing ? t("review.capture.submitReplace") : t("review.capture.submitSave")}
         </button>
       </div>
     </Dialog>
@@ -154,10 +172,11 @@ export function CaptureResultDialog({
 
 export type VerdictChoice = "FIX_REQUIRED" | "REVIEW_PASS" | "BLOCKED";
 
-const VERDICT_OPTIONS: { value: VerdictChoice; label: string; description: string }[] = [
-  { value: "FIX_REQUIRED", label: "Fix required", description: "The reviewer requires fixes before passing." },
-  { value: "REVIEW_PASS", label: "Review pass", description: "The reviewer found no required fixes." },
-  { value: "BLOCKED", label: "Blocked", description: "The review cannot proceed (reason required)." },
+/** The value is what gets stored; the label and the description are only what the Human reads. */
+const VERDICT_OPTIONS: { value: VerdictChoice; description: TranslationKey }[] = [
+  { value: "FIX_REQUIRED", description: "review.verdict.fixRequiredDescription" },
+  { value: "REVIEW_PASS", description: "review.verdict.reviewPassDescription" },
+  { value: "BLOCKED", description: "review.verdict.blockedDescription" },
 ];
 
 /** AC-14: nothing is preselected; the Human must pick and acknowledge. */
@@ -176,44 +195,48 @@ export function VerdictDialog({
   const [note, setNote] = useState("");
   const [acknowledged, setAcknowledged] = useState(false);
   const { error, saving, run } = useSubmit();
+  const t = useT();
   const shown = resultText === null ? null : excerpt(resultText, 40);
   const disabled = saving || verdict === null || !acknowledged || (verdict === "BLOCKED" && note.trim() === "");
 
   return (
-    <Dialog title={`Confirm verdict — R${session.reviewRound}`} onClose={onCancel} testId="verdict-dialog" wide>
+    <Dialog title={t("review.verdict.title", { round: session.reviewRound })} onClose={onCancel} testId="verdict-dialog" wide>
       {shown === null ? (
-        <p className="muted">The saved result for this round is loading or unavailable.</p>
+        <p className="muted">{t("review.verdict.missingResult")}</p>
       ) : (
         <pre className="result-text result-preview">
           {shown.text}
-          {shown.truncated ? "\n…" : ""}
+          {shown.truncated ? t("detail.truncated") : ""}
         </pre>
       )}
       <fieldset className="field">
-        <legend>Verdict (your decision)</legend>
+        <legend>{t("review.verdict.legend")}</legend>
         <div className="verdict-options">
           {VERDICT_OPTIONS.map((option) => (
             <label key={option.value} className={`verdict-option${verdict === option.value ? " selected" : ""}`}>
               <input type="radio" name="verdict" checked={verdict === option.value} onChange={() => setVerdict(option.value)} data-testid={`verdict-${option.value}`} />
               <span>
-                <strong>{option.label}</strong>
-                <span className="muted"> — {option.description}</span>
+                <strong>{t(VERDICT_KEYS[option.value])}</strong>
+                <span className="muted">
+                  {t("review.verdict.separator")}
+                  {t(option.description)}
+                </span>
               </span>
             </label>
           ))}
         </div>
       </fieldset>
-      <Field label={verdict === "BLOCKED" ? "Reason (required)" : "Note (optional)"} htmlFor="verdict-note">
+      <Field label={verdict === "BLOCKED" ? t("review.verdict.reasonRequired") : t("review.verdict.noteOptional")} htmlFor="verdict-note">
         <textarea id="verdict-note" rows={3} value={note} onChange={(e) => setNote(e.target.value)} data-testid="verdict-note" />
       </Field>
       <label className="checkbox">
         <input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} data-testid="verdict-ack" />
-        I have read the review result and confirm this verdict.
+        {t("review.verdict.acknowledgement")}
       </label>
       <FormError message={error} />
       <div className="dialog-actions">
         <button type="button" onClick={onCancel}>
-          Decide later
+          {t("review.verdict.later")}
         </button>
         <button
           type="button"
@@ -222,7 +245,7 @@ export function VerdictDialog({
           onClick={() => verdict && run(() => onConfirm(verdict, note))}
           data-testid="verdict-submit"
         >
-          Confirm verdict
+          {t("review.verdict.submit")}
         </button>
       </div>
     </Dialog>
@@ -240,6 +263,7 @@ export function NextRoundDialog({
 }) {
   const [head, setHead] = useState("");
   const { error, saving, run } = useSubmit();
+  const t = useT();
   const next = session.reviewRound + 1;
 
   const submit = () =>
@@ -250,20 +274,26 @@ export function NextRoundDialog({
     });
 
   return (
-    <Dialog title={`Start round R${next}`} onClose={onCancel} testId="next-round-dialog">
+    <Dialog title={t("review.nextRound.title", { round: next })} onClose={onCancel} testId="next-round-dialog">
       <p className="dialog-message">
-        R{session.reviewRound} artifacts stay as they are. R{next} starts as <strong>Ready for review</strong>.
+        {formatParts(t("review.nextRound.body", { previous: session.reviewRound, round: next }), {
+          readyLabel: <strong key="ready">{t(REVIEW_STATE_KEYS.READY_FOR_REVIEW)}</strong>,
+        })}
       </p>
-      <Field label={`Expected HEAD for R${next}`} htmlFor="next-round-head" hint="Optional; the commit you will ask the reviewer to review.">
+      <Field
+        label={t("review.nextRound.expectedHeadLabel", { round: next })}
+        htmlFor="next-round-head"
+        hint={t("review.nextRound.expectedHeadHint")}
+      >
         <input id="next-round-head" value={head} onChange={(e) => setHead(e.target.value)} className="mono" autoFocus data-testid="next-round-head" />
       </Field>
       <FormError message={error} />
       <div className="dialog-actions">
         <button type="button" onClick={onCancel}>
-          Cancel
+          {t("dialog.cancel")}
         </button>
         <button type="button" className="primary" disabled={saving} onClick={submit} data-testid="next-round-submit">
-          Start R{next}
+          {t("review.nextRound.submit", { round: next })}
         </button>
       </div>
     </Dialog>

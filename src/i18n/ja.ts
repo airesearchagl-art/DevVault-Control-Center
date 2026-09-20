@@ -55,7 +55,8 @@ export const ja = {
   "queue.empty.none": "レビューはまだありません。",
   "queue.empty.filtered": "条件に一致するレビューがありません。",
   "queue.projects.summary": "プロジェクト（{count}）",
-  "queue.projects.reviewCount": "レビュー{count}件",
+  "queue.projects.reviewCount": "・レビュー{count}件",
+  "queue.projects.reviewCount_one": "・レビュー{count}件",
   "queue.projects.none": "登録済みプロジェクトはありません。",
   "queue.projects.addReview": "＋ レビュー",
   "queue.projects.edit": "編集",
@@ -143,6 +144,8 @@ export const ja = {
   "detail.previousResult.archived": "R{round} の以前の結果を保持: {files}",
   "detail.events.file": "events.jsonl",
   "detail.events.skipped":
+    "events.jsonl の読み取れない{count}行をスキップしました（ファイルは変更していません）。",
+  "detail.events.skipped_one":
     "events.jsonl の読み取れない{count}行をスキップしました（ファイルは変更していません）。",
   "detail.events.none": "履歴はありません。",
   "detail.events.stateChange": "{from} → {to}",

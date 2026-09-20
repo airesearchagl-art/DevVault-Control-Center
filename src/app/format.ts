@@ -1,21 +1,16 @@
+import type { Translator } from "../i18n";
 import { toStorageError } from "../services/storage";
 
 export function nowIso(): string {
   return new Date().toISOString();
 }
 
-/** Local `YYYY-MM-DD HH:mm`; `—` for null. */
-export function formatTimestamp(iso: string | null): string {
-  if (iso === null) return "—";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-export function describeError(error: unknown): string {
+/** A storage failure in the Human's language; the code stays literal because it is not a word. */
+export function describeError(t: Translator, error: unknown): string {
   const storageError = toStorageError(error);
-  return storageError.code === "UNKNOWN" ? storageError.message : `${storageError.message} (${storageError.code})`;
+  return storageError.code === "UNKNOWN"
+    ? storageError.message
+    : t("error.withCode", { message: storageError.message, code: storageError.code });
 }
 
 export function excerpt(text: string, maxLines: number): { text: string; truncated: boolean } {

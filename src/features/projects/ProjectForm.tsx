@@ -3,6 +3,7 @@ import { Dialog, Field, FormError } from "../../components/Dialog";
 import type { ProjectFormInput } from "../../domain/project";
 import type { FieldErrors } from "../../domain/result";
 import { suggestProjectId } from "../../domain/validation";
+import { useT } from "../../i18n/context";
 
 const IDE_SUGGESTIONS = ["Claude Code", "Codex", "VS Code", "Cursor"];
 
@@ -19,6 +20,7 @@ export function ProjectFormDialog({ mode, initial, onSubmit, onCancel }: Project
   const [idTouched, setIdTouched] = useState(mode === "edit" || initial.projectId !== "");
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
+  const t = useT();
 
   const update = (key: keyof ProjectFormInput) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const value = event.target.value;
@@ -39,16 +41,20 @@ export function ProjectFormDialog({ mode, initial, onSubmit, onCancel }: Project
   };
 
   return (
-    <Dialog title={mode === "create" ? "Create project" : `Edit project — ${initial.displayName}`} onClose={onCancel} testId="project-form">
+    <Dialog
+      title={mode === "create" ? t("project.form.createTitle") : t("project.form.editTitle", { name: initial.displayName })}
+      onClose={onCancel}
+      testId="project-form"
+    >
       <form onSubmit={submit} noValidate>
-        <Field label="Display name" htmlFor="project-displayName" error={errors.displayName}>
+        <Field label={t("project.form.displayName")} htmlFor="project-displayName" error={errors.displayName}>
           <input id="project-displayName" value={form.displayName} onChange={update("displayName")} autoFocus data-testid="project-displayName" />
         </Field>
         <Field
-          label="Project ID"
+          label={t("project.form.projectId")}
           htmlFor="project-projectId"
           error={errors.projectId}
-          hint={mode === "create" ? "Stable key: lowercase letters, digits and hyphens. Cannot be changed later." : "Project ID cannot be changed."}
+          hint={mode === "create" ? t("project.form.projectIdHint") : t("project.form.projectIdLocked")}
         >
           <input
             id="project-projectId"
@@ -59,13 +65,13 @@ export function ProjectFormDialog({ mode, initial, onSubmit, onCancel }: Project
             data-testid="project-projectId"
           />
         </Field>
-        <Field label="Repository URL" htmlFor="project-repositoryUrl" error={errors.repositoryUrl} hint="https://github.com/<owner>/<repo> (optional)">
+        <Field label={t("project.form.repositoryUrl")} htmlFor="project-repositoryUrl" error={errors.repositoryUrl} hint={t("project.form.repositoryUrlHint")}>
           <input id="project-repositoryUrl" value={form.repositoryUrl} onChange={update("repositoryUrl")} className="mono" data-testid="project-repositoryUrl" />
         </Field>
-        <Field label="Local root" htmlFor="project-localRoot" error={errors.localRoot} hint="Absolute drive path such as C:\work\project (optional). Stored on this machine only.">
+        <Field label={t("project.form.localRoot")} htmlFor="project-localRoot" error={errors.localRoot} hint={t("project.form.localRootHint")}>
           <input id="project-localRoot" value={form.localRoot} onChange={update("localRoot")} className="mono" data-testid="project-localRoot" />
         </Field>
-        <Field label="Development IDE" htmlFor="project-developmentIde" error={errors.developmentIde} hint="Label only (optional)">
+        <Field label={t("project.form.ide")} htmlFor="project-developmentIde" error={errors.developmentIde} hint={t("project.form.ideHint")}>
           <input id="project-developmentIde" list="ide-suggestions" value={form.developmentIde} onChange={update("developmentIde")} data-testid="project-developmentIde" />
           <datalist id="ide-suggestions">
             {IDE_SUGGESTIONS.map((ide) => (
@@ -73,19 +79,19 @@ export function ProjectFormDialog({ mode, initial, onSubmit, onCancel }: Project
             ))}
           </datalist>
         </Field>
-        <Field label="Project next action" htmlFor="project-nextAction" error={errors.nextAction}>
+        <Field label={t("project.form.nextAction")} htmlFor="project-nextAction" error={errors.nextAction}>
           <textarea id="project-nextAction" rows={2} value={form.nextAction} onChange={update("nextAction")} data-testid="project-nextAction" />
         </Field>
-        <Field label="Notes" htmlFor="project-notes" error={errors.notes} hint="Local notes; never included in review requests.">
+        <Field label={t("project.form.notes")} htmlFor="project-notes" error={errors.notes} hint={t("project.form.notesHint")}>
           <textarea id="project-notes" rows={3} value={form.notes} onChange={update("notes")} data-testid="project-notes" />
         </Field>
         <FormError message={errors._form} />
         <div className="dialog-actions">
           <button type="button" onClick={onCancel}>
-            Cancel
+            {t("dialog.cancel")}
           </button>
           <button type="submit" className="primary" disabled={saving} data-testid="project-submit">
-            {mode === "create" ? "Create project" : "Save project"}
+            {mode === "create" ? t("project.form.submitCreate") : t("project.form.submitSave")}
           </button>
         </div>
       </form>

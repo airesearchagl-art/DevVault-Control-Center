@@ -172,10 +172,3 @@ export function deriveFreshness({ observation, expectedHead, reviewedHead }: Fre
   };
 }
 
-export const FRESHNESS_LABELS: Record<Freshness, string> = {
-  ALIGNED: "Aligned",
-  HEAD_CHANGED: "HEAD changed",
-  REVIEW_STALE: "Review stale",
-  WORKTREE_DIRTY: "Working tree dirty",
-  UNKNOWN: "Unknown",
-};

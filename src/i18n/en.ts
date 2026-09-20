@@ -49,7 +49,8 @@ export const en: Dictionary = {
   "queue.empty.none": "No reviews yet.",
   "queue.empty.filtered": "No reviews match the filter.",
   "queue.projects.summary": "Projects ({count})",
-  "queue.projects.reviewCount": "{count} reviews",
+  "queue.projects.reviewCount": "· {count} reviews",
+  "queue.projects.reviewCount_one": "· {count} review",
   "queue.projects.none": "No projects registered.",
   "queue.projects.addReview": "+ Review",
   "queue.projects.edit": "Edit",
@@ -136,6 +137,8 @@ export const en: Dictionary = {
   "detail.events.file": "events.jsonl",
   "detail.events.skipped":
     "{count} unreadable lines in events.jsonl were skipped (file left unchanged).",
+  "detail.events.skipped_one":
+    "{count} unreadable line in events.jsonl was skipped (file left unchanged).",
   "detail.events.none": "No events.",
   "detail.events.stateChange": "{from} → {to}",
   "detail.events.noState": "∅",

@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from "react";
 import type { Toast } from "../app/appState";
+import { useT } from "../i18n/context";
 
 interface BannerProps {
   kind: "info" | "warning" | "error";
@@ -10,6 +11,7 @@ interface BannerProps {
 }
 
 export function Banner({ kind, children, actions, onDismiss, testId }: BannerProps) {
+  const t = useT();
   return (
     <div className={`banner banner-${kind}`} role={kind === "error" ? "alert" : "status"} data-testid={testId}>
       <div className="banner-text">{children}</div>
@@ -17,7 +19,7 @@ export function Banner({ kind, children, actions, onDismiss, testId }: BannerPro
         {actions}
         {onDismiss && (
           <button type="button" onClick={onDismiss}>
-            Dismiss
+            {t("dialog.dismiss")}
           </button>
         )}
       </div>
@@ -28,6 +30,7 @@ export function Banner({ kind, children, actions, onDismiss, testId }: BannerPro
 const AUTO_DISMISS_MS = 6000;
 
 function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number) => void }) {
+  const t = useT();
   useEffect(() => {
     // Errors stay until dismissed; info / warning fade out after their own timeout.
     if (toast.kind === "error") return;
@@ -38,7 +41,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number)
   return (
     <div className={`toast toast-${toast.kind}`} data-testid="toast" data-kind={toast.kind}>
       <span>{toast.message}</span>
-      <button type="button" className="icon-button" onClick={() => onDismiss(toast.id)} aria-label="Dismiss">
+      <button type="button" className="icon-button" onClick={() => onDismiss(toast.id)} aria-label={t("dialog.dismiss")}>
         ×
       </button>
     </div>
