@@ -9,16 +9,16 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 - [x] Task Packet revision 1 snapshot + SHA-256 binding (b9ecd5c0…9dd8)
 - [x] Route + project documents read read-only from the vault's current main
 - [x] Architecture / internal reuse scan (delegated, read-only)
-- [ ] Wave 0 checkpoint (commit + push)
+- [x] Wave 0 checkpoint (commit + push) — `ffd83c0`
 
 ## Wave 1 — Rust Git inspection boundary
 
-- [ ] `git.rs`: read-only observation (`inspect_git_repository`) reusing `validate_project_folder`
-- [ ] Bounded timeout + child-process model (own PID only, no shell, `GIT_OPTIONAL_LOCKS=0`)
-- [ ] ISO-8601 UTC `observedAt` helper (dependency-free) + tests
-- [ ] Status model: OK / NO_LOCAL_ROOT / NOT_A_GIT_REPOSITORY / GIT_UNAVAILABLE / TIMEOUT / ERROR
-- [ ] Rust tests incl. synthetic repositories and a no-mutation (before/after state) test
-- [ ] Targeted checks (fmt, clippy, check, test) → checkpoint
+- [x] `git.rs`: read-only observation (`inspect_git_repository`) reusing `validate_project_folder`
+- [x] Bounded timeout + child-process model (own PID only, no shell, `GIT_OPTIONAL_LOCKS=0`)
+- [x] ISO-8601 UTC `observedAt` helper (dependency-free) + tests
+- [x] Status model: OK / NO_LOCAL_ROOT / NOT_A_GIT_REPOSITORY / GIT_UNAVAILABLE / TIMEOUT / ERROR
+- [x] Rust tests incl. synthetic repositories and a no-mutation (before/after state) test
+- [x] Targeted checks (fmt, clippy, check, test) → checkpoint
 
 ## Wave 2 — TypeScript model and Freshness derivation
 

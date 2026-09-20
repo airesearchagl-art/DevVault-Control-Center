@@ -1,3 +1,4 @@
+mod git;
 mod instance;
 mod launcher;
 mod storage;
@@ -78,6 +79,7 @@ fn build_app(_gate: &instance::StartupGate) -> tauri::App {
             launcher::open_external_url,
             launcher::open_project_folder,
             launcher::open_data_dir,
+            git::inspect_git_repository,
         ])
         .build(tauri::generate_context!())
         .expect("error while building DevVault Control Center")

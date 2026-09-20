@@ -3,13 +3,13 @@
 - Run ID: LR-20260920-DVCC-002
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — Wave 0 (preflight, Task Packet binding, architecture / reuse scan) complete
+- Current state: RUNNING — Wave 1 (read-only Git inspection boundary in Rust) complete
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/evidence-freshness-v0.2
 - Base SHA: f557aa6f15222099f54790180e0ff71c5291734a
-- Current head: Wave 0 checkpoint commit (parent f557aa6f15222099f54790180e0ff71c5291734a)
-- Current wave: Wave 0 → Wave 1 (Git inspection Rust boundary)
-- Last successful checkpoint: Wave 0 checkpoint
+- Current head: Wave 1 checkpoint commit (parent ffd83c0300a5b3123392c20dbbe838ada5794045, the Wave 0 checkpoint)
+- Current wave: Wave 1 → Wave 2 (TypeScript model, HEAD comparison, Freshness derivation)
+- Last successful checkpoint: Wave 1 checkpoint
 - Task Packet ID: LRP-20260920-DVCC-002
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260920-DVCC-002/TASK_PACKET_SNAPSHOT.md
@@ -22,11 +22,11 @@ Phase 2 — Evidence / Freshness v0.2: observe current **local** Git facts read-
 ## Acceptance Criteria
 
 - [ ] AC2-01 feature branch created from the fresh `origin/main` merge commit — evidence: branch `feat/evidence-freshness-v0.2` created from `origin/main` @ f557aa6 (preflight, EVIDENCE.md)
-- [ ] AC2-02 current full HEAD of a local Git repository obtained read-only
-- [ ] AC2-03 branch / detached state determined
-- [ ] AC2-04 clean / dirty working tree determined
-- [ ] AC2-05 UNC / network localRoot not inspected
-- [ ] AC2-06 Git unavailable / not-a-repo / timeout fail closed into the UNKNOWN family
+- [x] AC2-02 current full HEAD of a local Git repository obtained read-only — Rust test `observes_a_clean_repository` (40-char SHA); UI half pending Wave 3
+- [x] AC2-03 branch / detached state determined — Rust tests `observes_a_clean_repository`, `a_detached_head_is_reported_without_a_branch`
+- [x] AC2-04 clean / dirty working tree determined — Rust tests for clean, modified tracked file and untracked file
+- [x] AC2-05 UNC / network localRoot not inspected — `the_local_folder_boundary_refuses_network_and_invalid_paths` (refused before any Git process, Phase 1 validator reused)
+- [x] AC2-06 Git unavailable / not-a-repo / timeout fail closed — Rust tests for `GIT_UNAVAILABLE`, `NOT_A_GIT_REPOSITORY`, `TIMEOUT`, `NO_LOCAL_ROOT`; the UNKNOWN mapping itself is Wave 2
 - [ ] AC2-07 a refresh never changes expectedHead / reviewedHead
 - [ ] AC2-08 the five Freshness states derived exactly as contracted
 - [ ] AC2-09 a Freshness change never changes Review State
@@ -34,8 +34,8 @@ Phase 2 — Evidence / Freshness v0.2: observe current **local** Git facts read-
 - [ ] AC2-11 Refresh All runs sequentially
 - [ ] AC2-12 Freshness and its reason visible in queue and detail
 - [ ] AC2-13 after an app restart the observation is UNKNOWN again
-- [ ] AC2-14 no unintended mutation of a test repository before / after inspection
-- [ ] AC2-15 product Git inspection performs no network operation
+- [x] AC2-14 no unintended mutation of a test repository — `observing_does_not_modify_the_repository` (content hashes of every file incl. `.git`, three observations)
+- [x] AC2-15 no network operation — only four read-only local subcommands; `GIT_TERMINAL_PROMPT=0`; no remote-contacting command exists in the module (re-checked in Final Convergence)
 - [ ] AC2-16 no regression in Phase 1 persistence / review workflow
 - [ ] AC2-17 Windows release build and isolated UI smoke PASS
 - [ ] AC2-18 runtime fixtures contain no real user project and no secret
@@ -46,11 +46,11 @@ Phase 2 — Evidence / Freshness v0.2: observe current **local** Git facts read-
 
 ## Current implementation state
 
-No product code changed yet. Phase 1 code is untouched at `f557aa6`. The planned Phase 2 shape (Wave 1–3) is recorded in DECISIONS.md L2-001..L2-009.
+Wave 1 complete: `src-tauri/src/git.rs` (read-only observation, bounded timeout, fail-closed statuses, ISO-8601 `observedAt`), registered as `git::inspect_git_repository`; `contract/limits.json` gained `gitObservationTimeoutMs`. No frontend change yet; Phase 1 behaviour untouched.
 
 ## Checks
 
-None required yet for Wave 0 (no product change). Toolchain verified: node v24.15.0, npm 11.12.1, rustc 1.95.0, cargo 1.95.0, git 2.53.0.windows.2, gh 2.96.0.
+Wave 1 targeted: `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (61 passed, 1 ignored; 14 new). Frontend checks unchanged since `f557aa6` (no TypeScript change in this wave).
 
 ## Quality Debt
 
@@ -58,7 +58,7 @@ None open (see QUALITY_DEBT.md).
 
 ## Explicit unverified items
 
-- All Acceptance Criteria AC2-02..AC2-18 (implementation has not started).
+- AC2-07..AC2-13 and AC2-16..AC2-18 (Waves 2–4 not started); the UI halves of AC2-02..AC2-06.
 - No GitHub CI exists for this repository (0 status contexts, no Actions workflow); every check is local.
 
 ## Known failures
@@ -71,7 +71,7 @@ See DECISIONS.md (L2-001..L2-009).
 
 ## Files changed
 
-`.agent-run/LR-20260920-DVCC-002/*` only (RUN_MANIFEST.md, TASK_PACKET_SNAPSHOT.md, RUN_STATE.md, TASK_QUEUE.md, QUALITY_DEBT.md, DECISIONS.md, EVIDENCE.md).
+`src-tauri/src/git.rs` (new), `src-tauri/src/lib.rs` (module + command registration), `contract/limits.json`, and `.agent-run/LR-20260920-DVCC-002/*`.
 
 ## Remaining tasks
 
@@ -79,7 +79,7 @@ Wave 1 (Rust Git inspection boundary), Wave 2 (TypeScript model + Freshness deri
 
 ## Next action
 
-Wave 1: implement the read-only Git inspection command in `src-tauri/src/` (reusing `validate_project_folder`), with the bounded-timeout child-process model and Rust tests.
+Wave 2: TypeScript `GitObservation` model and service port, HEAD comparison helper, Freshness derivation with explanations, and an independent oracle contract test.
 
 ## Stop conditions status
 

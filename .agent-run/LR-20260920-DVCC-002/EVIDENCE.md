@@ -53,3 +53,30 @@ Findings that shape Wave 1–3 (all verified against the Phase 1 code at `f557aa
 - `05_LLM_IDE_Instructions.md` adds project-required checks beyond the Task Packet list: frontend build, TypeScript check, Rust / Tauri compile check, unit tests for pure state / persistence helpers, **Windows app launch smoke** and **persistence round-trip smoke**. Both smokes are run in Wave 4 on an isolated desktop. It also requires a Reuse Scan and an explicit Adoption Decision, forbids committing user-specific runtime data or absolute local session paths, and forbids vault / Notion edits from the implementation session.
 - No Phase 2 acceptance criteria are recorded in the vault (the Phase 2 section has no Exit / Acceptance block), so the Human-specified AC2-01..AC2-18 in the Task Packet are the acceptance contract for this run.
 - The vault's own phase bookkeeping is stale: `05_LLM_IDE_Instructions.md` still records `Current Phase: Phase 0` and the roadmap still shows Phase 1 as `PLANNED / NEXT`, although Phase 1 is merged in the repository at `f557aa6`. Per that same file's canonical source order (Human instruction → fresh repository state → … → vault), the fresh repository state and the Human's Phase 2 authorization take precedence; the stale vault text is reported back for the Documentation Sync handoff instead of being treated as canonical (and is not edited by this session).
+
+## Wave 1 — Rust Git inspection boundary (2026-09-20)
+
+Implemented in `src-tauri/src/git.rs` (new, registered as `git::inspect_git_repository` in `lib.rs`), plus `gitObservationTimeoutMs: 5000` in `contract/limits.json`.
+
+Read-only guarantee, as built:
+
+| Property | How it is enforced |
+|---|---|
+| Git commands used | `rev-parse --is-inside-work-tree`, `rev-parse --verify --quiet HEAD`, `symbolic-ref --quiet --short HEAD`, `status --porcelain=v1` — four read-only subcommands, nothing else |
+| No shell | `std::process::Command::new("git")` with `args(&[…])`; no `cmd.exe`, no PowerShell, no string concatenation, no generic executor |
+| No caller text on a command line | the observed folder is passed as the child's working directory (`current_dir`), never as an argument; the path itself comes from `launcher::validate_project_folder` (the Phase 1 F-9 boundary) |
+| No network | none of the four subcommands contacts a remote; `GIT_TERMINAL_PROMPT=0` guarantees that nothing can block on credentials either |
+| No index / config writes | `GIT_OPTIONAL_LOCKS=0` on every invocation (Git then never takes `index.lock`, so `status` cannot write a refreshed index) |
+| stdin | `Stdio::null()` |
+| Operator disturbance | on Windows the child is created with `CREATE_NO_WINDOW`, so no console flashes on the operator's desktop |
+| Timeout | one deadline for the whole observation (5 s from the shared limits contract); the parent polls `try_wait` while both pipes are drained by their own threads (a full pipe would otherwise block the child); on expiry only *this* child handle is killed — never a kill by process name |
+| Fail closed | `NO_LOCAL_ROOT`, `NOT_A_GIT_REPOSITORY`, `GIT_UNAVAILABLE`, `TIMEOUT`, `ERROR` all leave `head` / `branch` / `detached` / `dirty` as `null`; nothing is guessed |
+| Path boundary | UNC (`\\…`, `//…`), relative paths, non-disk prefixes, network drives and links whose target leaves the local drive are refused by the reused Phase 1 validator before any Git process exists; the refusal code (e.g. `FOLDER_REJECTED`, `NETWORK_TARGET`) is carried through as `errorCode` |
+
+`observedAt` is produced in Rust as ISO-8601 UTC with millisecond precision by a dependency-free formatter (no new crate); the wire shape (`status` SCREAMING_SNAKE_CASE, camelCase fields) is pinned by serialization tests.
+
+Rust tests added (14, all passing): clean repository (status OK, 40-char HEAD, branch, `detached=false`, `dirty=false`); modified tracked file → dirty; untracked file → dirty; detached HEAD (no branch, same HEAD); folder that is not a repository; missing / empty local root (no Git process started); local-folder boundary refusals (`\\server\share`, `//server/share`, relative) → `ERROR` + code, no facts; missing Git executable → `GIT_UNAVAILABLE`; expired bound → `TIMEOUT`; **observation does not modify the repository** (content hashes of every file under the repository, including `.git`, identical before and after three observations); ISO-8601 formatter against five known epochs incl. a leap day; timeout read from the shared limits contract; status vocabulary and observation field names.
+
+Fixtures are synthetic temporary repositories created per test (`git init --initial-branch=dvcc-test-main`, one commit) with `GIT_CONFIG_GLOBAL` / `GIT_CONFIG_SYSTEM` pointed at non-existent files and author / committer identity supplied per process, so the operator's global Git configuration is neither read nor written. No real user project is used.
+
+Targeted checks at this checkpoint: `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS — **61 passed, 1 ignored** (was 47 / 1 at `f557aa6`).
