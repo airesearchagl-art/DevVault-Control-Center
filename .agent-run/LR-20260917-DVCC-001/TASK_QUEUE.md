@@ -45,5 +45,7 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 - [x] R13.3 Focused race regression 25 / 25 (2-process zero / staggered, 3-process staggered); abandoned owner 3 / 3
 - [x] R13.4 P3 URL contract cleanup (`:443` canonical default; non-default port rejected) (`948de00`)
 - [x] R13.5 Targeted checks PASS → Hard Checks re-evaluated → evidence checkpoint → PR body → COMPLETE_PENDING_FULL_VERIFY
-- [ ] R14 Focused Independent Re-review (independent context)
-- [ ] R15 Independent UI-driven verification (AC-02 / 03 / 06 / 07 / 12 / 13, interactive halves of AC-09 / 14)
+- [x] R14 Focused Independent Re-review (independent context) — PASS at `8c24bf9`, P1-1 CLOSED, Required Fixes none, Hard Boundaries PASS
+- [x] R15 Independent UI-driven verification (AC-02 / 03 / 06 / 07 / 12 / 13, interactive halves of AC-09 / 14) — all 8 PASS at `8c24bf9`; READY CONDITION SATISFIED FOR UI
+- [x] R16 Evidence-only finalization (run artifacts + PR body; no product file changed)
+- [ ] R17 Human Ready transition (Human Gate only), subject to a Final Evidence Re-review of the evidence-only head

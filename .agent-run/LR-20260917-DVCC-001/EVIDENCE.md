@@ -537,3 +537,47 @@ Hard Checks re-evaluated (implementer view, pending the Focused Independent Re-r
 Operator disturbance: every GUI process ran on a hidden isolated desktop; no window on the operator desktop, no clipboard write, no browser / GitHub / ChatGPT / Explorer / IDE opened; only processes started by this session were stopped; builds, verifiers and races ran one at a time.
 
 Verification material for the Focused Independent Re-review (committed): `scripts/verify-single-instance.ps1 -FailClosedOnly` (deterministic `NotOwned`), `cargo test instance::` (contract + runtime-path tests). UI-driven verification of AC-02 / AC-03 / AC-06 / AC-07 / AC-12 / AC-13 and the interactive halves of AC-09 / AC-14 remains for the independent context; this session did not perform it.
+
+## Focused Independent Re-review and Independent UI Verification 窶・2026-09-20 (exact head `8c24bf9530426f244786a1119267151ad5a44783`)
+
+Recorded by the implementation session as evidence only: no product file was changed for these entries, and the code tree is unchanged since the repair commit `948de0038e08ef11b611135c5a1d35a1111a2767`.
+
+### Focused Independent Re-review (separate context)
+
+| Item | Verdict |
+|---|---|
+| Result | **PASS** |
+| P1-1 (F-3 start-up `NotOwned` fail-open) | **CLOSED** |
+| Required Fixes | none |
+| Security / Permission / Data integrity / Irreversible-data safety | **PASS** (all four) |
+| Assessment | READY CANDIDATE 窶・UI VERIFICATION STILL REQUIRED (that condition is satisfied by the verification below) |
+| Repository / PR mutation by the reviewer | none |
+
+### Independent UI Verification (separate context)
+
+Result: **UI VERIFIED 窶・REQUIRED ACs PASS**; READY CONDITION SATISFIED FOR UI. Verified independently on exact head `8c24bf9530426f244786a1119267151ad5a44783`.
+
+Method: independent scratch checkout; release build made from that exact head; dedicated `DVCC_DATA_DIR`; isolated Windows desktop; WebView2 CDP scratch harness; every UI observation cross-checked against the files actually persisted on disk; the repository stayed read-only.
+
+| AC | Verdict | Evidence |
+|---|---|---|
+| AC-02 | PASS | Project Alpha and Project Beta created from the UI; `projects.json` holds 2 entries; both restored after a restart. |
+| AC-03 | PASS | 3 reviews (Alpha ﾃ・2, Beta ﾃ・1); independent review folders and `session.json` files; all restored after a restart. |
+| AC-06 | PASS | ChatGPT thread title / URL identical across UI 竊・`session.json` 竊・UI after restart. |
+| AC-07 | PASS | Repository, local root, PR, expected HEAD and reviewed HEAD identical across UI 竊・persisted data 竊・UI after restart. |
+| AC-12 | PASS | Copy Review Prompt produced `request-r1.md` matching the UI metadata; clipboard text and the artifact were byte-for-byte identical; `request_saved` event present. |
+| AC-13 | PASS | A synthetic Human-style result captured: `result-r1.md`, `resultCapturedAt`, Previous Result display and restoration after restart. |
+| AC-14 (interactive) | PASS | State stayed REVIEWING after capture; the Human confirmation dialog starts with no selection and a disabled submit; "Decide later" left the state unchanged; only an explicit radio selection plus the acknowledgement enabled confirmation; the confirmed transition produced FIX_REQUIRED with matching `verdictConfirmedAt` and event. |
+| AC-09 (interactive) | PASS | FIX_REQUIRED / HOT 竊・Suspend with checkpoint and WARM 竊・clean app exit 竊・restart restored SUSPENDED / WARM 竊・Resume restored FIX_REQUIRED / HOT with a `resumed` event. |
+
+### Operator disturbance 窶・clipboard race during the UI verification (not a product defect)
+
+During the first UI verification run the operator copied 6 characters while the harness was driving AC-12. The harness's first restore logic wrote back a stale clipboard snapshot and therefore overwrote the operator's newer clipboard value for a moment. The 6 characters were preserved in the verification scratch evidence. The product's clipboard-write contract itself passed (AC-12 byte-for-byte). The harness was changed to watch `GetClipboardSequenceNumber` and to skip the restore once a Human copy is detected; the second verification run left the operator's clipboard intact. This is a verification-harness / operator-disturbance item, not a DVCC defect, and it is not recorded as Quality Debt.
+
+### Platform / threat-model advisory 窶・WebView2 remote debugging (not a Phase 1 Required Fix)
+
+The independent UI verification observed that the release binary can also be attached to with CDP when the process environment contains `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=<port>`. This is standard WebView2 Runtime behaviour driven by the process environment, not a DVCC code defect, and it is not a Phase 1 Required Fix. Recorded here as a platform / threat-model advisory and a candidate for a Phase 3+ security / threat-model review; no risk severity is assigned or raised without Human approval.
+
+### Continuous-integration status
+
+The repository has no GitHub CI: 0 status contexts on the head commit and no Actions workflow (`gh pr checks 1` reports no checks). Every check in this run was executed locally; no GitHub CI result exists and none may be reported as PASS.
