@@ -102,3 +102,23 @@ Targeted checks at this checkpoint: `npx tsc --noEmit` PASS; `npx vitest run` PA
 - `FreshnessBadge` follows the existing badge component and CSS conventions (`badge freshness-<state>`, `data-state`), with a dark-mode variant.
 
 Targeted checks at this checkpoint: `npx tsc --noEmit` PASS; `npx vitest run` PASS — 16 files, **487 tests**; `npm run build` PASS.
+
+## Wave 4 (part 1) — documentation and mutation probes (2026-09-20)
+
+Documentation (`5e991a8`): README states the Phase 2 feature, the read-only Git boundary and the new layout entries, and its "out of scope" line is now v0.2 (the GitHub API and every network Git operation stay out). `docs/data-contract-v1.md` gained a "Git evidence and derived Freshness" section (observation fields and status vocabulary, how the facts are obtained, the fixed Freshness priority, the HEAD comparison rules, and the rule that Freshness never changes a review state or a recorded HEAD); the recorded-HEAD row no longer calls freshness a future phase.
+
+Mutation probes (each applied alone to the working tree, suite run, source restored and verified byte-identical):
+
+| Probe | Result |
+|---|---|
+| T1 the reviewed-HEAD branch only runs when no expected HEAD is recorded (priority swapped) | killed |
+| T2 the dirty working tree is ignored | killed |
+| T3 a malformed recorded HEAD counts as a difference | killed |
+| T4 the prefix comparison is reversed | killed |
+| T5 a failed / missing observation is treated as observed | killed |
+| R1 `dirty` is always false | killed |
+| R2 a folder that is not a repository is treated as one | killed |
+| R3 `GIT_OPTIONAL_LOCKS=0` is dropped | **survived at first** → test strengthened (`80fcc21`), then killed |
+| R4 the timeout deadline is ignored | killed |
+
+R3 is the one that mattered: the read-only claim rested on an environment variable whose effect no test exercised, because the fixture never put the index in the state where `git status` refreshes it. The no-mutation test now rewrites a tracked file with identical content a second after the commit (stat information no longer matches the index); with the variable the repository stays byte-identical, and without it the test fails with `.git\index changed during a read-only observation`. **9 / 9 probes killed.**

@@ -3,13 +3,13 @@
 - Run ID: LR-20260920-DVCC-002
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — Wave 3 (UI integration: Git evidence card, Freshness badges, Refresh selected / all) complete
+- Current state: RUNNING — Wave 4 in progress (documentation and mutation probes done; release build and isolated UI smoke waiting for the operator's own DVCC instance to close)
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/evidence-freshness-v0.2
 - Base SHA: f557aa6f15222099f54790180e0ff71c5291734a
-- Current head: Wave 3 checkpoint commit (parent c98e185de8a6c3ed4ff75aa00e97bd48f1b4ee34, the Wave 2 checkpoint)
-- Current wave: Wave 3 → Wave 4 (synthetic repositories, release build, isolated UI smoke, regression, docs)
-- Last successful checkpoint: Wave 3 checkpoint
+- Current head: Wave 4 part-1 checkpoint commit (after `edd8868` Wave 3, `5e991a8` docs, `80fcc21` strengthened read-only test)
+- Current wave: Wave 4 (docs and mutation probes complete; release build + isolated UI smoke pending an environment condition)
+- Last successful checkpoint: Wave 4 part-1 checkpoint
 - Task Packet ID: LRP-20260920-DVCC-002
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260920-DVCC-002/TASK_PACKET_SNAPSHOT.md
@@ -50,7 +50,7 @@ Waves 1-3 complete: `src-tauri/src/git.rs` (read-only observation, bounded timeo
 
 ## Checks
 
-Wave 1: `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (61 passed, 1 ignored). Wave 2: `npx tsc --noEmit` PASS, `npx vitest run` PASS (16 files, 485 tests; was 426 at `f557aa6`). Wave 3: tsc PASS, vitest PASS (487 tests), `npm run build` PASS.
+Wave 1: `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (61 passed, 1 ignored). Wave 2: `npx tsc --noEmit` PASS, `npx vitest run` PASS (16 files, 485 tests; was 426 at `f557aa6`). Wave 3: tsc PASS, vitest PASS (487 tests), `npm run build` PASS. Wave 4 so far: `cargo test` PASS (62 passed, 1 ignored) with the strengthened read-only test; mutation probes 9 / 9 killed.
 
 ## Quality Debt
 
@@ -79,11 +79,11 @@ Wave 1 (Rust Git inspection boundary), Wave 2 (TypeScript model + Freshness deri
 
 ## Next action
 
-Wave 4: scratch synthetic repositories, release build, isolated-desktop UI smoke (refresh selected, refresh all, restart → UNKNOWN, Review State unchanged), Phase 1 regression, README / data-contract update.
+Run `npm run tauri build -- --no-bundle` and the two-part isolated-desktop UI smoke (seed + restart) as soon as the operator's own DVCC instance is closed; then Final Convergence, Independent Verification and the Draft PR.
 
 ## Stop conditions status
 
-No stop condition triggered. Available memory at preflight: 13.59 GiB (heavy verification gate: 12 GiB). Hard Boundary items (main commit, Ready, merge, release, Production, Notion / vault write, network Git, shell execution) remain prohibited.
+No hard stop condition triggered. Environment condition (not a product failure): the operator's own DVCC instance has been running since 17:06 with the real `%APPDATA%\\DevVault-Control` folder locked, which holds the release executable open and — because the single-instance guarantee is session-wide — would make any test launch hand over to that window. The Human was asked and chose to close it; the release build and the UI smoke wait for that. No process of the operator's was terminated. Available memory 12.2–12.7 GiB, above the 12 GiB gate but watched before every heavy step. Hard Boundary items (main commit, Ready, merge, release, Production, Notion / vault write, network Git, shell execution) remain prohibited.
 
 ## Resume instructions
 

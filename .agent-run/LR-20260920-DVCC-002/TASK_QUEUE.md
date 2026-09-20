@@ -39,11 +39,13 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 
 ## Wave 4 — verification
 
-- [ ] Scratch synthetic repositories (clean, dirty tracked, untracked, detached, not-a-repo, no localRoot, timeout, Git unavailable)
-- [ ] Release build + isolated-desktop UI smoke (incl. restart → UNKNOWN)
+- [~] Scratch synthetic repositories (harness written; Rust-level cases already covered) — UI run pending
+- [~] Release build + isolated-desktop UI smoke (incl. restart → UNKNOWN) — blocked until the operator's own DVCC instance closes
 - [ ] Phase 1 regression
-- [ ] README / `docs/data-contract-v1.md` update (Phase 2 statements)
+- [x] README / `docs/data-contract-v1.md` update (Phase 2 statements) — `5e991a8`
 - [ ] Checkpoint
+
+- [x] Mutation probes on the Freshness derivation and the Git boundary (9 / 9 killed)
 
 ## Final
 
