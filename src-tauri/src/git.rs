@@ -642,6 +642,13 @@ mod tests {
     fn observing_does_not_modify_the_repository() {
         let (_dir, root) = repository_with_commit();
         fs::write(root.join("untracked.txt"), "new\n").unwrap();
+        // Rewrite a tracked file with the same content a second later: its stat information no
+        // longer matches the index, which is exactly when `git status` would refresh (and rewrite)
+        // `.git/index` — unless it runs without optional locks, as the observation does.
+        let tracked = root.join("tracked.txt");
+        let content = fs::read(&tracked).unwrap();
+        std::thread::sleep(Duration::from_millis(1100));
+        fs::write(&tracked, &content).unwrap();
         let before = snapshot(&root);
         assert!(
             before.keys().any(|path| path.contains(".git")),
