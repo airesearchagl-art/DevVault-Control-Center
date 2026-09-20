@@ -50,11 +50,11 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 
 ## Wave 5 — verification
 
-- [ ] Isolated-desktop UI smoke: Japanese default, switch to English, restart persistence, switch back
-- [ ] Locale switch leaves domain state and recorded values identical
-- [ ] JA / EN review request verified from the written artifact (clipboard untouched where possible)
-- [ ] Phase 1 / Phase 2 regression
-- [ ] Checkpoint
+- [x] Isolated-desktop UI smoke: Japanese default, switch to English, restart persistence, switch back
+- [x] Locale switch leaves domain state and recorded values identical
+- [x] JA / EN review request verified from the written artifact (clipboard saved and put back)
+- [x] Phase 1 / Phase 2 regression
+- [x] Checkpoint
 
 ## Final
 

@@ -129,3 +129,37 @@ Checks: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, 534 tests), `n
 - **Documentation**: README gains the bilingual interface in *What it does*, the no-translation-API boundary, `settings.json` under *Data location*, `i18n/` in the repository layout and a *Where words live* section stating the rule, the gates and what is deliberately not translated. `docs/data-contract-v1.md` gains `settings.json` in the layout and a section with its schema, its fail-safe behaviour, the neutrality rule and the serialized-write guarantee.
 
 Checks: `npx tsc --noEmit` PASS, `npx vitest run` PASS (19 files, **549 tests**), `npm run build` PASS. `src-tauri/` unchanged.
+
+## Wave 5 — isolated-desktop UI verification (2026-09-20)
+
+Release build from `6d849f6` (`npm run tauri build -- --no-bundle`, SHA-256 `8582934a6265b5290addf6b83f4ed4ab5bb18c26efd6cc8d47d5b1a3a2d2c1e6`). The app ran on a hidden isolated desktop (`CreateDesktopW` + `CreateProcessW` with `lpDesktop`) against a dedicated `DVCC_DATA_DIR` seeded from `fixtures/v1/valid`, driven over the WebView2 debugging protocol. Nothing appeared on the operator's desktop and nothing outside the temporary data folder was written. Available memory was 12.17 GiB when the build started, above the 12 GiB gate.
+
+**18 checks, 18 PASS**, in three runs of the same data folder:
+
+| Part | Checks | Result |
+|---|---|---|
+| First start (fresh preference) | `document.documentElement.lang` is `ja`; the top bar reads `＋ プロジェクト`; **no `settings.json` is written** by a fresh install; the selected review's badge reads `レビュー中` while `data-state` stays `REVIEWING` | PASS (5) |
+| Switch to English | the same review reads `Reviewing` with `data-state` still `REVIEWING`; the selected review is still `rv-20260102-beta01`; `settings.json` becomes `{"schemaVersion":1,"locale":"en"}`; **all 7 project and review files are byte-identical** (SHA-256 before and after the switch) | PASS (4) |
+| Restart and the request | after a restart the interface comes up in English (`lang=en`, `+ Project`); **Copy review prompt** writes `request-r1.md` beginning `# Independent Review Request — Project Beta / R1`; switching back to Japanese and copying again writes `# 独立レビュー依頼 — Project Beta / R1`; both carry the same PR fact (`#12`); `settings.json` becomes `ja`; a third start comes up Japanese with 2 reviews and 3 projects intact | PASS (9) |
+
+The clipboard was read before the two **Copy review prompt** clicks and put back afterwards (it is the only action that writes it). No `devvault-control-center` process was left behind, and none of the 55 `msedgewebview2` processes on the machine belonged to this run (checked by command line) — none were touched. The operator's own data folder `%APPDATA%\DevVault-Control` still shows its pre-run timestamp (17:06:50). The temporary data folder was removed afterwards.
+
+AC coverage from this run: L10N-01 (Japanese default), L10N-02 (switch), L10N-03 (immediate), L10N-04 (persisted across restart), L10N-10 (no state change on switch), L10N-11 (recorded values unchanged), L10N-13 (request in the language in use), L10N-16 (Phase 1 / Phase 2 still work).
+
+## Final convergence checks (frozen head `6d849f6`)
+
+| Check | Result |
+|---|---|
+| `npx tsc --noEmit` | PASS |
+| `npx vitest run` | PASS — 19 files, 549 tests |
+| `npm run build` | PASS |
+| `npm run tauri build -- --no-bundle` | PASS — no bundle directory |
+| `cargo fmt --check` | PASS |
+| `cargo clippy --all-targets` | PASS — 0 warnings |
+| `cargo test` | PASS — 68 passed, 2 ignored |
+| Isolated-desktop localization UI smoke | PASS — 18 / 18 |
+| Windows app launch smoke / persistence round trip (project instruction checks) | PASS — part of the UI smoke above (three launches, restart, restore) |
+
+GitHub Actions CI: none in this repository; no CI result is claimed.
+
+Diff versus `origin/main` (`318e273`): 59 files, +3 648 / −576; excluding run artifacts, 52 files, +2 940 / −576. No dependency added, no capability change, no `tauri.conf.json` change. `src-tauri/` changed only in Wave 1 (the `settings` storage target).

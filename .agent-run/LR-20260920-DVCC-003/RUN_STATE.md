@@ -3,13 +3,13 @@
 - Run ID: LR-20260920-DVCC-003
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — Wave 4 (request per language, static gate, documentation) complete
+- Current state: COMPLETE_PENDING_FULL_VERIFY — all waves complete, independent verification not yet run
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/localization-foundation-v0.2.1
 - Base SHA: 318e273a1afe66c605da897a4f7603aaa921fc83
-- Current head: Wave 4 checkpoint commit (parent 64ea873)
-- Current wave: Wave 4 → Wave 5 (UI verification on the isolated desktop)
-- Last successful checkpoint: Wave 4 checkpoint
+- Current head: Wave 5 checkpoint commit (parent 6d849f6)
+- Current wave: Wave 5 complete → Final Convergence and Draft PR
+- Last successful checkpoint: Wave 5 checkpoint
 - Task Packet ID: LRP-20260920-DVCC-003
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260920-DVCC-003/TASK_PACKET_SNAPSHOT.md
@@ -55,6 +55,8 @@ The preference path is hardened: `settings.json` is accepted only at `schemaVers
 
 Wave 1: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, 524 tests), `npm run build` PASS, `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (68 passed, 2 ignored).
 
+Wave 5 / convergence at `6d849f6`: `npx tsc --noEmit` PASS, `npx vitest run` PASS (19 files, 549 tests), `npm run build` PASS, `npm run tauri build -- --no-bundle` PASS, `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (68 passed, 2 ignored), isolated-desktop localization UI smoke PASS (18 / 18).
+
 Wave 4: `npx tsc --noEmit` PASS, `npx vitest run` PASS (19 files, 549 tests), `npm run build` PASS (`src-tauri/` unchanged).
 
 Wave 3: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, 534 tests), `npm run build` PASS (`src-tauri/` unchanged).
@@ -90,7 +92,7 @@ Wave 1 (i18n core, dictionaries, selector, persistence, parity tests), Wave 2 (P
 
 ## Next action
 
-Wave 5: the UI verification on the isolated desktop — Japanese by default, switch to English, restart persistence, back to Japanese, review state untouched by a language change, and the review prompt verified in both languages from the written artifact (the Human's clipboard is not touched).
+Open the Draft PR against `origin/main` (`318e273`) and stop. Independent verification runs in a separate context; Phase 3 does not start until this merges.
 
 ## Stop conditions status
 

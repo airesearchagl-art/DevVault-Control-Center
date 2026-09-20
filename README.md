@@ -134,6 +134,10 @@ npm run tauri build -- --no-bundle
 # Only the fail-closed start-up gate (held / uncreatable start-up lock; no window is expected)
 .\scripts\verify-single-instance.ps1 -Exe .\src-tauri\target\release\devvault-control-center.exe -DataDir D:\scratch\dvcc-si-data -FailClosedOnly
 
+# Both languages in the running app: Japanese by default, the switch, the restart and the review
+# request in each language (hidden isolated desktop, temporary data folder, clipboard put back)
+.\scripts\verify-localization-ui.ps1
+
 # Network-drive launcher boundary (needs a temporary mapping, e.g. net use W: \\localhost\C$ /persistent:no)
 $env:DVCC_TEST_MAPPED_DRIVE_DIR = "W:\Windows"; cd src-tauri; cargo test mapped_network_drive -- --ignored; cd ..
 ```
@@ -166,7 +170,7 @@ src-tauri/
   src/git.rs       Read-only local Git observation (bounded, no shell, no network)
   capabilities/    core:default + clipboard write only
 contract/       Shared limits (limits.json) used by TypeScript and Rust
-scripts/        Reproducible verification (single instance)
+scripts/        Reproducible verification (single instance, localization UI smoke)
 docs/           Data contract
 fixtures/v1/    Synthetic fixtures only (Project Alpha / Beta / Gamma, example-org URLs)
 .agent-run/     Long-run development campaign artifacts (task packet, state, evidence)
