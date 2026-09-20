@@ -30,12 +30,12 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 
 ## Wave 3 — UI integration
 
-- [ ] Git Evidence card in the review detail (status, branch, current HEAD, working tree, observed time, Refresh)
-- [ ] Freshness badge + explanation (expected / reviewed / current HEAD)
-- [ ] Queue row Freshness badge
-- [ ] Refresh Git State (selected) and Refresh All (sequential), busy / error states
-- [ ] Review State must stay unchanged; observation stays in memory only
-- [ ] Targeted checks → checkpoint
+- [x] Git Evidence card in the review detail (status, branch, current HEAD, working tree, observed time, Refresh)
+- [x] Freshness badge + explanation (expected / reviewed / current HEAD)
+- [x] Queue row Freshness badge
+- [x] Refresh Git State (selected) and Refresh All (sequential), busy / error states
+- [x] Review State must stay unchanged; observation stays in memory only
+- [x] Targeted checks → checkpoint
 
 ## Wave 4 — verification
 

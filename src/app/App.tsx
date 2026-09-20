@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { Banner, Toasts } from "../components/Banner";
 import { ConfirmDialog } from "../components/Dialog";
 import { emptyProjectForm, projectToForm, type ProjectFormInput } from "../domain/project";
+import { deriveFreshness, type FreshnessResult } from "../domain/freshness";
 import { buildQueue } from "../domain/queue";
 import {
   currentRound,
@@ -21,6 +22,7 @@ import { CaptureResultDialog, NextRoundDialog, SuspendDialog, VerdictDialog, typ
 import { CreateReviewDialog, EditReviewDialog } from "../features/reviews/ReviewForm";
 import { ReviewQueue } from "../features/reviews/ReviewQueue";
 import { copyText } from "../services/clipboard";
+import { observeSequentially, tauriGitObserver } from "../services/git";
 import { tauriLauncher } from "../services/launcher";
 import { describeHealthProblem, isWritable } from "../services/persistence";
 import { ReviewHub } from "../services/reviewHub";
@@ -31,6 +33,7 @@ import { describeError } from "./format";
 import "./App.css";
 
 const launcher = tauriLauncher;
+const gitObserver = tauriGitObserver;
 
 type DialogState =
   | null
@@ -126,6 +129,50 @@ export default function App() {
       ),
     [state.reviews, state.projects, state.filter],
   );
+
+  // Freshness is derived per review from the recorded HEADs and the observed facts; it never
+  // feeds back into the review data (Phase 2 state separation).
+  const freshnessByReview = useMemo(() => {
+    const map = new Map<string, FreshnessResult>();
+    for (const review of state.reviews) {
+      if (!review.session) continue;
+      const round = currentRound(review.session);
+      map.set(
+        review.reviewId,
+        deriveFreshness({
+          observation: state.gitObservations[review.session.projectId],
+          expectedHead: round.expectedHead,
+          reviewedHead: round.reviewedHead,
+        }),
+      );
+    }
+    return map;
+  }, [state.reviews, state.gitObservations]);
+
+  const selectedObservation = selectedProject ? state.gitObservations[selectedProject.projectId] : undefined;
+  const selectedFreshness = selected ? freshnessByReview.get(selected.reviewId) : undefined;
+
+  // One project at a time, only when the Human asks: no observation happens at start-up.
+  const refreshGit = useCallback(
+    async (projectId: string, localRoot: string | null) => {
+      const observation = await track(gitObserver.observe(localRoot));
+      dispatch({ type: "gitObserved", projectId, observation });
+      return observation;
+    },
+    [track],
+  );
+
+  const refreshAllGit = useCallback(async () => {
+    const targets = state.projects.map((project) => ({ projectId: project.projectId, localRoot: project.localRoot }));
+    if (targets.length === 0) {
+      notify("info", "No projects to observe.");
+      return;
+    }
+    await track(
+      observeSequentially(gitObserver, targets, (projectId, observation) => dispatch({ type: "gitObserved", projectId, observation })),
+    );
+    notify("info", `Git state refreshed for ${targets.length} project${targets.length === 1 ? "" : "s"}.`);
+  }, [state.projects, track, notify]);
 
   const reviewCountByProject = useMemo(() => {
     const counts = new Map<string, number>();
@@ -315,6 +362,19 @@ export default function App() {
         project={selectedProject}
         artifacts={state.artifacts[selectedSession.reviewSessionId]}
         busy={busy}
+        observation={selectedObservation}
+        freshness={
+          selectedFreshness ??
+          deriveFreshness({
+            observation: selectedObservation,
+            expectedHead: currentRound(selectedSession).expectedHead,
+            reviewedHead: currentRound(selectedSession).reviewedHead,
+          })
+        }
+        onRefreshGit={() => {
+          if (!selectedProject) return notify("warning", "No project is recorded for this review");
+          void refreshGit(selectedProject.projectId, selectedProject.localRoot);
+        }}
         onAction={(action) => void runAction(selectedSession, action)}
         onOpenDialog={onDetailDialog}
         onOpenGithub={() => {
@@ -471,6 +531,7 @@ export default function App() {
             filter={state.filter}
             projects={state.projects}
             reviewCountByProject={reviewCountByProject}
+            freshnessByReview={freshnessByReview}
             projectsEditable={projectsWritable}
             onFilterChange={(filter) => dispatch({ type: "filterChanged", filter })}
             onSelect={(reviewId) => dispatch({ type: "selectReview", reviewId })}
@@ -490,6 +551,9 @@ export default function App() {
         <span className="statusbar-actions">
           <button type="button" className="link-button" onClick={() => void reload()} data-testid="btn-reload">
             Reload
+          </button>
+          <button type="button" className="link-button" onClick={() => void refreshAllGit()} disabled={busy} data-testid="btn-refresh-all-git">
+            Refresh Git (all)
           </button>
           <button type="button" className="link-button" onClick={() => void launch(() => launcher.openDataDir(), "Open data folder")}>
             Open data folder

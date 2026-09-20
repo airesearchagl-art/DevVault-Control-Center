@@ -91,3 +91,14 @@ Targeted checks at this checkpoint: `cargo fmt --check` PASS, `cargo clippy --al
 Independent oracle: `src/test/freshnessContract.ts` states 29 rows and the vocabulary as literal data and imports nothing from the implementation; `src/domain/freshnessContract.test.ts` runs every row against `deriveFreshness`, asserts the vocabulary matches, that all five states are covered, that the three undecidable rows never produce a "differs" explanation, the exact wording of both difference explanations, and the pass-through of the recorded HEADs (AC2-07 at the derivation level). `src/domain/git.test.ts` covers the fail-closed acceptance; `src/services/git.test.ts` proves Refresh All never runs two observations at once and reports each project in order (AC2-11 at the service level).
 
 Targeted checks at this checkpoint: `npx tsc --noEmit` PASS; `npx vitest run` PASS — 16 files, **485 tests** (was 426 at `f557aa6`).
+
+## Wave 3 — UI integration (2026-09-20)
+
+- **Git evidence card** in the review detail (`data-testid="git-evidence"`): the Freshness badge with its one-sentence explanation, then Observation status, Current branch (or "detached HEAD"), Current HEAD (observed), Working tree, Expected HEAD (recorded), Reviewed HEAD (recorded) and Observed time — the observed facts and the Human-recorded values are shown side by side but stay visibly separate. A "Refresh Git state" button (`action-refresh-git`) observes the selected review's project. A hint states that observed facts are read-only, are not stored, and that refreshing changes neither the recorded HEADs nor the review state.
+- **Queue rows** carry a Freshness badge (`queue-freshness`) next to the Review State and Resource State badges, with the explanation as its tooltip. The existing Review State ordering is unchanged.
+- **Refresh All** (`btn-refresh-all-git`, status bar) observes every registered project through `observeSequentially` — one Git process at a time.
+- **No automatic refresh**: nothing observes at start-up; the app begins with no observation and every Freshness is `UNKNOWN` ("Git state has not been observed.") until the Human refreshes.
+- **State separation**: the observation lives in a dedicated `gitObservations` slice keyed by project id, written only by the `gitObserved` action. Reducer tests assert that this action changes nothing else in the state (reviews, projects, artifacts and selection keep their identity), so a refresh cannot move a Review State (AC2-09) or rewrite a recorded HEAD (AC2-07), and that the initial state holds no observation (AC2-13 at state level), while an in-app reload keeps what was observed.
+- `FreshnessBadge` follows the existing badge component and CSS conventions (`badge freshness-<state>`, `data-state`), with a dark-mode variant.
+
+Targeted checks at this checkpoint: `npx tsc --noEmit` PASS; `npx vitest run` PASS — 16 files, **487 tests**; `npm run build` PASS.

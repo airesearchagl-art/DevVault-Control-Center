@@ -1,3 +1,4 @@
+import type { GitObservation } from "../domain/git";
 import type { Project } from "../domain/project";
 import type { QueueFilter } from "../domain/queue";
 import type { FileHealth, LoadedData, LoadedReview, ReviewArtifacts } from "../services/persistence";
@@ -26,6 +27,12 @@ export interface AppState {
   reviews: LoadedReview[];
   selectedReviewId: string | null;
   artifacts: Record<string, ReviewArtifacts | undefined>;
+  /**
+   * Observed local Git facts per project (Phase 2). Runtime memory only: the current Git state is
+   * volatile, so it is never persisted and is unknown again after a restart until the Human
+   * refreshes.
+   */
+  gitObservations: Record<string, GitObservation | undefined>;
   filter: QueueFilter;
   notices: Notice[];
   toasts: Toast[];
@@ -43,6 +50,7 @@ export const initialAppState: AppState = {
   reviews: [],
   selectedReviewId: null,
   artifacts: {},
+  gitObservations: {},
   filter: { text: "", showClosed: false },
   notices: [],
   toasts: [],
@@ -55,6 +63,7 @@ export type AppAction =
   | { type: "selectReview"; reviewId: string | null }
   | { type: "hubCommitted"; snapshot: LoadedData }
   | { type: "artifactsLoaded"; reviewId: string; artifacts: ReviewArtifacts }
+  | { type: "gitObserved"; projectId: string; observation: GitObservation }
   | { type: "filterChanged"; filter: Partial<QueueFilter> }
   | { type: "dismissNotice"; id: string }
   | { type: "toast"; kind: ToastKind; message: string }
@@ -113,6 +122,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     case "artifactsLoaded":
       return { ...state, artifacts: { ...state.artifacts, [action.reviewId]: action.artifacts } };
+
+    // Observed facts only: no review or project data is touched, so a refresh can never change a
+    // Review State or a recorded HEAD.
+    case "gitObserved":
+      return { ...state, gitObservations: { ...state.gitObservations, [action.projectId]: action.observation } };
 
     case "filterChanged":
       return { ...state, filter: { ...state.filter, ...action.filter } };
