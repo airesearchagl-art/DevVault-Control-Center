@@ -137,7 +137,7 @@ also stops a release build from starting (and vice versa), even though their dat
 | `reviewState` | `NEW` / `READY_FOR_REVIEW` / `REVIEWING` / `FIX_REQUIRED` / `REVIEW_PASS` / `BLOCKED` / `SUSPENDED` / `CLOSED` |
 | `suspendedFrom` | non-null **only** while `SUSPENDED`; never `SUSPENDED` or `CLOSED` |
 | `chatgptThreadUrl` | `null` or `https://chatgpt.com/...` / `https://chat.openai.com/...` |
-| `rounds[].expectedHead`, `reviewedHead` | `null` or lowercase 7–40 hex SHA. These are **Human-recorded values**, not observed Git facts (Git / GitHub freshness is Phase 2). `null` means "not recorded" and is never filled by guessing. |
+| `rounds[].expectedHead`, `reviewedHead` | `null` or lowercase 7–40 hex SHA. These are **Human-recorded values**, never observed Git facts: the Phase 2 Git observation only compares against them and never writes them. `null` means "not recorded" and is never filled by guessing. |
 | `rounds[].resultCapturedAt` | capture time of the canonical latest `result-r<N>.md` |
 | `rounds[].verdict` | `null` / `FIX_REQUIRED` / `REVIEW_PASS` / `BLOCKED`, set only by explicit Human confirmation |
 | `rounds[].archivedResults` | earlier results of the round kept when a result was replaced, oldest first (`result-r<N>-previous-<ms>.md`, `<ms>` = capture time of the replaced result; `-<n>` (1–999) is appended when that name is already taken, e.g. by an archive an interrupted capture left unrecorded). Missing in files written before this field existed → `[]`. |
@@ -227,6 +227,55 @@ warning is shown. Broken or unknown lines are skipped with a warning; the file i
 - A problem in one review's `session.json` affects only that review (read-only row).
 - For an unreadable `projects.json`, the Human may choose "Set aside and start empty": the unusable
   primary and / or backup are renamed to `.corrupt-<ms>` (kept) and an empty project list starts.
+
+## Git evidence and derived Freshness (Phase 2)
+
+Observed Git facts and Human-recorded values are kept apart. The observation is **volatile runtime
+state**: it is never written to `projects.json`, to a `session.json` or to any other file, so after a
+restart there is no observation until the Human refreshes. Nothing is observed automatically at
+start-up.
+
+One observation of a project's local root yields:
+
+| Field | Meaning |
+|---|---|
+| `status` | `OK` / `NO_LOCAL_ROOT` / `NOT_A_GIT_REPOSITORY` / `GIT_UNAVAILABLE` / `TIMEOUT` / `ERROR` |
+| `head` | full 40-character SHA, or `null` (e.g. a repository without any commit) |
+| `branch` | branch name, or `null` when detached or unknown |
+| `detached` | whether HEAD is detached, or `null` when unknown |
+| `dirty` | uncommitted changes including untracked files, or `null` when unknown |
+| `observedAt` | ISO-8601 UTC, millisecond precision |
+| `errorCode`, `errorMessage` | why an observation failed (e.g. the folder boundary's `NETWORK_TARGET`) |
+
+Anything other than `status = OK` leaves every fact `null`; nothing is guessed.
+
+How it is obtained: the recorded local root passes the same folder boundary as the launcher (absolute
+local path, existing directory, no UNC, no mapped network drive, every link target checked without
+following it), and `git rev-parse --is-inside-work-tree`, `git rev-parse --verify --quiet HEAD`,
+`git symbolic-ref --quiet --short HEAD` and `git status --porcelain=v1` are then run in that folder
+through `std::process::Command` — no shell, no argument built from typed text, stdin closed,
+`GIT_OPTIONAL_LOCKS=0` (so not even an index refresh is written), `GIT_TERMINAL_PROMPT=0`, and one
+5 s bound (`contract/limits.json` `gitObservationTimeoutMs`) after which only that child process is
+terminated. No command contacts a remote.
+
+Freshness is derived from the observation and the current round's recorded HEADs, in this fixed
+priority:
+
+| Freshness | Condition |
+|---|---|
+| `WORKTREE_DIRTY` | observation `OK` and `dirty = true` |
+| `REVIEW_STALE` | clean tree and a recorded `reviewedHead` that is not the current HEAD |
+| `HEAD_CHANGED` | clean tree, reviewed HEAD matching or absent, and a recorded `expectedHead` that is not the current HEAD |
+| `ALIGNED` | observation `OK`, clean tree, current HEAD known, and every recorded HEAD matches it |
+| `UNKNOWN` | everything else: not observed yet, no local root, not a repository, Git unavailable, timeout, error, unknown current HEAD, no recorded HEAD at all, or a recorded value that cannot be compared |
+
+A recorded HEAD of 40 characters must be equal to the current HEAD; a 7–39-character value must be a
+prefix of it (comparison is case-insensitive). A malformed or unreadable value is never treated as a
+difference — it yields `UNKNOWN`.
+
+Freshness is informational: it is a third axis next to Review State and Resource State, and a refresh
+never changes a review state, a resource state or a recorded HEAD. `REVIEW_PASS` + `REVIEW_STALE` and
+`FIX_REQUIRED` + `ALIGNED` are both normal combinations.
 
 ## Launcher boundary
 
