@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "projects": [
+    {
+      "projectId": "project-alpha",
+      "displayName": "Project Alpha",
+      "repositoryUrl": "https://github.com/example-org/project-alpha",
+      "localRoot": "C:\\example\\project-alpha",
+      "developmentIde": "Claude Code",
+      "nextAction": "Address R1 required fixes",
+      "notes": "Synthetic fixture project.",
+      "createdAt": "2026-01-01T09:00:00.000Z",
+      "updatedAt": "2026-01-02T09:00:00.000Z"
+    },
+    {
+      "projectId": "project-beta",
+      "displayName": "Project Beta",
+      "repositoryUrl": "https://github.com/example-org/project-beta",
+      "localRoot": null,
+      "developmentIde": "Codex",
+      "nextAction": "",
+      "notes": "",
+      "createdAt": "2026-01-02T09:00:00.000Z",
+      "updatedAt": "2026-01-02T09:00:00.000Z"
+    },
+    {
+      "projectId": "project-gamma",
+      "displayName": "Project Gamma",
+      "repositoryUrl": null,
+      "localRoot": null,
+      "developmentIde": null,
+      "nextAction": "Decide review scope",
+      "notes": "",
+      "createdAt": "2026-01-03T09:00:00.000Z",
+      "updatedAt": "2026-01-03T09:00:00.000Z"
+    }
+  ]
+}

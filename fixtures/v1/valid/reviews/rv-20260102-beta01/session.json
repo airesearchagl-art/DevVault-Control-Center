@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "reviewSessionId": "rv-20260102-beta01",
+  "projectId": "project-beta",
+  "prNumber": 12,
+  "reviewType": "Design review",
+  "reviewRound": 1,
+  "resourceState": "HOT",
+  "reviewState": "REVIEWING",
+  "suspendedFrom": null,
+  "chatgptThreadTitle": "Project Beta design review",
+  "chatgptThreadUrl": "https://chat.openai.com/c/example-thread-beta",
+  "nextAction": "Wait for reviewer answer",
+  "rounds": [
+    {
+      "round": 1,
+      "expectedHead": null,
+      "reviewedHead": null,
+      "requestSavedAt": null,
+      "resultCapturedAt": null,
+      "verdict": null,
+      "verdictConfirmedAt": null,
+      "verdictNote": null
+    }
+  ],
+  "createdAt": "2026-01-02T10:00:00.000Z",
+  "updatedAt": "2026-01-02T10:30:00.000Z"
+}
