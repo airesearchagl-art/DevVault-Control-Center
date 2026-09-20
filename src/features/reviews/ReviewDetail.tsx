@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { excerpt, formatTimestamp } from "../../app/format";
-import { ResourceStateBadge, ReviewStateBadge } from "../../components/StateBadge";
+import { FreshnessBadge, ResourceStateBadge, ReviewStateBadge } from "../../components/StateBadge";
+import type { FreshnessResult } from "../../domain/freshness";
+import { GIT_STATUS_LABELS, type GitObservation } from "../../domain/git";
 import { MAX_REVIEW_ROUNDS } from "../../domain/limits";
 import type { Project } from "../../domain/project";
 import { currentRound, latestCapturedRound, type ReviewSession } from "../../domain/review";
@@ -16,6 +18,10 @@ interface ReviewDetailProps {
   project: Project | null;
   artifacts: ReviewArtifacts | undefined;
   busy: boolean;
+  /** Observed Git facts for this review's project; `undefined` until the Human refreshes. */
+  observation: GitObservation | undefined;
+  freshness: FreshnessResult;
+  onRefreshGit: () => void;
   onAction: (action: ReviewAction) => void;
   onOpenDialog: (dialog: DetailDialog) => void;
   onOpenGithub: () => void;
@@ -37,6 +43,18 @@ function Row({ label, children, testId, mono }: { label: string; children: React
 }
 
 const UNRECORDED = <span className="muted">— not recorded</span>;
+const UNOBSERVED = <span className="muted">— not observed</span>;
+
+function workingTree(observation: GitObservation | undefined): ReactNode {
+  if (!observation || observation.status !== "OK" || observation.dirty === null) return UNOBSERVED;
+  return observation.dirty ? "Uncommitted changes" : "Clean";
+}
+
+function currentBranch(observation: GitObservation | undefined): ReactNode {
+  if (!observation || observation.status !== "OK") return UNOBSERVED;
+  if (observation.branch !== null) return observation.branch;
+  return observation.detached === true ? "detached HEAD" : UNOBSERVED;
+}
 
 function ActionButton({
   label,
@@ -65,6 +83,9 @@ export function ReviewDetail({
   project,
   artifacts,
   busy,
+  observation,
+  freshness,
+  onRefreshGit,
   onAction,
   onOpenDialog,
   onOpenGithub,
@@ -283,6 +304,48 @@ export function ReviewDetail({
           </dl>
         </section>
       </div>
+
+      <section className="card git-evidence" data-testid="git-evidence">
+        <header className="card-header">
+          <h3>Git evidence</h3>
+          <button type="button" className="link-button" onClick={onRefreshGit} disabled={busy} data-testid="action-refresh-git">
+            Refresh Git state
+          </button>
+        </header>
+        <div className="freshness-line">
+          <FreshnessBadge status={freshness.status} testId="detail-freshness" />
+          <span className="small" data-testid="detail-freshness-explanation">
+            {freshness.explanation}
+          </span>
+        </div>
+        <dl>
+          <Row label="Observation" testId="detail-git-status">
+            {observation ? GIT_STATUS_LABELS[observation.status] : UNOBSERVED}
+          </Row>
+          <Row label="Current branch" testId="detail-git-branch">
+            {currentBranch(observation)}
+          </Row>
+          <Row label="Current HEAD (observed)" testId="detail-current-head" mono>
+            {observation?.head ?? UNOBSERVED}
+          </Row>
+          <Row label="Working tree" testId="detail-worktree">
+            {workingTree(observation)}
+          </Row>
+          <Row label="Expected HEAD (recorded)" testId="detail-freshness-expected" mono>
+            {round.expectedHead ?? UNRECORDED}
+          </Row>
+          <Row label="Reviewed HEAD (recorded)" testId="detail-freshness-reviewed" mono>
+            {round.reviewedHead ?? UNRECORDED}
+          </Row>
+          <Row label="Observed" testId="detail-observed-at">
+            {observation ? formatTimestamp(observation.observedAt) : UNOBSERVED}
+          </Row>
+        </dl>
+        <p className="hint">
+          Observed facts are read-only and are not stored: after restarting DVCC they are unknown until you refresh. Refreshing never changes the recorded
+          HEAD values or the review state.
+        </p>
+      </section>
 
       <section className="card">
         <header className="card-header">

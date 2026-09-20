@@ -1,3 +1,4 @@
 {
-  "maxReviewRounds": 999
+  "maxReviewRounds": 999,
+  "gitObservationTimeoutMs": 5000
 }

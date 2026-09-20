@@ -1,4 +1,5 @@
-import { ResourceStateBadge, ReviewStateBadge } from "../../components/StateBadge";
+import { FreshnessBadge, ResourceStateBadge, ReviewStateBadge } from "../../components/StateBadge";
+import type { FreshnessResult } from "../../domain/freshness";
 import type { Project } from "../../domain/project";
 import type { QueueFilter, QueueItem } from "../../domain/queue";
 import { REVIEW_STATE_LABELS } from "../../domain/states";
@@ -10,6 +11,8 @@ interface ReviewQueueProps {
   filter: QueueFilter;
   projects: Project[];
   reviewCountByProject: Map<string, number>;
+  /** Derived Freshness per review (Phase 2); independent of the Review State shown next to it. */
+  freshnessByReview: Map<string, FreshnessResult>;
   projectsEditable: boolean;
   onFilterChange: (filter: Partial<QueueFilter>) => void;
   onSelect: (reviewId: string) => void;
@@ -24,6 +27,7 @@ export function ReviewQueue({
   filter,
   projects,
   reviewCountByProject,
+  freshnessByReview,
   projectsEditable,
   onFilterChange,
   onSelect,
@@ -71,6 +75,13 @@ export function ReviewQueue({
                     <div className="qi-badges">
                       <ReviewStateBadge state={item.session.reviewState} />
                       <ResourceStateBadge state={item.session.resourceState} />
+                      {freshnessByReview.get(item.reviewId) && (
+                        <FreshnessBadge
+                          status={freshnessByReview.get(item.reviewId)!.status}
+                          explanation={freshnessByReview.get(item.reviewId)!.explanation}
+                          testId="queue-freshness"
+                        />
+                      )}
                       {item.session.suspendedFrom && <span className="muted small">from {REVIEW_STATE_LABELS[item.session.suspendedFrom]}</span>}
                     </div>
                     <div className="qi-next">{item.session.nextAction || <span className="muted">No next action</span>}</div>

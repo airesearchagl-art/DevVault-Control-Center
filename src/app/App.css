@@ -357,6 +357,30 @@ kbd {
   opacity: 0.8;
 }
 
+.freshness-aligned {
+  color: #15803d;
+}
+.freshness-head-changed {
+  color: var(--warm);
+}
+.freshness-review-stale {
+  color: var(--hot);
+}
+.freshness-worktree-dirty {
+  color: var(--danger);
+}
+.freshness-unknown {
+  color: var(--muted);
+}
+
+.freshness-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
 .resource-hot {
   color: var(--hot);
 }
@@ -372,6 +396,9 @@ kbd {
     color: #b794f6;
   }
   .review-review-pass {
+    color: #68d391;
+  }
+  .freshness-aligned {
     color: #68d391;
   }
 }

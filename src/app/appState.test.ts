@@ -84,6 +84,74 @@ describe("appReducer", () => {
     expect(appReducer(state, { type: "dismissToast", id }).toasts.some((t) => t.id === id)).toBe(false);
   });
 
+  it("keeps an observed Git state out of every review and project slice (Phase 2)", () => {
+    const before = loaded({
+      projects: [
+        {
+          projectId: "project-alpha",
+          displayName: "Project Alpha",
+          repositoryUrl: null,
+          localRoot: "C:\\repos\\alpha",
+          developmentIde: null,
+          nextAction: "",
+          notes: "",
+          createdAt: NOW,
+          updatedAt: NOW,
+        },
+      ],
+      reviews: [{ reviewId: "rv-20260101-alpha1", session: session("rv-20260101-alpha1"), health: { status: "ok" } }],
+    });
+    const observation = {
+      status: "OK" as const,
+      head: "1".repeat(40),
+      branch: "main",
+      detached: false,
+      dirty: true,
+      observedAt: "2026-09-20T00:00:00.000Z",
+    };
+
+    const after = appReducer(before, {
+      type: "gitObserved",
+      projectId: "project-alpha",
+      localRoot: "C:\\repos\\alpha",
+      projectCreatedAt: NOW,
+      observation,
+    });
+
+    // Only the observation slice changes: a refresh can never move a Review State (AC2-09) or
+    // rewrite a recorded HEAD (AC2-07).
+    expect(after.gitObservations["project-alpha"]).toEqual({
+      localRoot: "C:\\repos\\alpha",
+      projectCreatedAt: NOW,
+      observation,
+    });
+    expect(after.reviews).toBe(before.reviews);
+    expect(after.projects).toBe(before.projects);
+    expect(after.artifacts).toBe(before.artifacts);
+    expect(after.selectedReviewId).toBe(before.selectedReviewId);
+    expect({ ...after, gitObservations: before.gitObservations }).toEqual(before);
+  });
+
+  it("starts without any observation, so a restart shows UNKNOWN until a refresh (Phase 2)", () => {
+    expect(initialAppState.gitObservations).toEqual({});
+    // A reload inside the running app keeps what was observed; only a restart clears it.
+    const observed = appReducer(initialAppState, {
+      type: "gitObserved",
+      projectId: "project-alpha",
+      localRoot: "C:\\repos\\alpha",
+      projectCreatedAt: NOW,
+      observation: {
+        status: "NOT_A_GIT_REPOSITORY" as const,
+        head: null,
+        branch: null,
+        detached: null,
+        dirty: null,
+        observedAt: "2026-09-20T00:00:00.000Z",
+      },
+    });
+    expect(loaded({}, observed).gitObservations).toBe(observed.gitObservations);
+  });
+
   it("merges filter updates and records fatal errors", () => {
     const state = appReducer(initialAppState, { type: "filterChanged", filter: { showClosed: true } });
     expect(state.filter).toEqual({ text: "", showClosed: true });

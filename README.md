@@ -10,7 +10,7 @@ expected / reviewed HEAD, ChatGPT thread, review state, resource state, previous
 action — so a ChatGPT review surface can be closed and any review resumed later, even after
 restarting the app.
 
-> Status: Phase 1 (Review Hub v0.1) under review. Not released; no installer is published.
+> Status: Phase 1 (Review Hub v0.1) merged; Phase 2 (Evidence / Freshness v0.2) under review. Not released; no installer is published.
 
 ## What it does
 
@@ -30,6 +30,13 @@ restarting the app.
   The review state changes only when you explicitly confirm a verdict. Replacing a saved result
   needs your confirmation and keeps the earlier text as `result-r<N>-previous-<ms>.md`
   (`-<n>` is added if that name is taken, so an interrupted capture can simply be retried).
+- **Git evidence and Freshness** (Phase 2) — on request, DVCC reads the current local Git state of
+  a project (branch, current HEAD, whether the working tree has uncommitted changes) and compares it
+  with the HEADs you recorded. The result is shown as a separate Freshness axis:
+  `ALIGNED` / `HEAD_CHANGED` (the expected HEAD is no longer current) / `REVIEW_STALE` (the reviewed
+  HEAD is no longer current) / `WORKTREE_DIRTY` / `UNKNOWN`, always with one sentence saying why.
+  Freshness never changes a review state, and the observed facts are never written to disk: they are
+  read again only when you press **Refresh Git state** (one project) or **Refresh Git (all)**.
 - **Open GitHub / ChatGPT / project folder** through a validated launcher.
 - **Attention-ordered queue** with filter, recovery banners and a readable history (`events.jsonl`).
 
@@ -54,7 +61,19 @@ restarting the app.
   create it at all, exits quietly without creating a window or touching data (fail closed, exit
   code 75). Debug and release builds share this identity, so a running debug build also blocks a
   release build.
-- Out of scope for v0.1: Git / GitHub freshness detection, GitHub API, Claude Code / Codex session
+- Git observation is **read-only and local**: DVCC runs `git rev-parse`, `git symbolic-ref` and
+  `git status` in your project folder (no shell, no arguments built from text you typed), with
+  `GIT_OPTIONAL_LOCKS=0` so it cannot even write an index refresh. It never fetches, pulls, checks
+  out, commits or contacts a remote, and a Git that does not answer is abandoned after 5 seconds,
+  leaving the Freshness `UNKNOWN`. The folder is checked by the same boundary as the launcher, and
+  the work tree and Git directory Git actually resolves (a `.git` file can point elsewhere) are
+  checked again before any fact is used, so a repository on a network location is refused.
+- What DVCC cannot control: `git status` reads **your** repository's configuration, so a clean
+  filter (`.gitattributes` + `filter.*.clean`) or a file-system monitor configured in that
+  repository runs as part of the observation, exactly as it would for any Git command you run
+  yourself. DVCC switches the file-system monitor off for its own calls and removes the `GIT_*`
+  variables that could redirect Git elsewhere, but it does not otherwise change your configuration.
+- Out of scope for v0.2: GitHub API and any network Git operation, Claude Code / Codex session
   discovery, terminal embedding, Notion / Vault sync, SQLite, REST / MCP, authentication,
   installers and releases.
 
@@ -79,6 +98,8 @@ See [docs/data-contract-v1.md](docs/data-contract-v1.md).
 ## Development
 
 Prerequisites (Windows): Node.js 22+ with npm, Rust stable (MSVC toolchain), Microsoft Edge WebView2 Runtime.
+Git 2.36 or newer is needed for the Phase 2 Git evidence (DVCC passes `-c core.fsmonitor=false`, which
+older versions treat as a hook path); without Git the Freshness simply stays `UNKNOWN`.
 
 ```powershell
 npm ci
@@ -118,14 +139,17 @@ src/
   app/          App shell, UI state reducer, formatting
   components/   Dialog, banner / toast, state badges
   features/     projects/ and reviews/ UI
-  domain/       Pure domain: states, limits, project, review rounds, transitions, schema v1, prompt, queue
+  domain/       Pure domain: states, limits, project, review rounds, transitions, schema v1, prompt,
+                queue, Git observation model, derived Freshness
   services/     Storage port, tracked (conflict-checked) storage, persistence + recovery, use cases,
-                ReviewHub (serialized operations), launcher, clipboard
-  test/         In-memory / delayed storage, independent transition contract, fixture hygiene test
+                ReviewHub (serialized operations), launcher, clipboard, Git observer
+  test/         In-memory / delayed storage, independent transition and Freshness contracts, fixture
+                hygiene test
 src-tauri/
   src/storage.rs   Data-root resolution, serialized atomic storage with preconditions, backups,
                    append-only events, recovery restore, quarantine
   src/launcher.rs  Validated URL / folder launcher (opener plugin; local final targets only)
+  src/git.rs       Read-only local Git observation (bounded, no shell, no network)
   capabilities/    core:default + clipboard write only
 contract/       Shared limits (limits.json) used by TypeScript and Rust
 scripts/        Reproducible verification (single instance)
