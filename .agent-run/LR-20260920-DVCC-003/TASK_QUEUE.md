@@ -30,9 +30,10 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 
 ## Wave 2 — Phase 1 UI migration
 
-- [ ] App shell, queue, project and review forms, dialogs, toasts, banners, recovery and validation text
-- [ ] Review State / Resource State labels and hints
-- [ ] Targeted checks → checkpoint
+- [x] App shell, queue, project and review forms, dialogs, toasts, banners, recovery and validation text
+- [x] Review State / Resource State labels and hints
+- [x] Domain and service messages become named messages the interface renders (`src/domain/message.ts`)
+- [x] Targeted checks → checkpoint
 
 ## Wave 3 — Phase 2 UI migration
 

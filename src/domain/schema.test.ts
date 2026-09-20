@@ -137,7 +137,7 @@ describe("serialize → parse round trip", () => {
     );
     if (!created.ok) throw new Error("fixture invalid");
     const suspended = applyReviewAction(created.value.session, { type: "suspend", resourceState: "COLD", checkpoint: "cp" }, now);
-    if (!suspended.ok) throw new Error(suspended.error);
+    if (!suspended.ok) throw new Error(JSON.stringify(suspended.error));
     expect(parseSessionFile(serializeSession(suspended.value.session), ALPHA)).toEqual({ status: "ok", value: suspended.value.session });
     expect(parseEventLine(serializeEvent(suspended.value.event))).toEqual(suspended.value.event);
     expect(serializeEvent(suspended.value.event)).not.toContain("\n");

@@ -2,7 +2,7 @@ import { FreshnessBadge, ResourceStateBadge, ReviewStateBadge } from "../../comp
 import type { FreshnessResult } from "../../domain/freshness";
 import type { Project } from "../../domain/project";
 import type { QueueFilter, QueueItem } from "../../domain/queue";
-import { REVIEW_STATE_KEYS } from "../../i18n";
+import { REVIEW_STATE_KEYS, translate } from "../../i18n";
 import { useT } from "../../i18n/context";
 
 interface ReviewQueueProps {
@@ -99,7 +99,7 @@ export function ReviewQueue({
                     <div className="qi-top">
                       <span className="qi-project mono">{item.reviewId}</span>
                     </div>
-                    <div className="qi-error">{t("queue.item.unreadable", { problem: item.problem ?? "" })}</div>
+                    <div className="qi-error">{t("queue.item.unreadable", { problem: item.problem ? translate(t, item.problem) : "" })}</div>
                   </>
                 )}
               </button>

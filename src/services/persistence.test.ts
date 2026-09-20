@@ -641,7 +641,7 @@ describe("write failures", () => {
     const { alpha } = await seed(storage);
     storage.failAppends = true;
     const out = unwrap(await performReviewAction(storage, alpha, { type: "markReady" }, now()));
-    expect(out.warning).toMatch(/event history/);
+    expect(out.warning?.key).toBe("service.eventAppendFailed");
     expect((await loadAll(storage)).reviews[0].session?.reviewState).toBe("READY_FOR_REVIEW");
   });
 

@@ -65,7 +65,7 @@ describe("buildReviewRequest", () => {
       { type: "startNextRound", expectedHead: null },
     ] as const) {
       const out = applyReviewAction(s, action, NOW);
-      if (!out.ok) throw new Error(out.error);
+      if (!out.ok) throw new Error(JSON.stringify(out.error));
       s = out.value.session;
     }
     const text = buildReviewRequest(project, s);

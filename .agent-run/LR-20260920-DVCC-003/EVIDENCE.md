@@ -91,3 +91,19 @@ Mutation probes (each reverted immediately afterwards):
 Checks at this checkpoint: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, **534 tests**), `npm run build` PASS. `src-tauri/` is byte-unchanged in this wave; the Rust checks were re-run anyway (see RUN_STATE).
 
 Hard boundary held: no Project, Review or GitObservation code touched; the only file written on a language switch is `settings.json` (asserted by test); no dependency added; no Wave 2 UI migration started.
+
+## Wave 2 — Phase 1 UI migration (2026-09-20)
+
+Two commits: the components first, then the text that is produced outside React.
+
+**Components** (`8bd82d4`). Every rendered surface reads its words from the dictionaries: app shell, queue, project and review forms, all five dialogs, the review detail pane, and the shared badge / banner / dialog components. The label maps left the domain (`REVIEW_STATE_LABELS`, `RESOURCE_STATE_LABELS`, `RESOURCE_STATE_HINTS`, `FRESHNESS_LABELS`, `GIT_STATUS_LABELS` are gone); `data-state`, the CSS class fragments and all 74 `data-testid` attributes keep the stored enum, so nothing that identifies an element moved. Sentences that were assembled in JSX became single parameterised messages, ten rich messages go through `formatParts`, two pluralisation hacks became `_one` variants, and timestamps are formatted through the translator.
+
+**Messages from the layers that have no context** (this checkpoint). `src/domain/message.ts` introduces `Message` — a typed key plus parameters, with optional nested messages — and `translate(t, message)` renders it. Converted: 12 validation rules, 7 project and 5 review field errors, 21 transition guards and action checks, 9 service failures, the three file-health problems, the event-append warning, and the two recovery notices. `FieldErrors`, `Result`'s default error, `QueueSource.problem`, `SaveOutcome.warning` and the dialog submit callbacks all carry `Message` now; `Field` and `FormError` are the only two places that turn one into words, so neither form needed a translation call. 51 new keys in both dictionaries.
+
+Deliberately left literal (L3-023): schema parse reasons, storage error codes and messages, the action type inside a guard message, event notes and file names — all shown as detail inside a localized sentence.
+
+Still English, by wave: the Freshness explanation sentences (`src/domain/freshness.ts`, Wave 3) and the review request template (`src/domain/prompt.ts`, Wave 4).
+
+Checks at this checkpoint: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, **534 tests**), `npm run build` PASS. `src-tauri/` unchanged in this wave. A grep of `src/app`, `src/components` and `src/features` for JSX text and the usual text attributes finds no English literal left; the static gate that enforces this is Wave 4.
+
+Test changes: assertions that printed a failed `Result` now stringify it (6 files), the queue fixture builds its problem as a message, the event-append warning is asserted by key, and the two recovery-notice assertions check the key and the quarantined file name parameter instead of an English sentence.

@@ -1,3 +1,4 @@
+import { message, type Message } from "../domain/message";
 import type { ReviewEvent } from "../domain/events";
 import type { Project } from "../domain/project";
 import { latestCapturedRound, type ReviewSession } from "../domain/review";
@@ -45,14 +46,18 @@ export function isWritable(health: FileHealth): boolean {
   return health.status === "ok" || health.status === "missing" || health.status === "restored_from_backup";
 }
 
-export function describeHealthProblem(health: FileHealth): string | null {
+/**
+ * What is wrong with a file, as a message the interface renders. The reason and the error code are
+ * technical detail (a schema field, a storage code) and stay as they are inside the sentence.
+ */
+export function describeHealthProblem(health: FileHealth): Message | null {
   switch (health.status) {
     case "unreadable":
-      return health.reason;
+      return message("health.unreadable", { reason: health.reason });
     case "io_error":
-      return `could not be accessed: ${health.reason} (${health.code})`;
+      return message("health.ioError", { reason: health.reason, code: health.code });
     case "unsupported_version":
-      return `written by a newer DVCC version (schemaVersion ${health.version}); opened read-only`;
+      return message("health.unsupportedVersion", { version: health.version });
     default:
       return null;
   }
@@ -242,7 +247,7 @@ export async function writeSessionAndEvent(
   session: ReviewSession,
   event: ReviewEvent,
   options?: { create?: boolean },
-): Promise<string | null> {
+): Promise<Message | null> {
   const id = session.reviewSessionId;
   // A new review must not replace an existing session.json (e.g. an id collision).
   await backend.write(reviewTarget(id, "session.json"), serializeSession(session), options?.create ? { kind: "absent" } : undefined);
@@ -250,7 +255,7 @@ export async function writeSessionAndEvent(
     await backend.appendLine(reviewTarget(id, "events.jsonl"), serializeEvent(event));
     return null;
   } catch (error) {
-    return `State saved, but the event history could not be appended: ${toStorageError(error).message}`;
+    return message("service.eventAppendFailed", { error: toStorageError(error).message });
   }
 }
 

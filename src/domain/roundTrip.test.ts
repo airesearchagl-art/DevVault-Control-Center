@@ -71,7 +71,7 @@ describe("repository URL normalization (F-1)", () => {
 
   it.each(REPOSITORY_CASES.filter(([, expected]) => expected !== null))("is idempotent for %s", (input) => {
     const first = normalizeRepositoryUrl(input);
-    if (!first.ok) throw new Error(first.error);
+    if (!first.ok) throw new Error(JSON.stringify(first.error));
     expect(normalizeRepositoryUrl(first.value)).toEqual(first);
   });
 
@@ -95,19 +95,19 @@ describe("other normalizers are idempotent", () => {
     "https://chatgpt.com:443/g/example-gpt",
   ])("chatgpt thread URL %s", (input) => {
     const first = normalizeChatgptThreadUrl(input);
-    if (!first.ok) throw new Error(first.error);
+    if (!first.ok) throw new Error(JSON.stringify(first.error));
     expect(normalizeChatgptThreadUrl(first.value)).toEqual(first);
   });
 
   it.each(["  C:\\example\\project-alpha  ", "d:/example/project", "C:\\"])("local root %s", (input) => {
     const first = normalizeLocalRoot(input);
-    if (!first.ok) throw new Error(first.error);
+    if (!first.ok) throw new Error(JSON.stringify(first.error));
     expect(normalizeLocalRoot(first.value)).toEqual(first);
   });
 
   it.each([" ABCDEF1 ", "0123456789ABCDEF0123456789abcdef01234567"])("HEAD %s", (input) => {
     const first = normalizeHead(input);
-    if (!first.ok) throw new Error(first.error);
+    if (!first.ok) throw new Error(JSON.stringify(first.error));
     expect(normalizeHead(first.value)).toEqual(first);
   });
 });
@@ -165,7 +165,7 @@ describe("save → reload → validate round-trip for every accepted input (F-1 
     ] as const;
     for (const action of actions) {
       const out = applyReviewAction(session, action, LATER);
-      if (!out.ok) throw new Error(`${action.type}: ${out.error}`);
+      if (!out.ok) throw new Error(`${action.type}: ${JSON.stringify(out.error)}`);
       session = out.value.session;
       expect(parseSessionFile(serializeSession(session), "rv-20260201-rtrip1")).toEqual({ status: "ok", value: session });
     }

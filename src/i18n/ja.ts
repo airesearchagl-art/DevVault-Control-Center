@@ -424,6 +424,77 @@ export const ja = {
     "より新しいDVCCで書き込まれています（schemaVersion {version}）。読み取り専用で開きました",
   "health.unreadable": "読み取れません: {reason}",
 
+  // --- validation --------------------------------------------------------------------------------------------
+  "validation.url.notAbsolute": "有効な絶対URLではありません",
+  "validation.url.httpsOnly": "https のURLのみ使用できます",
+  "validation.url.credentials": "認証情報を含むURLは使用できません",
+  "validation.url.port": "既定以外のポートを含むURLは使用できません",
+  "validation.url.host": "ホストは次のいずれかにしてください: {hosts}",
+  "validation.repositoryUrl.shape":
+    "リポジトリURLは https://github.com/<owner>/<repo> の形式にしてください",
+  "validation.repositoryUrl.query":
+    "リポジトリURLにクエリやフラグメントは含められません",
+  "validation.head.format": "HEADは7〜40文字の16進コミットSHAにしてください",
+  "validation.prNumber.format": "PR番号は正の整数にしてください",
+  "validation.localRoot.unc": "UNC・ネットワークパスには対応していません",
+  "validation.localRoot.absolute":
+    "ローカルルートは C:\\work\\project のような絶対パスにしてください",
+  "validation.displayName.required": "表示名は必須です",
+  "validation.displayName.tooLong": "表示名は{max}文字以内にしてください",
+  "validation.projectId.format":
+    "プロジェクトIDは2〜64文字で、英小文字・数字・ハイフンのみ、先頭は英小文字か数字にしてください",
+  "validation.projectId.duplicate": "このプロジェクトIDは既に使われています",
+  "validation.ide.tooLong": "IDEラベルは{max}文字以内にしてください",
+  "validation.nextAction.tooLong": "次のアクションが長すぎます",
+  "validation.notes.tooLong": "メモが長すぎます",
+  "validation.reviewType.required": "レビュー種別は必須です",
+  "validation.reviewType.tooLong": "レビュー種別は{max}文字以内にしてください",
+  "validation.threadTitle.tooLong": "スレッドのタイトルは{max}文字以内にしてください",
+  "validation.project.required": "登録済みのプロジェクトを選択してください",
+  "validation.resourceState.required": "リソース状態を選択してください",
+
+  // --- action guards -----------------------------------------------------------------------------------------
+  "action.notAllowed": "「{action}」はレビュー状態 {state} では実行できません",
+  "action.alreadyActive": "このレビューは中断中ではなく、すでに HOT です",
+  "action.roundLimit": "ラウンド上限（R{max}）に達しています",
+  "action.expectedHead.invalid": "レビュー予定HEADが有効なSHAではありません",
+  "action.reviewedHead.invalid": "レビュー済みHEADが有効なSHAではありません",
+  "action.archive.roundMismatch": "退避ファイル名がこのラウンドと一致しません",
+  "action.archive.resultMismatch":
+    "退避ファイル名が差し替え対象の結果と一致しません",
+  "action.archive.duplicate": "退避ファイル名は既に記録されています",
+  "action.capture.replaceConfirmationRequired":
+    "R{round} には保存済みの結果があります。差し替えるには明示的な確認が必要です",
+  "action.verdict.confirmationRequired": "判定の確定には明示的な確認が必要です",
+  "action.verdict.resultRequired":
+    "判定を確定する前に R{round} のレビュー結果を保存してください",
+  "action.suspend.notResumable": "{state} からは一時中断できません",
+  "action.resource.unchanged": "リソース状態はすでに {state} です",
+  "action.verdict.unknown": "不明な判定です",
+  "action.block.confirmationRequired": "ブロックには明示的な確認が必要です",
+  "action.block.reasonRequired": "レビューをブロックするには理由が必要です",
+  "action.block.reasonTooLong": "理由が長すぎます",
+  "action.suspend.resourceState": "一時中断には WARM か COLD を指定してください",
+  "action.suspend.checkpointRequired":
+    "一時中断にはチェックポイントの記入が必要です",
+  "action.resume.noPreviousState": "中断前の状態が記録されていません",
+  "action.close.confirmationRequired": "完了にするには明示的な確認が必要です",
+  "action.nextAction.unchanged": "次のアクションが変更されていません",
+
+  // --- services ------------------------------------------------------------------------------------------------
+  "service.projectsNotModifiable": "projects.json を変更できません: {problem}",
+  "service.unknownProject": "未登録のプロジェクトです: {id}",
+  "service.noArchiveName":
+    "R{round} の以前の結果を保持できるファイル名が残っていません",
+  "service.resultRequired": "保存する前にレビュー結果を貼り付けてください",
+  "service.resultTooLong": "レビュー結果が長すぎます",
+  "service.reviewIdCollision":
+    "一意のレビューIDを採番できませんでした。もう一度お試しください",
+  "service.reviewUnavailable": "レビュー {id} を利用できません",
+  "service.projectMissing": "プロジェクト {id} は projects.json にありません",
+  "service.eventAppendFailed":
+    "状態は保存しましたが、履歴を追記できませんでした: {error}",
+
   // --- time ------------------------------------------------------------------------------------------------------
   "time.pattern": "{year}/{month}/{day} {hour}:{minute}",
   "time.unknown": "—",

@@ -1,4 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
+import type { Message } from "../domain/message";
+import { translate } from "../i18n";
 import { useT } from "../i18n/context";
 
 interface DialogProps {
@@ -37,12 +39,14 @@ export function Dialog({ title, onClose, children, testId, wide = false }: Dialo
 interface FieldProps {
   label: string;
   htmlFor?: string;
-  error?: string;
+  /** What is wrong with this field, named by the domain and put into words here. */
+  error?: Message;
   hint?: ReactNode;
   children: ReactNode;
 }
 
 export function Field({ label, htmlFor, error, hint, children }: FieldProps) {
+  const t = useT();
   return (
     <div className={`field${error ? " field-invalid" : ""}`}>
       <label htmlFor={htmlFor}>{label}</label>
@@ -50,18 +54,19 @@ export function Field({ label, htmlFor, error, hint, children }: FieldProps) {
       {hint && <p className="hint">{hint}</p>}
       {error && (
         <p className="field-error" role="alert">
-          {error}
+          {translate(t, error)}
         </p>
       )}
     </div>
   );
 }
 
-export function FormError({ message }: { message?: string | null }) {
+export function FormError({ message }: { message?: Message | null }) {
+  const t = useT();
   if (!message) return null;
   return (
     <p className="form-error" role="alert" data-testid="form-error">
-      {message}
+      {translate(t, message)}
     </p>
   );
 }
@@ -73,14 +78,14 @@ interface ConfirmDialogProps {
   danger?: boolean;
   reasonLabel?: string;
   testId?: string;
-  onConfirm: (reason: string) => Promise<string | null>;
+  onConfirm: (reason: string) => Promise<Message | null>;
   onCancel: () => void;
 }
 
 /** Explicit Human confirmation, optionally with a required reason. */
 export function ConfirmDialog({ title, message, confirmLabel, danger, reasonLabel, testId, onConfirm, onCancel }: ConfirmDialogProps) {
   const [reason, setReason] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Message | null>(null);
   const [saving, setSaving] = useState(false);
   const t = useT();
   const needsReason = reasonLabel !== undefined;

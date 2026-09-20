@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
 import type { ReviewEventType } from "../domain/events";
+import type { Message } from "../domain/message";
 import type { Freshness } from "../domain/freshness";
 import type { GitStatus } from "../domain/git";
 import type { ResourceState, ReviewState, Verdict } from "../domain/states";
 import { en } from "./en";
 import { ja } from "./ja";
 import { DEFAULT_LOCALE, type Locale } from "./locale";
-import type { Dictionary, TranslationKey, Translator } from "./types";
+import type { Dictionary, TranslationKey, TranslationParams, Translator } from "./types";
 
 export type { Locale } from "./locale";
 export {
@@ -46,6 +47,14 @@ export function createTranslator(locale: Locale): Translator {
       name in params ? String(params[name]) : token,
     );
   };
+}
+
+/** Puts a message named elsewhere — in the domain or a service — into the Human's language. */
+export function translate(t: Translator, message: Message): string {
+  if (message.messageParams === undefined) return t(message.key, message.params);
+  const params: TranslationParams = { ...message.params };
+  for (const [name, nested] of Object.entries(message.messageParams)) params[name] = translate(t, nested);
+  return t(message.key, params);
 }
 
 /**

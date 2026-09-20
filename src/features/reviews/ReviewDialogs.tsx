@@ -1,15 +1,16 @@
 import { useState } from "react";
 import { excerpt } from "../../app/format";
 import { Dialog, Field, FormError } from "../../components/Dialog";
+import type { Message } from "../../domain/message";
 import { currentRound, type ReviewSession } from "../../domain/review";
 import { normalizeHead } from "../../domain/validation";
 import { formatParts, RESOURCE_HINT_KEYS, RESOURCE_STATE_KEYS, REVIEW_STATE_KEYS, VERDICT_KEYS, type TranslationKey } from "../../i18n";
 import { useT } from "../../i18n/context";
 
 function useSubmit() {
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Message | null>(null);
   const [saving, setSaving] = useState(false);
-  const run = async (fn: () => Promise<string | null>) => {
+  const run = async (fn: () => Promise<Message | null>) => {
     setSaving(true);
     const result = await fn();
     setSaving(false);
@@ -25,7 +26,7 @@ export function SuspendDialog({
   onCancel,
 }: {
   session: ReviewSession;
-  onSubmit: (checkpoint: string, resourceState: "WARM" | "COLD") => Promise<string | null>;
+  onSubmit: (checkpoint: string, resourceState: "WARM" | "COLD") => Promise<Message | null>;
   onCancel: () => void;
 }) {
   const t = useT();
@@ -89,7 +90,7 @@ export function CaptureResultDialog({
   onCancel,
 }: {
   session: ReviewSession;
-  onSubmit: (text: string, reviewedHead: string | null, replaceConfirmed: boolean) => Promise<string | null>;
+  onSubmit: (text: string, reviewedHead: string | null, replaceConfirmed: boolean) => Promise<Message | null>;
   onCancel: () => void;
 }) {
   const round = currentRound(session);
@@ -188,7 +189,7 @@ export function VerdictDialog({
 }: {
   session: ReviewSession;
   resultText: string | null;
-  onConfirm: (verdict: VerdictChoice, note: string) => Promise<string | null>;
+  onConfirm: (verdict: VerdictChoice, note: string) => Promise<Message | null>;
   onCancel: () => void;
 }) {
   const [verdict, setVerdict] = useState<VerdictChoice | null>(null);
@@ -258,7 +259,7 @@ export function NextRoundDialog({
   onCancel,
 }: {
   session: ReviewSession;
-  onSubmit: (expectedHead: string | null) => Promise<string | null>;
+  onSubmit: (expectedHead: string | null) => Promise<Message | null>;
   onCancel: () => void;
 }) {
   const [head, setHead] = useState("");

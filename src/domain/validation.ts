@@ -1,4 +1,4 @@
-import { err, ok, type Result } from "./result";
+import { invalid, ok, type Result } from "./result";
 
 export const PROJECT_ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,63}$/;
 export const REVIEW_ID_PATTERN = /^rv-\d{8}-[a-z0-9]{6}$/;
@@ -32,16 +32,16 @@ export function parseAllowedHttpsUrl(raw: string, allowedHosts: readonly string[
   try {
     url = new URL(raw.trim());
   } catch {
-    return err("Not a valid absolute URL");
+    return invalid("validation.url.notAbsolute");
   }
-  if (url.protocol !== "https:") return err("Only https URLs are allowed");
-  if (url.username !== "" || url.password !== "") return err("URLs with embedded credentials are not allowed");
-  if (url.port !== "") return err("URLs with a non-default port are not allowed");
-  if (!allowedHosts.includes(url.hostname)) return err(`Host must be one of: ${allowedHosts.join(", ")}`);
+  if (url.protocol !== "https:") return invalid("validation.url.httpsOnly");
+  if (url.username !== "" || url.password !== "") return invalid("validation.url.credentials");
+  if (url.port !== "") return invalid("validation.url.port");
+  if (!allowedHosts.includes(url.hostname)) return invalid("validation.url.host", { hosts: allowedHosts.join(", ") });
   return ok(url);
 }
 
-const REPOSITORY_URL_SHAPE = "Repository URL must look like https://github.com/<owner>/<repo>";
+const REPOSITORY_URL_SHAPE = "validation.repositoryUrl.shape" as const;
 const GITHUB_OWNER_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 const GITHUB_REPO_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
 
@@ -56,19 +56,19 @@ export function normalizeRepositoryUrl(raw: string): Result<string> {
   const parsed = parseAllowedHttpsUrl(raw, GITHUB_HOSTS);
   if (!parsed.ok) return parsed;
   const url = parsed.value;
-  if (url.search !== "" || url.hash !== "") return err("Repository URL must not contain a query or fragment");
+  if (url.search !== "" || url.hash !== "") return invalid("validation.repositoryUrl.query");
   const segments = url.pathname.split("/").filter((segment) => segment !== "");
-  if (segments.length !== 2) return err(REPOSITORY_URL_SHAPE);
+  if (segments.length !== 2) return invalid(REPOSITORY_URL_SHAPE);
   const owner = segments[0];
   let repo = segments[1];
   while (repo.toLowerCase().endsWith(".git")) repo = repo.slice(0, -4);
   if (!GITHUB_OWNER_PATTERN.test(owner) || !GITHUB_REPO_PATTERN.test(repo) || repo === "." || repo === "..") {
-    return err(REPOSITORY_URL_SHAPE);
+    return invalid(REPOSITORY_URL_SHAPE);
   }
   const canonical = `https://github.com/${owner}/${repo}`;
   // Defensive self-check: the canonical form must parse back to itself.
   const reparsed = parseAllowedHttpsUrl(canonical, GITHUB_HOSTS);
-  if (!reparsed.ok || reparsed.value.pathname !== `/${owner}/${repo}`) return err(REPOSITORY_URL_SHAPE);
+  if (!reparsed.ok || reparsed.value.pathname !== `/${owner}/${repo}`) return invalid(REPOSITORY_URL_SHAPE);
   return ok(canonical);
 }
 
@@ -84,7 +84,7 @@ export function pullRequestUrl(repositoryUrl: string, prNumber: number): string 
 /** Commit SHA (7–40 hex). Normalized to lowercase. */
 export function normalizeHead(raw: string): Result<string> {
   const value = raw.trim().toLowerCase();
-  return HEAD_PATTERN.test(value) ? ok(value) : err("HEAD must be a 7–40 character hexadecimal commit SHA");
+  return HEAD_PATTERN.test(value) ? ok(value) : invalid("validation.head.format");
 }
 
 export function isValidHead(value: unknown): value is string {
@@ -93,7 +93,7 @@ export function isValidHead(value: unknown): value is string {
 
 export function parsePrNumber(raw: string): Result<number> {
   const value = raw.trim();
-  return /^[1-9]\d{0,6}$/.test(value) ? ok(Number(value)) : err("PR number must be a positive integer");
+  return /^[1-9]\d{0,6}$/.test(value) ? ok(Number(value)) : invalid("validation.prNumber.format");
 }
 
 /**
@@ -102,8 +102,8 @@ export function parsePrNumber(raw: string): Result<number> {
  */
 export function normalizeLocalRoot(raw: string): Result<string> {
   const value = raw.trim();
-  if (/^(\\\\|\/\/)/.test(value)) return err("UNC / network paths are not supported");
-  if (!/^[A-Za-z]:[\\/]/.test(value)) return err("Local root must be an absolute drive path such as C:\\work\\project");
+  if (/^(\\\\|\/\/)/.test(value)) return invalid("validation.localRoot.unc");
+  if (!/^[A-Za-z]:[\\/]/.test(value)) return invalid("validation.localRoot.absolute");
   return ok(value);
 }
 

@@ -31,8 +31,11 @@ describe("appReducer", () => {
     });
     expect(state.phase).toBe("ready");
     expect(state.notices.map((n) => n.id)).toEqual(["projects-restored", "review-restored-rv-20260101-alpha1"]);
-    expect(state.notices[0].message).toContain("projects.json.corrupt-1");
-    expect(state.notices[1].message).toContain("was missing and was restored from its backup");
+    expect(state.notices[0].message.key).toBe("notice.restoredCorrupt");
+    // The quarantined file name is data, not a word: it travels as a parameter.
+    expect(state.notices[0].message.params?.quarantined).toBe("projects.json.corrupt-1");
+    expect(state.notices[1].message.key).toBe("notice.restoredMissing");
+    expect(state.notices[1].message.messageParams?.label.key).toBe("notice.label.reviewSession");
     expect(appReducer(state, { type: "dismissNotice", id: "projects-restored" }).notices).toHaveLength(1);
   });
 

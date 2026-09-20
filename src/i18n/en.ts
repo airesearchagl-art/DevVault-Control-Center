@@ -414,6 +414,85 @@ export const en: Dictionary = {
     "written by a newer DVCC version (schemaVersion {version}); opened read-only",
   "health.unreadable": "could not be read: {reason}",
 
+  // --- validation --------------------------------------------------------------------------------------------
+  "validation.url.notAbsolute": "Not a valid absolute URL",
+  "validation.url.httpsOnly": "Only https URLs are allowed",
+  "validation.url.credentials": "URLs with embedded credentials are not allowed",
+  "validation.url.port": "URLs with a non-default port are not allowed",
+  "validation.url.host": "Host must be one of: {hosts}",
+  "validation.repositoryUrl.shape":
+    "Repository URL must look like https://github.com/<owner>/<repo>",
+  "validation.repositoryUrl.query":
+    "Repository URL must not contain a query or fragment",
+  "validation.head.format":
+    "HEAD must be a 7–40 character hexadecimal commit SHA",
+  "validation.prNumber.format": "PR number must be a positive integer",
+  "validation.localRoot.unc": "UNC / network paths are not supported",
+  "validation.localRoot.absolute":
+    "Local root must be an absolute drive path such as C:\\work\\project",
+  "validation.displayName.required": "Display name is required",
+  "validation.displayName.tooLong":
+    "Display name must be at most {max} characters",
+  "validation.projectId.format":
+    "Project ID must be 2–64 characters: lowercase letters, digits and hyphens, starting with a letter or digit",
+  "validation.projectId.duplicate": "Project ID is already used",
+  "validation.ide.tooLong": "IDE label must be at most {max} characters",
+  "validation.nextAction.tooLong": "Next action is too long",
+  "validation.notes.tooLong": "Notes are too long",
+  "validation.reviewType.required": "Review type is required",
+  "validation.reviewType.tooLong":
+    "Review type must be at most {max} characters",
+  "validation.threadTitle.tooLong":
+    "Thread title must be at most {max} characters",
+  "validation.project.required": "Select a registered project",
+  "validation.resourceState.required": "Select a resource state",
+
+  // --- action guards -----------------------------------------------------------------------------------------
+  "action.notAllowed": "“{action}” is not allowed while the review is {state}",
+  "action.alreadyActive": "The review is already active (not suspended and HOT)",
+  "action.roundLimit": "The round limit (R{max}) has been reached",
+  "action.expectedHead.invalid": "Expected HEAD is not a valid SHA",
+  "action.reviewedHead.invalid": "Reviewed HEAD is not a valid SHA",
+  "action.archive.roundMismatch": "Archive file name does not match this round",
+  "action.archive.resultMismatch":
+    "Archive file name does not match the replaced result",
+  "action.archive.duplicate": "Archive file name is already recorded",
+  "action.capture.replaceConfirmationRequired":
+    "R{round} already has a saved result; replacing it requires explicit Human confirmation",
+  "action.verdict.confirmationRequired":
+    "A verdict requires explicit Human confirmation",
+  "action.verdict.resultRequired":
+    "Capture the review result for round R{round} before confirming a verdict",
+  "action.suspend.notResumable": "Cannot suspend from {state}",
+  "action.resource.unchanged": "Resource is already {state}",
+  "action.verdict.unknown": "Unknown verdict",
+  "action.block.confirmationRequired":
+    "Blocking requires explicit Human confirmation",
+  "action.block.reasonRequired": "A reason is required to block the review",
+  "action.block.reasonTooLong": "Reason is too long",
+  "action.suspend.resourceState": "Suspend requires WARM or COLD",
+  "action.suspend.checkpointRequired":
+    "A checkpoint note is required to suspend",
+  "action.resume.noPreviousState":
+    "Suspended review has no recorded previous state",
+  "action.close.confirmationRequired":
+    "Closing requires explicit Human confirmation",
+  "action.nextAction.unchanged": "Next action is unchanged",
+
+  // --- services ------------------------------------------------------------------------------------------------
+  "service.projectsNotModifiable": "projects.json cannot be modified: {problem}",
+  "service.unknownProject": "Unknown project: {id}",
+  "service.noArchiveName":
+    "R{round} has no free archive name left for the previous result",
+  "service.resultRequired": "Paste the review result before saving",
+  "service.resultTooLong": "Review result is too long",
+  "service.reviewIdCollision":
+    "Could not allocate a unique review id; try again",
+  "service.reviewUnavailable": "Review {id} is not available",
+  "service.projectMissing": "Project {id} is not in projects.json",
+  "service.eventAppendFailed":
+    "State saved, but the event history could not be appended: {error}",
+
   // --- time ------------------------------------------------------------------------------------------------------
   "time.pattern": "{year}-{month}-{day} {hour}:{minute}",
   "time.unknown": "—",

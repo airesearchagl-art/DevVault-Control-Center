@@ -1,6 +1,7 @@
 import type { Project, ProjectFormInput } from "../domain/project";
 import type { ReviewFormInput, ReviewSession } from "../domain/review";
-import { err, type FieldErrors, type Result } from "../domain/result";
+import { message } from "../domain/message";
+import { err, invalid, type FieldErrors, type Result } from "../domain/result";
 import type { ReviewAction } from "../domain/transitions";
 import { generateReviewId } from "../domain/validation";
 import {
@@ -129,7 +130,7 @@ export class ReviewHub {
     return this.run(async () => {
       let reviewId = this.newReviewId(new Date(this.now()));
       for (let attempt = 0; this.reviews.has(reviewId) && attempt < 10; attempt += 1) reviewId = this.newReviewId(new Date(this.now()));
-      if (this.reviews.has(reviewId)) return err({ _form: "Could not allocate a unique review id; try again" });
+      if (this.reviews.has(reviewId)) return err({ _form: message("service.reviewIdCollision") });
       const result = await saveNewReview(this.storage, this.projects, input, reviewId, this.now());
       if (result.ok) {
         this.storeSession(result.value.session);
@@ -142,7 +143,7 @@ export class ReviewHub {
   apply(reviewId: string, action: ReviewAction): Promise<Result<SaveOutcome>> {
     return this.run(async () => {
       const session = this.session(reviewId);
-      if (!session) return err(`Review ${reviewId} is not available`);
+      if (!session) return invalid("service.reviewUnavailable", { id: reviewId });
       const result = await performReviewAction(this.storage, session, action, this.now());
       if (result.ok) {
         this.storeSession(result.value.session);
@@ -155,9 +156,9 @@ export class ReviewHub {
   saveRequest(reviewId: string): Promise<Result<SaveOutcome & { text: string }>> {
     return this.run(async () => {
       const session = this.session(reviewId);
-      if (!session) return err(`Review ${reviewId} is not available`);
+      if (!session) return invalid("service.reviewUnavailable", { id: reviewId });
       const project = this.projects.find((p) => p.projectId === session.projectId);
-      if (!project) return err(`Project ${session.projectId} is not in projects.json`);
+      if (!project) return invalid("service.projectMissing", { id: session.projectId });
       const result = await saveReviewRequest(this.storage, project, session, this.now());
       if (result.ok) {
         this.storeSession(result.value.session);
@@ -175,7 +176,7 @@ export class ReviewHub {
   ): Promise<Result<SaveOutcome & { archivedAs: string | null }>> {
     return this.run(async () => {
       const session = this.session(reviewId);
-      if (!session) return err(`Review ${reviewId} is not available`);
+      if (!session) return invalid("service.reviewUnavailable", { id: reviewId });
       const result = await captureReviewResult(this.storage, session, text, reviewedHead, replaceConfirmed, this.now());
       if (result.ok) {
         this.storeSession(result.value.session);

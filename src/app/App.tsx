@@ -31,10 +31,12 @@ import { ReviewHub } from "../services/reviewHub";
 import type { SaveOutcome } from "../services/reviewService";
 import { createLocaleStore, loadSettings } from "../services/settings";
 import { tauriStorage, toStorageError } from "../services/storage";
+import { message, type Message } from "../domain/message";
 import {
   createTranslator,
   DEFAULT_LOCALE,
   formatParts,
+  translate,
   REVIEW_STATE_KEYS,
   REVIEW_TYPE_SUGGESTION_KEYS,
   VERDICT_KEYS,
@@ -58,11 +60,12 @@ type DialogState =
   | { kind: "setAsideProjects" };
 
 // User-facing text for a failed save; conflicts explain that nothing was overwritten.
-function saveFailed(t: Translator, error: unknown): string {
+function saveFailed(t: Translator, error: unknown): Message {
   const storageError = toStorageError(error);
-  if (storageError.code === "CONFLICT") return t("error.saveConflict");
-  if (storageError.code === "RECOVERY_REQUIRED") return t("error.saveRecoveryRequired");
-  return t("error.saveFailed", { error: describeError(t, error) });
+  if (storageError.code === "CONFLICT") return message("error.saveConflict");
+  if (storageError.code === "RECOVERY_REQUIRED") return message("error.saveRecoveryRequired");
+  // The storage error keeps its own words: it is a technical detail, like the code next to it.
+  return message("error.saveFailed", { error: describeError(t, error) });
 }
 
 export default function App() {
@@ -276,25 +279,25 @@ export default function App() {
   const findSession = (reviewId: string): ReviewSession | null => state.reviews.find((r) => r.reviewId === reviewId)?.session ?? null;
 
   const warnIfNeeded = (outcome: SaveOutcome) => {
-    if (outcome.warning) notify("warning", outcome.warning);
+    if (outcome.warning) notify("warning", translate(t, outcome.warning));
   };
 
   // Persists a transition through the hub. Only the review id is taken from `session`; the hub
   // applies the action to its latest committed state. Returns an error message or null.
-  const runAction = async (session: ReviewSession, action: ReviewAction, success?: string): Promise<string | null> => {
+  const runAction = async (session: ReviewSession, action: ReviewAction, success?: string): Promise<Message | null> => {
     try {
       const result = await track(hub.apply(session.reviewSessionId, action));
       if (!result.ok) {
-        notify("error", result.error);
+        notify("error", translate(t, result.error));
         return result.error;
       }
       warnIfNeeded(result.value);
       if (success) notify("info", success);
       return null;
     } catch (error) {
-      const message = saveFailed(t, error);
-      notify("error", message);
-      return message;
+      const failure = saveFailed(t, error);
+      notify("error", translate(t, failure));
+      return failure;
     }
   };
 
@@ -345,7 +348,7 @@ export default function App() {
     try {
       const result = await track(hub.saveRequest(session.reviewSessionId));
       if (!result.ok) {
-        notify("error", result.error);
+        notify("error", translate(t, result.error));
         return;
       }
       warnIfNeeded(result.value);
@@ -357,7 +360,7 @@ export default function App() {
         notify("error", t("toast.requestSavedCopyFailed", { round, error: describeError(t, error) }));
       }
     } catch (error) {
-      notify("error", saveFailed(t, error));
+      notify("error", translate(t, saveFailed(t, error)));
     }
   };
 
@@ -366,7 +369,7 @@ export default function App() {
     text: string,
     reviewedHead: string | null,
     replaceConfirmed: boolean,
-  ): Promise<string | null> => {
+  ): Promise<Message | null> => {
     try {
       const result = await track(hub.captureResult(session.reviewSessionId, text, reviewedHead, replaceConfirmed));
       if (!result.ok) return result.error;
@@ -381,7 +384,7 @@ export default function App() {
     }
   };
 
-  const confirmVerdict = async (session: ReviewSession, verdict: VerdictChoice, note: string): Promise<string | null> => {
+  const confirmVerdict = async (session: ReviewSession, verdict: VerdictChoice, note: string): Promise<Message | null> => {
     const action: ReviewAction =
       verdict === "BLOCKED"
         ? { type: "block", reason: note, confirmedByHuman: true }
@@ -391,20 +394,20 @@ export default function App() {
     return error;
   };
 
-  const withDialogClose = async (promise: Promise<string | null>): Promise<string | null> => {
+  const withDialogClose = async (promise: Promise<Message | null>): Promise<Message | null> => {
     const error = await promise;
     if (!error) setDialog(null);
     return error;
   };
 
-  const setAsideProjects = async (): Promise<string | null> => {
+  const setAsideProjects = async (): Promise<Message | null> => {
     try {
       const kept = await track(hub.setAsideProjects());
       setDialog(null);
       notify("info", t("toast.setAsideDone", { files: kept.join(", ") }));
       return null;
     } catch (error) {
-      return t("toast.setAsideFailed", { error: describeError(t, error) });
+      return message("toast.setAsideFailed", { error: describeError(t, error) });
     }
   };
 
@@ -491,6 +494,7 @@ export default function App() {
       />
     );
   } else if (selected) {
+    const healthProblem = describeHealthProblem(selected.health);
     detail = (
       <div className="empty-state" data-testid="detail-unreadable" data-health={selected.health.status}>
         <h2>
@@ -498,7 +502,7 @@ export default function App() {
             ? t("unreadable.title.inaccessible", { id: selected.reviewId })
             : t("unreadable.title.unreadable", { id: selected.reviewId })}
         </h2>
-        <p className="error-text">{describeHealthProblem(selected.health)}</p>
+        <p className="error-text">{healthProblem && translate(t, healthProblem)}</p>
         <p className="muted">
           {formatParts(
             selected.health.status === "io_error" ? t("unreadable.body.inaccessible") : t("unreadable.body.unreadable"),
@@ -595,15 +599,15 @@ export default function App() {
           >
             {formatParts(
               state.projectsHealth.status === "io_error"
-                ? t("banner.projectsIoError", { problem: projectsProblem ?? "" })
-                : t("banner.projectsUnreadable", { problem: projectsProblem ?? "" }),
+                ? t("banner.projectsIoError", { problem: projectsProblem ? translate(t, projectsProblem) : "" })
+                : t("banner.projectsUnreadable", { problem: projectsProblem ? translate(t, projectsProblem) : "" }),
               { projects: <strong key="projects">{t("notice.label.projects")}</strong> },
             )}
           </Banner>
         )}
         {state.notices.map((notice) => (
           <Banner key={notice.id} kind="warning" testId="banner-notice" onDismiss={() => dispatch({ type: "dismissNotice", id: notice.id })}>
-            {notice.message}
+            {translate(t, notice.message)}
           </Banner>
         ))}
       </div>
