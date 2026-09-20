@@ -69,3 +69,25 @@ Tests (24 new): locale set and default; parity of the key sets; no blank values;
 Checks at this checkpoint: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, **524 tests**), `npm run build` PASS, `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (68 passed, 2 ignored).
 
 Note: `npx prettier --write` was run once by mistake on `src/app/App.tsx` (this repository does not use Prettier); the file was restored from Git and the wiring re-applied, so its diff contains only the intended 48 added lines.
+
+## Wave 1.5 — persistence hardening (2026-09-20)
+
+Asked for by the Human after the Wave 1 checkpoint, before any UI migration. Three defects in the Wave 1 persistence path, all in `src/services/settings.ts` and the language wiring in `src/app/App.tsx`.
+
+1. **Schema version was accepted without being checked.** `parseSettings` read `locale` whatever `schemaVersion` said. It now requires exactly `1`; a missing version, a version of the wrong type, `0` and any later version all make the file invalid, which means Japanese, the existing warning, and the file left exactly as it was — loading still writes nothing, so a file belonging to a later version is not destroyed by this one.
+2. **A failed save was swallowed after the interface had already changed.** The switch is now backed by a `LocaleStore` that reports what is actually stored: the interface follows the choice immediately, and if the write fails it goes back to the stored language and shows `notice.settingsSaveFailed` in that language. A failure whose choice has already been superseded by a newer one does not pull the interface back (the newer choice owns it). The restart requirement is unaffected: what the interface shows after a switch settles is what the file holds.
+3. **Overlapping writes could land out of order.** Preference writes now go through one serial queue per storage backend, inside `saveLocale`, so every caller is covered. Rapid switching ends with the last chosen language both on screen and in the file.
+
+Tests (10 new, 534 total): four more unusable-file cases (missing, mistyped, `0` and future schema version) with the file byte-identical afterwards; `parseSettings` version rules; a successful save reporting the stored language; a failed write keeping the stored language, the `WRITE_FAILED` code, and every file in the folder unchanged; an older failed write not pulling the interface back over a newer choice; four rapid switches with descending write durations landing in the order they were chosen; the same for `saveLocale` called directly; and no file but `settings.json` written across a mixed success/failure burst.
+
+Mutation probes (each reverted immediately afterwards):
+
+| Mutation | Result |
+| --- | --- |
+| `saveLocale` writes without the queue | 2 failures — writes landed `ja, en, ja, en` for choices `en, ja, en, ja` |
+| the `schemaVersion === 1` guard removed | 5 failures — all four new file cases plus the `parseSettings` rules |
+| a failed save reports the requested locale instead of the stored one | 1 failure — rollback target `ja` instead of `en` |
+
+Checks at this checkpoint: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, **534 tests**), `npm run build` PASS. `src-tauri/` is byte-unchanged in this wave; the Rust checks were re-run anyway (see RUN_STATE).
+
+Hard boundary held: no Project, Review or GitObservation code touched; the only file written on a language switch is `settings.json` (asserted by test); no dependency added; no Wave 2 UI migration started.

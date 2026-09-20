@@ -3,13 +3,13 @@
 - Run ID: LR-20260920-DVCC-003
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — Wave 1 (i18n core, dictionaries, language switch, settings persistence) complete
+- Current state: RUNNING — Wave 1.5 (persistence hardening, Human request) complete
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/localization-foundation-v0.2.1
 - Base SHA: 318e273a1afe66c605da897a4f7603aaa921fc83
-- Current head: Wave 1 checkpoint commit (parent 050dc786d248b32a0bb5c64131d11cc6e848bec6)
-- Current wave: Wave 1 → Wave 2 (Phase 1 UI migration)
-- Last successful checkpoint: Wave 1 checkpoint
+- Current head: Wave 1.5 checkpoint commit (parent f5cd131)
+- Current wave: Wave 1.5 → Wave 2 (Phase 1 UI migration)
+- Last successful checkpoint: Wave 1.5 checkpoint
 - Task Packet ID: LRP-20260920-DVCC-003
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260920-DVCC-003/TASK_PACKET_SNAPSHOT.md
@@ -47,9 +47,13 @@ Make the whole Phase 1 + Phase 2 interface available in Japanese (default) and E
 
 The localization layer exists and is wired: dictionaries, translator, label maps, React context, language selector, `settings.json` persistence through a new storage target, and `document.documentElement.lang`. No existing UI string has been migrated yet — that is Waves 2 and 3, so the interface is still English until then.
 
+The preference path is hardened: `settings.json` is accepted only at `schemaVersion === 1`, a failed save takes the interface back to the stored language and says so, and preference writes are serialized so rapid switching cannot land out of order.
+
 ## Checks
 
 Wave 1: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, 524 tests), `npm run build` PASS, `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (68 passed, 2 ignored).
+
+Wave 1.5: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, 534 tests), `npm run build` PASS, `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (68 passed, 2 ignored — `src-tauri/` is byte-unchanged in this wave). Three mutation probes, each reverted: see EVIDENCE.
 
 ## Quality Debt
 
@@ -70,7 +74,7 @@ See DECISIONS.md (L3-001..).
 
 ## Files changed
 
-New: `src/i18n/{locale,types,ja,en,index,context}.ts`, `src/i18n/i18n.test.ts`, `src/components/LanguageSelector.tsx`, `src/services/settings.ts`, `src/services/settings.test.ts`. Changed: `src-tauri/src/storage.rs` (settings target), `src/services/storage.ts`, `src/services/trackedStorage.ts`, `src/test/memoryStorage.ts`, `src/app/App.tsx` (+48 lines: locale state, provider, selector, document language). Plus `.agent-run/LR-20260920-DVCC-003/*`.
+New: `src/i18n/{locale,types,ja,en,index,context}.ts`, `src/i18n/i18n.test.ts`, `src/components/LanguageSelector.tsx`, `src/services/settings.ts`, `src/services/settings.test.ts`. Changed: `src-tauri/src/storage.rs` (settings target), `src/services/storage.ts`, `src/services/trackedStorage.ts`, `src/test/memoryStorage.ts`, `src/app/App.tsx` (+48 lines: locale state, provider, selector, document language). Plus `.agent-run/LR-20260920-DVCC-003/*`. Wave 1.5 changed `src/services/settings.ts` and its test, `src/i18n/{ja,en}.ts` (one key) and `src/app/App.tsx` (the language switch only).
 
 ## Remaining tasks
 
@@ -78,7 +82,7 @@ Wave 1 (i18n core, dictionaries, selector, persistence, parity tests), Wave 2 (P
 
 ## Next action
 
-Wave 2: migrate the Phase 1 user-facing surfaces (app shell, queue, project and review forms, dialogs, toasts, banners, recovery and validation text, state labels) to translation keys.
+Wave 2 (unchanged by Wave 1.5): migrate the Phase 1 user-facing surfaces (app shell, queue, project and review forms, dialogs, toasts, banners, recovery and validation text, state labels) to translation keys.
 
 ## Stop conditions status
 

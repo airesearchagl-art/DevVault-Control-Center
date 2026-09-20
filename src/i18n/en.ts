@@ -367,6 +367,8 @@ export const en: Dictionary = {
   "notice.label.reviewSession": "Review {id}: session.json",
   "notice.settingsInvalid":
     "{file} could not be read, so the interface language fell back to Japanese. The file was left unchanged.",
+  "notice.settingsSaveFailed":
+    "The interface language could not be saved to {file}, so it went back to the language that is stored.",
 
   // --- toasts ------------------------------------------------------------------------------------------------
   "toast.projectCreated": "Project “{name}” created",

@@ -372,6 +372,8 @@ export const ja = {
   "notice.label.reviewSession": "レビュー {id} の session.json",
   "notice.settingsInvalid":
     "{file} を読み取れなかったため、表示言語を日本語にしました。ファイルは変更していません。",
+  "notice.settingsSaveFailed":
+    "{file} に表示言語を保存できなかったため、保存されている言語に戻しました。",
 
   // --- toasts ------------------------------------------------------------------------------------------------
   "toast.projectCreated": "プロジェクト「{name}」を作成しました",

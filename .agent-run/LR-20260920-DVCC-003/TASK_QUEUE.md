@@ -21,6 +21,13 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 - [x] Parity / blank / duplicate-key tests
 - [x] Targeted checks → checkpoint
 
+## Wave 1.5 — persistence hardening (Human request, before Wave 2)
+
+- [x] `settings.json` is only accepted at `schemaVersion === 1` (missing, mistyped, `0` and future versions are invalid → Japanese, warning, file untouched)
+- [x] A failed save takes the interface back to the stored language and says so, in the user's language
+- [x] Preference writes are serialized per backend, so rapid switching cannot land out of order
+- [x] Targeted checks + mutation probes → checkpoint
+
 ## Wave 2 — Phase 1 UI migration
 
 - [ ] App shell, queue, project and review forms, dialogs, toasts, banners, recovery and validation text

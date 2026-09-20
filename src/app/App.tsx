@@ -29,7 +29,7 @@ import { tauriLauncher } from "../services/launcher";
 import { describeHealthProblem, isWritable } from "../services/persistence";
 import { ReviewHub } from "../services/reviewHub";
 import type { SaveOutcome } from "../services/reviewService";
-import { loadSettings, saveLocale } from "../services/settings";
+import { createLocaleStore, loadSettings } from "../services/settings";
 import { tauriStorage, toStorageError } from "../services/storage";
 import { createTranslator, DEFAULT_LOCALE, type Locale } from "../i18n";
 import { I18nContext, type I18n } from "../i18n/context";
@@ -105,6 +105,10 @@ export default function App() {
     void reload();
   }, [reload]);
 
+  // Every write of the preference goes through one store, so rapid switching cannot land out of
+  // order and a failed write can say which language is still on disk.
+  const localeStore = useMemo(() => createLocaleStore(tauriStorage, DEFAULT_LOCALE), []);
+
   // The interface language is read once at start-up; a file that cannot be used means Japanese and
   // says so, and no other file is read on this path.
   useEffect(() => {
@@ -112,6 +116,7 @@ export default function App() {
     void loadSettings(tauriStorage).then(
       (settings) => {
         if (cancelled) return;
+        localeStore.adopt(settings.locale);
         setLocaleState(settings.locale);
         if (settings.problem !== null) {
           dispatch({
@@ -137,12 +142,23 @@ export default function App() {
       locale,
       t: createTranslator(locale),
       setLocale: (next: Locale) => {
-        // Only the preference changes: no review, project or Git state is touched.
+        if (next === locale) return;
+        // Only the preference changes: no review, project or Git state is touched. The interface
+        // follows the choice at once, but a write that fails takes it back to the language that is
+        // stored rather than showing one the next start-up would not restore.
         setLocaleState(next);
-        void saveLocale(tauriStorage, next).catch(() => undefined);
+        void localeStore.save(next).then((result) => {
+          if (result.ok || result.superseded) return;
+          setLocaleState(result.locale);
+          dispatch({
+            type: "toast",
+            kind: "error",
+            message: createTranslator(result.locale)("notice.settingsSaveFailed", { file: "settings.json" }),
+          });
+        });
       },
     }),
-    [locale],
+    [locale, localeStore],
   );
 
   const selected = state.reviews.find((review) => review.reviewId === state.selectedReviewId) ?? null;
