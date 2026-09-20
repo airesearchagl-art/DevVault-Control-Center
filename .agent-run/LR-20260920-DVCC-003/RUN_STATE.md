@@ -7,8 +7,8 @@
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/localization-foundation-v0.2.1
 - Base SHA: 318e273a1afe66c605da897a4f7603aaa921fc83
-- Current head: 3117414 (Wave 5 checkpoint); Draft PR #3
-- Current wave: Wave 5 complete → Final Convergence and Draft PR
+- Current head: the final run-artifact checkpoint on `feat/localization-foundation-v0.2.1` (product frozen at `3117414`); Draft PR #3
+- Current wave: all waves complete; Final Convergence done; Draft PR #3 open
 - Last successful checkpoint: Wave 5 checkpoint
 - Task Packet ID: LRP-20260920-DVCC-003
 - Task Packet revision: 1
@@ -22,22 +22,22 @@ Make the whole Phase 1 + Phase 2 interface available in Japanese (default) and E
 ## Acceptance Criteria
 
 - [x] L10N-01 feature branch created from the freshly merged main — `feat/localization-foundation-v0.2.1` from `origin/main` @ 318e273
-- [ ] L10N-02 a fresh install with no setting shows Japanese
-- [ ] L10N-03 English can be selected and applies immediately
-- [ ] L10N-04 the chosen locale survives a restart
-- [ ] L10N-05 Japanese can be selected again
-- [ ] L10N-06 every Phase 1 user-facing surface exists in JA and EN
-- [ ] L10N-07 every Phase 2 user-facing surface exists in JA and EN
-- [ ] L10N-08 internal state / resource / freshness values unchanged
+- [x] L10N-02 a fresh install with no setting shows Japanese — UI smoke: `lang=ja`, top bar `＋ プロジェクト`, no `settings.json` written
+- [x] L10N-03 English can be selected and applies immediately — UI smoke: the badge reads `Reviewing` right after the switch, with no reload
+- [x] L10N-04 the chosen locale survives a restart — UI smoke: second start comes up `lang=en` / `+ Project`; `settings.json` holds `{"schemaVersion":1,"locale":"en"}`
+- [x] L10N-05 Japanese can be selected again — UI smoke: switched back, preference written, third start comes up Japanese
+- [x] L10N-06 every Phase 1 user-facing surface exists in JA and EN — Wave 2: shell, queue, both forms, five dialogs, detail pane, shared components, plus validation / guard / service / health / notice messages; enforced by the compile-time key type, the parity test and `noHardCodedText.test.ts`
+- [x] L10N-07 every Phase 2 user-facing surface exists in JA and EN — Waves 2 and 3: Git evidence card, status labels, Freshness badges and all thirteen explanations
+- [x] L10N-08 internal state / resource / freshness values unchanged — label maps left the domain; `data-state`, class fragments, schema fields, file names and error codes are untouched, and the UI smoke shows `data-state=REVIEWING` in both languages
 - [x] L10N-09 JA / EN key parity enforced by a test — compile-time key type plus parity, blank, duplicate and placeholder tests
-- [ ] L10N-10 a missing translation fails a Required Check
-- [ ] L10N-11 the review request is generated in Japanese and in English
-- [ ] L10N-12 existing runtime data still loads unchanged
-- [ ] L10N-13 a locale switch does not change any domain state
-- [ ] L10N-14 document language matches the locale
+- [x] L10N-10 a missing translation fails a Required Check — `en.ts` is typed as a full record of the `ja.ts` key set (compile error), plus the parity, blank, duplicate-key and placeholder tests
+- [x] L10N-11 the review request is generated in Japanese and in English — `prompt.test.ts` compares both renderings (same values, same line count); UI smoke wrote both from the running app
+- [x] L10N-12 existing runtime data still loads unchanged — UI smoke seeded `fixtures/v1/valid` written before this work: 3 projects and 2 reviews loaded, files byte-identical across a language switch; no schema change in this PR
+- [x] L10N-13 a locale switch does not change any domain state — UI smoke: review state, selection and all seven project / review files unchanged; only `settings.json` is written
+- [x] L10N-14 document language matches the locale — `document.documentElement.lang` asserted as `ja` / `en` / `ja` across the three starts
 - [x] L10N-15 no external translation API and no network use — dictionaries are repository files; no dependency added
-- [ ] L10N-16 UI smoke touches no real user data and does not disturb the operator's clipboard
-- [ ] L10N-17 no Phase 1 / Phase 2 regression
+- [x] L10N-16 UI smoke touches no real user data and does not disturb the operator's clipboard — dedicated `DVCC_DATA_DIR` on a hidden desktop; `%APPDATA%\DevVault-Control` keeps its pre-run timestamp; the clipboard was read before the two copy actions and put back
+- [x] L10N-17 no Phase 1 / Phase 2 regression — 549 tests (19 files) including the untouched Phase 1 / Phase 2 suites, `cargo test` 68 passed / 2 ignored, and the UI smoke ending with the queue and project list intact
 
 ## Completed
 
@@ -45,11 +45,13 @@ Make the whole Phase 1 + Phase 2 interface available in Japanese (default) and E
 
 ## Current implementation state
 
-The localization layer exists and is wired: dictionaries, translator, label maps, React context, language selector, `settings.json` persistence through a new storage target, and `document.documentElement.lang`. No existing UI string has been migrated yet — that is Waves 2 and 3, so the interface is still English until then.
+Complete, as of the final checkpoint.
 
-The whole interface, both Phase 1 and Phase 2, now renders from the dictionaries, and the review request is written in the language in use. Every Phase 1 surface renders from the dictionaries, and text produced outside React (validation, transition guards, service failures, file health, recovery notices) travels as a named `Message` that the interface renders. The Freshness explanations and the review request template are still English; they are Waves 3 and 4.
-
-The preference path is hardened: `settings.json` is accepted only at `schemaVersion === 1`, a failed save takes the interface back to the stored language and says so, and preference writes are serialized so rapid switching cannot land out of order.
+- The localization layer is in place and wired: dictionaries (377 keys each), translator with `{placeholder}` substitution and `_one` variants, `formatParts` for sentences that carry markup, label keys for every stored enum, React context, language selector, `document.documentElement.lang`.
+- The whole interface — Phase 1 and Phase 2 — renders from the dictionaries. Text produced outside React (validation, transition guards, service failures, file health, recovery notices, the thirteen Freshness explanations) travels as a named `Message` that the interface renders.
+- The review request is written in the language in use; a request already saved keeps the language it was written in.
+- The preference path is hardened: `settings.json` is accepted only at `schemaVersion === 1`, a failed save takes the interface back to the stored language and says so, and preference writes are serialized so rapid switching cannot land out of order.
+- Four gates guard the rule: the compile-time key type, the parity test, the hard-coded-text scan, and the request comparison.
 
 ## Checks
 
@@ -71,7 +73,8 @@ Carried forward from Phase 2 and out of scope here: QD-001 (reader threads detac
 
 ## Explicit unverified items
 
-- All Acceptance Criteria except L10N-01 (implementation has not started).
+- Independent verification of all Acceptance Criteria (this session implemented them, so its own
+  sign-off is not independent evidence).
 - No GitHub CI exists for this repository (0 status checks, no Actions workflow); every check is local.
 
 ## Known failures
