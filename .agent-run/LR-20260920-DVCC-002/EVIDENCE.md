@@ -27,7 +27,7 @@
 
 ## Route reading (read-only)
 
-The vault working tree at `C:\Users\shuns\obsidian-vault` is a detached checkout from 2026-09-13 whose local `main` is 333 commits behind, and it does not contain the DVCC project folder. All route and project documents were therefore read from the vault's current main (`origin/main` = `4d3b60b`, 2026-09-20) with `git show`, without checkout, reset or any edit; only remote-tracking refs were updated by a read-only `git fetch`. Blob identities are recorded in `RUN_MANIFEST.md`. The five route prompts are byte-identical to the blobs used by run LR-20260917-DVCC-001.
+The vault working tree at `<OBSIDIAN_VAULT>` is a detached checkout from 2026-09-13 whose local `main` is 333 commits behind, and it does not contain the DVCC project folder. All route and project documents were therefore read from the vault's current main (`origin/main` = `4d3b60b`, 2026-09-20) with `git show`, without checkout, reset or any edit; only remote-tracking refs were updated by a read-only `git fetch`. Blob identities are recorded in `RUN_MANIFEST.md`. The five route prompts are byte-identical to the blobs used by run LR-20260917-DVCC-001.
 
 Route constraints adopted for this run: run-artifact file set and `RUN_STATE.md` field/section contract; Task Packet snapshot + digest binding and re-hash at every checkpoint; campaign state vocabulary (`INITIALIZED / RUNNING / DEGRADED / CHECKPOINTED / SUSPENDED / BLOCKED / COMPLETE_PENDING_FULL_VERIFY / COMPLETE_VERIFIED`); Hard Gate failures never converted into Quality Debt; LONG_RUN loop limits (same-hypothesis retry 2, repair strategies 3, no-progress waves 2); Draft PR body contract; Documentation Sync handoff report shape (the dev IDE never writes Notion or the vault).
 
@@ -122,3 +122,42 @@ Mutation probes (each applied alone to the working tree, suite run, source resto
 | R4 the timeout deadline is ignored | killed |
 
 R3 is the one that mattered: the read-only claim rested on an environment variable whose effect no test exercised, because the fixture never put the index in the state where `git status` refreshes it. The no-mutation test now rewrites a tracked file with identical content a second after the commit (stat information no longer matches the index); with the variable the repository stays byte-identical, and without it the test fails with `.git\index changed during a read-only observation`. **9 / 9 probes killed.**
+
+## Wave 4 (part 2) — release build, UI smoke and two defects found by making the evidence deterministic (2026-09-20)
+
+### Two problems the convergence checks exposed
+
+1. **The observation bound did not hold when Git left children behind.** The timeout branch killed the Git child and then *joined* the pipe readers; a killed process can leave children of its own holding those pipes, so the join blocked until they exited. Measured: an observation whose stand-in Git never answered returned after **19.4 s** with a 300 ms bound. Fixed in `5ec54a9` by detaching the readers on the timeout path (only the process this call started is ever killed). The same observation now returns at its bound.
+2. **Two tests were racy rather than deterministic.** The timeout test used a zero bound, so its outcome depended on whether the child finished before the parent's first poll — under load it did, and the test failed (8 consecutive failures during convergence, then 14 passes in a row once the machine was idle). The no-mutation test asserted byte identity of `.git/index`, which is Git's own stat cache rather than repository content; under load it was observed to change. Both were replaced: a stand-in Git that never answers makes the bound deterministic, and the no-mutation test now asserts byte identity of **every other file**, that the recorded index entries (`git ls-files --stage`) are unchanged, and that no `index.lock` is left behind.
+
+To make the read-only guarantee provable instead of asserted, the four invocations became one named list (`READ_ONLY_INVOCATIONS`) and the command construction was split out, so `every_invocation_runs_read_only_and_offline` checks — without running Git — that every invocation uses a read-only verb, carries no flag that could reach a remote, runs in the observed folder, and sets `GIT_OPTIONAL_LOCKS=0` and `GIT_TERMINAL_PROMPT=0`. Measured separately (scratch diagnostic, operator's real Git configuration): with `GIT_OPTIONAL_LOCKS=0` none of the four commands rewrites `.git/index`; without it, `git status` does.
+
+Mutation probes after the change — deadline ignored, kill skipped, readers joined on timeout, optional locks dropped, `fetch` added to the invocation list, wrong working directory, `dirty` always false, `not-a-repo` ignored, and the five Freshness mutations — **all killed** (the three timeout-related ones by the new stand-in test, the environment one by the structural test).
+
+### Release build and isolated-desktop UI smoke (release exe SHA-256 `40bf09a8e2570cee9567aa851f1e70b782eb1c3848f3eb408fa5d59c4131933e`, built from `5ec54a9`)
+
+All three parts ran on a hidden isolated desktop with a dedicated `DVCC_DATA_DIR`, against synthetic repositories (`repo-alpha` clean, `repo-beta` dirty, `plain-folder` not a repository). No clipboard write, nothing opened externally, no window on the operator's desktop.
+
+| Part | Checks | Result |
+|---|---|---|
+| Seed (fresh data folder) | three projects and three reviews created; before any refresh every Freshness is `UNKNOWN` with "Git state has not been observed." and no observation status (no automatic refresh); **Refresh Git state** on the selected project → `ALIGNED`, observed HEAD equals the repository HEAD, branch `dvcc-main`, working tree `Clean`, observed time shown, recorded expected HEAD unchanged, Review State unchanged (`NEW`), the other two projects still unobserved; **Refresh Git (all)** → beta `WORKTREE_DIRTY` ("Local working tree has uncommitted changes.", working tree "Uncommitted changes"), gamma `UNKNOWN` with "Not a Git repository" and no guessed HEAD; no error toast | **PASS** (21 assertions) |
+| Restart (same data folder, after a new commit in repo-alpha) | three projects and three reviews restored; **every Freshness back to `UNKNOWN`** with "Git state has not been observed." (AC2-13); recorded expected HEAD survived unchanged; refresh → `HEAD_CHANGED` with the explanation naming both short HEADs, observed HEAD is the new commit, recorded expected HEAD still the recorded one, Review State still `NEW`; no error toast | **PASS** (11 assertions) |
+| Refresh-only (repository snapshot around a real observation) | 58 files under the three repositories hashed before and after a Refresh All from the app | **byte-identical** (AC2-14 at runtime) |
+
+The operator's real data folder was not touched: `%APPDATA%\DevVault-Control` still shows its pre-run timestamps (17:06:50, from the operator's own instance) and no DVCC or WebView2 process was left behind by any run.
+
+### Convergence checks at the frozen head `5ec54a9`
+
+| Check | Result |
+|---|---|
+| `cargo fmt --check` | PASS |
+| `cargo clippy --all-targets` | PASS — 0 warnings |
+| `cargo check` | PASS |
+| `cargo test` | PASS — 62 passed, 1 ignored (4 consecutive full-suite runs after the fix) |
+| `npx tsc --noEmit` | PASS |
+| `npx vitest run` | PASS — 16 files, 487 tests |
+| `npm run build` | PASS |
+| `npm run tauri build -- --no-bundle` | PASS — no bundle directory |
+| Windows app launch smoke / persistence round trip (project instruction checks) | PASS — part of the UI smoke above (launch, create, restart, restore) |
+
+Diff versus `main` (`f557aa6`), excluding run artifacts: 21 files, +1 925 / −10. No dependency, capability or `tauri.conf.json` change (`contract/limits.json` gained one field). Nothing outside the authorized Phase 2 scope; product code carries no absolute local path.
