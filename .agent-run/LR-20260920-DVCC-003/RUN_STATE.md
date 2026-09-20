@@ -91,7 +91,9 @@ New: `src/i18n/{locale,types,ja,en,index,context}.ts`, `src/i18n/i18n.test.ts`, 
 
 ## Remaining tasks
 
-Wave 1 (i18n core, dictionaries, selector, persistence, parity tests), Wave 2 (Phase 1 UI migration), Wave 3 (Phase 2 UI migration), Wave 4 (prompt localization, timestamps, accessibility, hard-coded text audit), Wave 5 (isolated-desktop UI smoke), Final Convergence, Independent Verification, Draft PR.
+- Independent Verification in a separate context.
+- Human Gate after independent verification: Ready / merge.
+- Phase 3 remains blocked until Localization Foundation is merged.
 
 ## Next action
 
