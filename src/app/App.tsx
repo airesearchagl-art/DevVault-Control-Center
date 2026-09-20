@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Banner, Toasts } from "../components/Banner";
 import { ConfirmDialog } from "../components/Dialog";
-import { emptyProjectForm, projectToForm, type ProjectFormInput } from "../domain/project";
+import { emptyProjectForm, projectToForm, type Project, type ProjectFormInput } from "../domain/project";
 import { deriveFreshness, type FreshnessResult } from "../domain/freshness";
-import { observationForRoot, type GitObservation } from "../domain/git";
+import { observationForProject, type GitObservation } from "../domain/git";
 import { buildQueue } from "../domain/queue";
 import {
   currentRound,
@@ -136,7 +136,7 @@ export default function App() {
   // An observation is only shown while it still describes the project's current local root.
   const observationFor = useCallback(
     (projectId: string): GitObservation | undefined =>
-      observationForRoot(state.gitObservations[projectId], projectById.get(projectId)?.localRoot ?? null),
+      observationForProject(state.gitObservations[projectId], projectById.get(projectId)),
     [state.gitObservations, projectById],
   );
 
@@ -162,9 +162,15 @@ export default function App() {
 
   // One project at a time, only when the Human asks: no observation happens at start-up.
   const refreshGit = useCallback(
-    async (projectId: string, localRoot: string | null) => {
-      const observation = await track(gitObserver.observe(localRoot));
-      dispatch({ type: "gitObserved", projectId, localRoot, observation });
+    async (project: Project) => {
+      const observation = await track(gitObserver.observe(project.localRoot));
+      dispatch({
+        type: "gitObserved",
+        projectId: project.projectId,
+        localRoot: project.localRoot,
+        projectCreatedAt: project.createdAt,
+        observation,
+      });
       return observation;
     },
     [track],
@@ -177,17 +183,20 @@ export default function App() {
       return;
     }
     await track(
-      observeSequentially(gitObserver, targets, (projectId, observation) =>
+      observeSequentially(gitObserver, targets, (projectId, observation) => {
+        const project = projectById.get(projectId);
+        if (!project) return;
         dispatch({
           type: "gitObserved",
           projectId,
-          localRoot: targets.find((target) => target.projectId === projectId)?.localRoot ?? null,
+          localRoot: project.localRoot,
+          projectCreatedAt: project.createdAt,
           observation,
-        }),
-      ),
+        });
+      }),
     );
     notify("info", `Git state refreshed for ${targets.length} project${targets.length === 1 ? "" : "s"}.`);
-  }, [state.projects, track, notify]);
+  }, [state.projects, projectById, track, notify]);
 
   const reviewCountByProject = useMemo(() => {
     const counts = new Map<string, number>();
@@ -388,7 +397,7 @@ export default function App() {
         }
         onRefreshGit={() => {
           if (!selectedProject) return notify("warning", "No project is recorded for this review");
-          void refreshGit(selectedProject.projectId, selectedProject.localRoot);
+          void refreshGit(selectedProject);
         }}
         onAction={(action) => void runAction(selectedSession, action)}
         onOpenDialog={onDetailDialog}

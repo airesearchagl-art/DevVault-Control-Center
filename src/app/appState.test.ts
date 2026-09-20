@@ -114,12 +114,17 @@ describe("appReducer", () => {
       type: "gitObserved",
       projectId: "project-alpha",
       localRoot: "C:\\repos\\alpha",
+      projectCreatedAt: NOW,
       observation,
     });
 
     // Only the observation slice changes: a refresh can never move a Review State (AC2-09) or
     // rewrite a recorded HEAD (AC2-07).
-    expect(after.gitObservations["project-alpha"]).toEqual({ localRoot: "C:\\repos\\alpha", observation });
+    expect(after.gitObservations["project-alpha"]).toEqual({
+      localRoot: "C:\\repos\\alpha",
+      projectCreatedAt: NOW,
+      observation,
+    });
     expect(after.reviews).toBe(before.reviews);
     expect(after.projects).toBe(before.projects);
     expect(after.artifacts).toBe(before.artifacts);
@@ -134,6 +139,7 @@ describe("appReducer", () => {
       type: "gitObserved",
       projectId: "project-alpha",
       localRoot: "C:\\repos\\alpha",
+      projectCreatedAt: NOW,
       observation: {
         status: "NOT_A_GIT_REPOSITORY" as const,
         head: null,

@@ -64,7 +64,13 @@ export type AppAction =
   | { type: "selectReview"; reviewId: string | null }
   | { type: "hubCommitted"; snapshot: LoadedData }
   | { type: "artifactsLoaded"; reviewId: string; artifacts: ReviewArtifacts }
-  | { type: "gitObserved"; projectId: string; localRoot: string | null; observation: import("../domain/git").GitObservation }
+  | {
+      type: "gitObserved";
+      projectId: string;
+      localRoot: string | null;
+      projectCreatedAt: string;
+      observation: import("../domain/git").GitObservation;
+    }
   | { type: "filterChanged"; filter: Partial<QueueFilter> }
   | { type: "dismissNotice"; id: string }
   | { type: "toast"; kind: ToastKind; message: string }
@@ -131,7 +137,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ...state,
         gitObservations: {
           ...state.gitObservations,
-          [action.projectId]: { localRoot: action.localRoot, observation: action.observation },
+          [action.projectId]: {
+            localRoot: action.localRoot,
+            projectCreatedAt: action.projectCreatedAt,
+            observation: action.observation,
+          },
         },
       };
 

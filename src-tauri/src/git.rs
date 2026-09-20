@@ -1,4 +1,4 @@
-﻿//! Read-only observation of a local Git repository (Phase 2 窶・Evidence / Freshness).
+//! Read-only observation of a local Git repository (Phase 2 — Evidence / Freshness).
 //!
 //! The app never changes a repository and never touches the network: only `rev-parse`,
 //! `symbolic-ref` and `status` are run, always through `std::process::Command` (no shell, no
@@ -7,8 +7,8 @@
 //! observed path is passed as the child's working directory, so no caller-supplied text ever
 //! reaches a command line.
 //!
-//! Every failure 窶・no recorded folder, a rejected path, a missing Git, a folder that is not a
-//! repository, a timeout, an unexpected error 窶・is reported as a status rather than as an app
+//! Every failure — no recorded folder, a rejected path, a missing Git, a folder that is not a
+//! repository, a timeout, an unexpected error — is reported as a status rather than as an app
 //! error, and unknown fields stay `null` instead of being guessed. The derived Freshness in the
 //! frontend turns each of those into `UNKNOWN` (fail closed).
 
@@ -69,16 +69,24 @@ const READ_ONLY_INVOCATIONS: [&[&str]; 6] = [
 
 /// Environment variables that would send Git to a different repository, work tree, index or
 /// configuration than the folder being observed. They are removed from every child.
-const REDIRECTING_GIT_VARIABLES: [&str; 9] = [
+const REDIRECTING_GIT_VARIABLES: [&str; 14] = [
     "GIT_DIR",
     "GIT_COMMON_DIR",
     "GIT_WORK_TREE",
     "GIT_INDEX_FILE",
     "GIT_OBJECT_DIRECTORY",
     "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-    "GIT_CONFIG_PARAMETERS",
     "GIT_NAMESPACE",
     "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+    "GIT_CEILING_DIRECTORIES",
+    // Configuration injected through the environment redirects just as effectively: it can name
+    // another configuration file or set values (say `status.showUntrackedFiles`) that change what
+    // the observation would report.
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_GLOBAL",
+    "GIT_CONFIG_SYSTEM",
+    "GIT_CONFIG_NOSYSTEM",
 ];
 
 /// Shared limits contract: the same `contract/limits.json` the TypeScript side reads.
@@ -243,10 +251,11 @@ fn observe_repository(
         return GitObservation::unknown(GitStatus::NotAGitRepository, observed_at);
     }
 
-    // The folder passed the boundary, but a `.git` file (`gitdir: 窶ｦ`), `core.worktree` or an
+    // The folder passed the boundary, but a `.git` file (`gitdir: …`), `core.worktree` or an
     // alternates entry can point Git at a completely different location. The work tree and the
     // Git directory Git actually resolved must therefore pass the same local-folder boundary
     // (F-9) before any fact is trusted.
+    let mut git_dir = String::new();
     for (invocation, what) in [
         (READ_ONLY_INVOCATIONS[1], "work tree"),
         (READ_ONLY_INVOCATIONS[2], "Git directory"),
@@ -279,6 +288,15 @@ fn observe_repository(
                 ),
             );
         }
+        if what == "Git directory" {
+            git_dir = resolved;
+        }
+    }
+
+    // Object stores added through an alternates file are named in a file rather than by any
+    // `rev-parse` output, so they are checked separately: Git reads objects from them.
+    if let Err((code, message)) = alternate_object_stores_are_local(Path::new(&git_dir)) {
+        return GitObservation::failed(GitStatus::Error, observed_at, code, message);
     }
 
     // A repository without any commit has no HEAD: that stays `null` instead of being guessed.
@@ -357,7 +375,7 @@ fn observe_repository(
 ///
 /// Exit 0 with a name is a branch; exit 1 is Git's way of saying HEAD is not a symbolic ref, which
 /// is exactly a detached HEAD. Any other outcome (an unreadable HEAD, a killed process) is unknown
-/// 窶・it is never reported as "detached", which would be a guessed fact.
+/// — it is never reported as "detached", which would be a guessed fact.
 fn branch_from_symbolic_ref(code: Option<i32>, stdout: &str) -> (Option<String>, Option<bool>) {
     let name = stdout.trim().to_owned();
     match code {
@@ -365,6 +383,38 @@ fn branch_from_symbolic_ref(code: Option<i32>, stdout: &str) -> (Option<String>,
         Some(1) => (None, Some(true)),
         _ => (None, None),
     }
+}
+
+/// Checks `<git-dir>/objects/info/alternates`: every object store Git may read from must satisfy
+/// the same local-folder boundary as the repository itself, so an observation cannot end up
+/// reading objects over a network share.
+fn alternate_object_stores_are_local(git_dir: &Path) -> Result<(), (String, String)> {
+    let objects = git_dir.join("objects");
+    let Ok(content) = std::fs::read_to_string(objects.join("info").join("alternates")) else {
+        return Ok(());
+    };
+    for line in content.lines() {
+        let entry = line.trim();
+        if entry.is_empty() || entry.starts_with('#') {
+            continue;
+        }
+        let entry = Path::new(entry.trim_matches('"'));
+        let resolved = if entry.is_absolute() {
+            entry.to_path_buf()
+        } else {
+            objects.join(entry)
+        };
+        validate_project_folder(&resolved.to_string_lossy()).map_err(|error| {
+            (
+                error.code.to_owned(),
+                format!(
+                    "an alternate object store of this repository is not a local folder: {}",
+                    error.message
+                ),
+            )
+        })?;
+    }
+    Ok(())
 }
 
 fn timed_out(observed_at: String, step: &str) -> GitObservation {
@@ -424,7 +474,7 @@ fn git_command(program: &str, folder: &Path, args: &[&str]) -> Command {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     // The child must describe the folder it was given, not a repository an inherited variable
-    // points at (DVCC could itself have been started from a Git hook or `git -c 窶ｦ` context).
+    // points at (DVCC could itself have been started from a Git hook or `git -c …` context).
     for variable in REDIRECTING_GIT_VARIABLES {
         command.env_remove(variable);
     }
@@ -457,7 +507,7 @@ fn run_git(program: &str, folder: &Path, args: &[&str], deadline: Instant) -> Gi
             Ok(Some(status)) => break status,
             Ok(None) => {
                 if Instant::now() >= deadline {
-                    // Only the child this call started is terminated 窶・never a kill by name.
+                    // Only the child this call started is terminated — never a kill by name.
                     let _ = child.kill();
                     let _ = child.wait();
                     // The readers are left to finish on their own: a killed process can leave
@@ -497,7 +547,7 @@ fn run_git(program: &str, folder: &Path, args: &[&str], deadline: Instant) -> Gi
     }
 }
 
-/// Waits for a reader thread until the deadline. `None` means it is still blocked 窶・the thread is
+/// Waits for a reader thread until the deadline. `None` means it is still blocked — the thread is
 /// then detached and ends on its own once every write end of the pipe is closed.
 fn join_bounded(reader: std::thread::JoinHandle<String>, deadline: Instant) -> Option<String> {
     loop {
@@ -807,6 +857,52 @@ mod tests {
     }
 
     #[test]
+    fn an_alternate_object_store_outside_the_local_boundary_is_refused() {
+        let (_dir, root) = repository_with_commit();
+        let info = root.join(".git").join("objects").join("info");
+        fs::create_dir_all(&info).unwrap();
+        fs::write(info.join("alternates"), "//localhost/C$/objects\n").unwrap();
+
+        let observation = observed(&root);
+        assert_eq!(
+            observation.status,
+            GitStatus::Error,
+            "an object store on a network location must be refused: {observation:?}"
+        );
+        assert_eq!(observation.head, None);
+        assert_eq!(observation.dirty, None);
+        assert!(
+            observation
+                .error_message
+                .as_deref()
+                .unwrap_or_default()
+                .contains("alternate object store"),
+            "the reason names the alternate store: {:?}",
+            observation.error_message
+        );
+    }
+
+    #[test]
+    fn a_local_alternate_object_store_is_accepted() {
+        let (_dir, root) = repository_with_commit();
+        let (_other_dir, other) = repository_with_commit();
+        let info = root.join(".git").join("objects").join("info");
+        fs::create_dir_all(&info).unwrap();
+        fs::write(
+            info.join("alternates"),
+            format!(
+                "# a comment\n\n{}\n",
+                other.join(".git").join("objects").to_string_lossy()
+            ),
+        )
+        .unwrap();
+
+        let observation = observed(&root);
+        assert_eq!(observation.status, GitStatus::Ok, "{observation:?}");
+        assert!(observation.head.is_some());
+    }
+
+    #[test]
     fn a_folder_without_a_repository_is_not_a_git_repository() {
         let dir = TempDir::new();
         fs::create_dir_all(&dir.0).unwrap();
@@ -866,7 +962,7 @@ mod tests {
     }
 
     /// A stand-in for Git that exits immediately but leaves a child of its own holding the pipes
-    /// open 窶・what a file-system monitor or a filter helper does in a real repository.
+    /// open — what a file-system monitor or a filter helper does in a real repository.
     fn git_leaving_a_lingering_child(dir: &Path) -> PathBuf {
         let script = dir.join("dvcc-lingering-git.cmd");
         fs::write(
@@ -955,7 +1051,7 @@ mod tests {
         fs::write(root.join("untracked.txt"), "new\n").unwrap();
         // Rewrite a tracked file with the same content a second later: its stat information no
         // longer matches the index, which is exactly when `git status` would refresh (and rewrite)
-        // `.git/index` 窶・unless it runs without optional locks, as the observation does.
+        // `.git/index` — unless it runs without optional locks, as the observation does.
         let tracked = root.join("tracked.txt");
         let content = fs::read(&tracked).unwrap();
         std::thread::sleep(Duration::from_millis(1100));

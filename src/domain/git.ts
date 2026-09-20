@@ -85,23 +85,32 @@ export function asGitObservation(value: unknown, observedAt: string): GitObserva
   };
 }
 
-/** An observation together with the local root it was taken for. */
+/** An observation together with the project instance it was taken for. */
 export interface ObservedGitState {
   localRoot: string | null;
+  /** `createdAt` of the project as it was when the observation was taken. */
+  projectCreatedAt: string;
   observation: GitObservation;
 }
 
+/** What an observation has to still match to be shown: the same folder of the same project. */
+export interface ObservedProject {
+  localRoot: string | null;
+  createdAt: string;
+}
+
 /**
- * The observation to show for a project, or `undefined` when there is none that still describes the
- * project's current local root — a refresh describes one folder, and changing the recorded root
- * makes the old facts meaningless rather than merely old.
+ * The observation to show for a project, or `undefined` when there is none that still describes it.
+ * Changing the recorded root — or deleting a project and creating another one under the same id —
+ * makes the old facts meaningless rather than merely old, so they are dropped instead of shown.
  */
-export function observationForRoot(
+export function observationForProject(
   observed: ObservedGitState | undefined,
-  currentRoot: string | null,
+  project: ObservedProject | undefined,
 ): GitObservation | undefined {
-  if (!observed) return undefined;
-  return observed.localRoot === currentRoot ? observed.observation : undefined;
+  if (!observed || !project) return undefined;
+  const sameProject = observed.localRoot === project.localRoot && observed.projectCreatedAt === project.createdAt;
+  return sameProject ? observed.observation : undefined;
 }
 
 /** An observation that stands for a failed call; the derived Freshness turns it into UNKNOWN. */

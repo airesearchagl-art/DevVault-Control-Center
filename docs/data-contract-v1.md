@@ -252,13 +252,18 @@ Anything other than `status = OK` leaves every fact `null`; nothing is guessed.
 How it is obtained: the recorded local root passes the same folder boundary as the launcher (absolute
 local path, existing directory, no UNC, no mapped network drive, every link target checked without
 following it). Git is then asked where the repository actually is (`rev-parse --show-toplevel` and
-`--absolute-git-dir`) and **those** locations pass the same boundary again, because a `.git` file,
-`core.worktree` or an alternates entry can point Git somewhere else. Only then are
+`--absolute-git-dir`) and **those** locations pass the same boundary again, because a `.git` file or
+`core.worktree` can point Git somewhere else. Every object store listed in
+`<git-dir>/objects/info/alternates` is checked the same way, since Git reads objects from those. Only then are
 `rev-parse --verify --quiet HEAD`, `symbolic-ref --quiet --short HEAD` and `status --porcelain=v1`
 trusted. Every invocation runs through `std::process::Command` — no shell, no argument built from
 typed text, stdin closed, `-c core.fsmonitor=false`, `GIT_OPTIONAL_LOCKS=0` (so not even an index
 refresh is written), `GIT_TERMINAL_PROMPT=0`, and the `GIT_*` variables that would redirect Git to
-another repository, work tree, index or configuration removed. One 5 s bound
+another repository, work tree, index or configuration removed (`GIT_DIR`, `GIT_COMMON_DIR`,
+`GIT_WORK_TREE`, `GIT_INDEX_FILE`, `GIT_OBJECT_DIRECTORY`, `GIT_ALTERNATE_OBJECT_DIRECTORIES`,
+`GIT_NAMESPACE`, `GIT_DISCOVERY_ACROSS_FILESYSTEM`, `GIT_CEILING_DIRECTORIES`,
+`GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`, `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`,
+`GIT_CONFIG_NOSYSTEM`). One 5 s bound
 (`contract/limits.json` `gitObservationTimeoutMs`) covers the whole observation, including draining
 the child's output, after which only the process DVCC started is terminated and the observation
 fails closed. No command contacts a remote.

@@ -3,13 +3,13 @@
 - Run ID: LR-20260920-DVCC-002
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: **COMPLETE_PENDING_FULL_VERIFY** — Wave 5 repaired everything the independent verification found (two defects, seven hardening items); all Required Checks, the isolated-desktop UI smoke and the mutation probes pass at the repaired head. A focused independent re-review of the repairs and the Human Gate remain.
+- Current state: **COMPLETE_PENDING_FULL_VERIFY** — two independent reviews were run; Wave 5 repaired the first one's findings and Wave 6 the second one's, including a Hard Boundary violation the second review found (every Phase 2 commit had been made on local `main`; corrected by local ref moves — nothing was ever pushed to `main`). All Required Checks, the isolated-desktop UI smoke and the mutation probes pass at the repaired head. The Human Gate remains.
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/evidence-freshness-v0.2
 - Base SHA: f557aa6f15222099f54790180e0ff71c5291734a
-- Current head: Wave 5 checkpoint commit (code frozen at `161903e`; `5ec54a9` was the head the independent verification audited)
-- Current wave: Wave 5 (independent verification and repair) complete → Draft PR
-- Last successful checkpoint: Wave 5 checkpoint
+- Current head: Wave 6 checkpoint commit (code frozen at the Wave 6 repair commit; `5ec54a9` and `161903e` were the heads the two independent reviews audited)
+- Current wave: Wave 6 (focused re-review and repair) complete → Draft PR
+- Last successful checkpoint: Wave 6 checkpoint
 - Task Packet ID: LRP-20260920-DVCC-002
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260920-DVCC-002/TASK_PACKET_SNAPSHOT.md
@@ -21,20 +21,20 @@ Phase 2 — Evidence / Freshness v0.2: observe current **local** Git facts read-
 
 ## Acceptance Criteria
 
-- [x] AC2-01 feature branch created from the fresh `origin/main` merge commit — `feat/evidence-freshness-v0.2` from `origin/main` @ f557aa6
+- [x] AC2-01 feature branch created from the fresh `origin/main` merge commit — `feat/evidence-freshness-v0.2` from `origin/main` @ f557aa6. **Correction (Wave 6):** the commits were actually made on local `main` until Wave 6, because a `git checkout main` went unnoticed; the branch ref now holds all 12 commits, local `main` is back at `origin/main`, and `origin/main` was never pushed to.
 - [x] AC2-02 current full HEAD obtained read-only — Rust test `observes_a_clean_repository`; UI smoke shows the observed HEAD equals the repository HEAD
 - [x] AC2-03 branch / detached state determined — Rust tests plus the UI smoke (branch `dvcc-main` shown)
 - [x] AC2-04 clean / dirty working tree determined — Rust tests plus the UI smoke (Clean / Uncommitted changes)
-- [x] AC2-05 UNC / network localRoot not inspected — `the_local_folder_boundary_refuses_network_and_invalid_paths` (refused before any Git process, Phase 1 validator reused)
+- [x] AC2-05 UNC / network localRoot not inspected — refused before any Git process (Phase 1 validator reused), and the locations Git resolves — work tree, Git directory and every alternate object store — pass the same boundary before any fact is used
 - [x] AC2-06 Git unavailable / not-a-repo / timeout fail closed — Rust tests incl. a stand-in Git that never answers (bound honoured); the UNKNOWN mapping is covered by the Freshness oracle and shown in the UI smoke (not-a-repository row)
 - [x] AC2-07 a refresh never changes expectedHead / reviewedHead — derivation returns them unchanged, the observation action touches no review data, and the UI smoke re-checked the recorded HEAD after refreshes and a restart
-- [x] AC2-08 the five Freshness states derived exactly as contracted — 29-row independent oracle in `src/test/freshnessContract.ts` checked against `deriveFreshness`
+- [x] AC2-08 the five Freshness states derived exactly as contracted — 31-row independent oracle in `src/test/freshnessContract.ts` checked against `deriveFreshness`; a second reviewer could not construct a disagreement with the contract
 - [x] AC2-09 a Freshness change never changes Review State — the `gitObserved` action writes only the observation slice; reducer test asserts every other slice keeps its identity
 - [x] AC2-10 Refresh Git State works for the selected project — UI smoke: only the selected project becomes observed
 - [x] AC2-11 Refresh All runs sequentially — single-flight unit test plus the UI smoke observing all three projects in one pass
 - [x] AC2-12 Freshness and its reason visible in queue and detail — UI smoke asserts both badges and the exact explanations
 - [x] AC2-13 after an app restart the observation is UNKNOWN again — UI smoke part 2 (all badges UNKNOWN after restart, recorded HEADs intact)
-- [x] AC2-14 no unintended mutation — Rust test (every file except Git's own index byte-identical, recorded index entries unchanged, no lock left) and a runtime snapshot of 58 files around a real Refresh All
+- [x] AC2-14 no unintended mutation — the Rust test compares **every** file including `.git/index` (the fixture is one Git would otherwise refresh; an independent reviewer reproduced both outcomes), plus a runtime snapshot of 58 files around a real Refresh All
 - [x] AC2-15 no network operation — `every_invocation_runs_read_only_and_offline` checks the whole invocation list for read-only verbs and remote-reaching flags, and asserts `GIT_TERMINAL_PROMPT=0`
 - [x] AC2-16 no regression in Phase 1 persistence / review workflow — full suites green (487 TS / 62 Rust) and the UI smoke restored projects, reviews and recorded values across a restart
 - [x] AC2-17 Windows release build and isolated UI smoke PASS — build at `5ec54a9`, three smoke parts on a hidden isolated desktop
@@ -50,7 +50,7 @@ Waves 1-3 complete: `src-tauri/src/git.rs` (read-only observation, bounded timeo
 
 ## Checks
 
-Wave 1: `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (61 passed, 1 ignored). Wave 2: `npx tsc --noEmit` PASS, `npx vitest run` PASS (16 files, 485 tests; was 426 at `f557aa6`). Wave 3: tsc PASS, vitest PASS (487 tests), `npm run build` PASS. Wave 4 at `5ec54a9`: `cargo fmt --check`, `cargo clippy --all-targets` (0 warnings), `cargo check`, `cargo test` (62 passed / 1 ignored, four consecutive runs), `npx tsc --noEmit`, `npx vitest run` (16 files, 487 tests), `npm run build`, `npm run tauri build -- --no-bundle` — all PASS; isolated-desktop UI smoke PASS (three parts); mutation probes all killed. Wave 5 at the repaired head `161903e` (clean build): fmt / clippy (0 warnings) / check PASS, cargo test 66 passed / 2 ignored, tsc PASS, vitest 493, `npm run build` PASS, release build PASS, UI smoke three parts PASS, mutation probes 15 / 16 killed (one documented equivalent mutant).
+Wave 1: `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (61 passed, 1 ignored). Wave 2: `npx tsc --noEmit` PASS, `npx vitest run` PASS (16 files, 485 tests; was 426 at `f557aa6`). Wave 3: tsc PASS, vitest PASS (487 tests), `npm run build` PASS. Wave 4 at `5ec54a9`: `cargo fmt --check`, `cargo clippy --all-targets` (0 warnings), `cargo check`, `cargo test` (62 passed / 1 ignored, four consecutive runs), `npx tsc --noEmit`, `npx vitest run` (16 files, 487 tests), `npm run build`, `npm run tauri build -- --no-bundle` — all PASS; isolated-desktop UI smoke PASS (three parts); mutation probes all killed. Wave 5 at the repaired head `161903e` (clean build): fmt / clippy (0 warnings) / check PASS, cargo test 66 passed / 2 ignored, tsc PASS, vitest 493, `npm run build` PASS, release build PASS, UI smoke three parts PASS, mutation probes 15 / 16 killed (one documented equivalent mutant). Wave 6 after the second review: clean-build cargo test 68 passed / 2 ignored, vitest 494, tsc / clippy (0 warnings) / vite build PASS.
 
 ## Quality Debt
 
@@ -58,7 +58,7 @@ QD-001 (reader threads detached on a timeout until the pipes close) and QD-002 (
 
 ## Explicit unverified items
 
-- Focused independent re-review of the Wave 5 repairs (pending; the first independent verification covered `5ec54a9`).
+- An independent review of the Wave 6 repairs themselves (the second review covered `161903e`; its findings were repaired afterwards).
 - Behaviour against a real network share beyond the loopback mapping used for the ignored test.
 - Whether a real `git status` with a repository-configured file-system monitor still triggers the drain path now that `-c core.fsmonitor=false` is set (the bound itself is proven with a stand-in child).
 - No GitHub CI exists for this repository (0 status checks, no Actions workflow); every check was local.
@@ -82,7 +82,7 @@ Wave 1 (Rust Git inspection boundary), Wave 2 (TypeScript model + Freshness deri
 
 ## Next action
 
-Focused independent re-review of the Wave 5 repairs, then the Draft PR and STOP. The implementation session does not declare the re-review itself.
+Draft PR, then STOP. Two independent reviews have run and their findings are repaired and re-verified; this session does not declare a review of its own Wave 6 repairs.
 
 ## Stop conditions status
 

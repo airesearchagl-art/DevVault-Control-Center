@@ -98,6 +98,8 @@ See [docs/data-contract-v1.md](docs/data-contract-v1.md).
 ## Development
 
 Prerequisites (Windows): Node.js 22+ with npm, Rust stable (MSVC toolchain), Microsoft Edge WebView2 Runtime.
+Git 2.36 or newer is needed for the Phase 2 Git evidence (DVCC passes `-c core.fsmonitor=false`, which
+older versions treat as a hook path); without Git the Freshness simply stays `UNKNOWN`.
 
 ```powershell
 npm ci

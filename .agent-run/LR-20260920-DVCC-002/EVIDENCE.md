@@ -204,3 +204,31 @@ Clean build (`cargo clean -p devvault-control-center` first, so no stale binary 
 Mutation probes, re-run with a harness that rewrites sources with a fresh timestamp (so Cargo always rebuilds): **15 / 16 killed**, including deadline ignored, kill skipped, **drain unbounded**, optional locks dropped, redirecting `GIT_*` kept, **resolved location unchecked** (killed by the mapped-drive test), detached guessed, dirty always false, and six Freshness / observation mutations. The single survivor — removing the `--is-inside-work-tree` check — is an equivalent mutant: the resolution step that follows refuses exactly the same folders (`NOT_A_GIT_REPOSITORY`).
 
 Isolated-desktop UI smoke re-run on the repaired binary: seed **PASS**, restart **PASS**, refresh-only with a repository snapshot **PASS** (58 files byte-identical before and after a real Refresh All). No DVCC or WebView2 process left behind; the operator's real data folder untouched.
+
+## Wave 6 — focused independent re-review of the repairs, and a Hard Boundary violation it exposed (2026-09-20)
+
+A second independent context (again read-only, no build, no app launch) re-reviewed the Wave 5 repairs at `161903e`, building its own harness from unmodified copies of the source so it could run its own scenarios.
+
+**It confirmed, with its own measurements:** the drain is bounded (its own stand-in child that exits while a grandchild holds the pipes returned at 314 ms against a 300 ms bound, `TIMEOUT`, no facts; 5 s bound → 5.014 s); the restored no-mutation test really does exercise the case where `git status` would rewrite `.git/index` (index hash unchanged with `GIT_OPTIONAL_LOCKS=0`, rewritten without it); `branch_from_symbolic_ref` matches this Git (branch → 0, detached → 1, corrupt HEAD → 128, unborn branch → 0 + name); the Freshness precedence now matches §4.9 over 12 constructed inputs; `observationForRoot` is the only read path; and every check number in `RUN_STATE.md` reproduces on a clean build.
+
+**It also found the following, which this wave repaired:**
+
+| Finding | Repair |
+|---|---|
+| **Hard Boundary violation (found by the reviewer, not by the implementer): every Phase 2 commit had been made on local `main`.** The working branch ref never moved from `f557aa6`, so the pushes were no-ops and nothing of Phase 2 had reached the remote. Cause: a `git checkout main` ran at 17:02 while two read-only subagents were working; the implementer did not re-check the branch before committing. | Corrected with local ref moves only: `feat/evidence-freshness-v0.2` now points at the work, local `main` is back at `origin/main` (`f557aa6`), and the branch was pushed for real (12 commits). **Nothing was ever pushed to `main`** — `origin/main` is unchanged at `f557aa6` throughout, verified before and after. No history was rewritten and no commit was lost. |
+| **R1 (medium):** `161903e` had gone through a CP932 round-trip — `src-tauri/src/git.rs` gained a UTF-8 BOM and ten em dashes / ellipses were mangled. Cause: a PowerShell `Set-Content -Encoding utf8` step in the probe harness. | File restored (no BOM, characters repaired); the probe harness writes through Python with explicit UTF-8 only. |
+| **R2 (medium):** `objects/info/alternates` was named in the claim but never checked — the reviewer showed a repository whose alternates pointed at `//localhost/C$/objects` observed as `OK` with full facts. | Every entry of `<git-dir>/objects/info/alternates` (absolute or relative to the object store, comments and quotes handled) now goes through the same local-folder boundary; a network entry fails the observation closed with a reason naming the alternate store. Two tests. |
+| **R3 (low):** the configuration family (`GIT_CONFIG_COUNT` / `KEY_n` / `VALUE_n`, `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_NOSYSTEM`, `GIT_CEILING_DIRECTORIES`) was not removed, so the data contract's "configuration" wording was false. | The list grew from 9 to 14 variables; the structural test asserts each one is removed, and the data contract names them. |
+| **R4 (low):** an observation could survive a project being deleted and recreated under the same (Human-typed) id and root. | The observation now carries the project's `createdAt` as well as its root, and is shown only while both still match. |
+| **R5 (low):** `-c core.fsmonitor=false` needs Git ≥ 2.36 (older Git treats it as a hook path), and no minimum version was declared. | README states the requirement. |
+| Claim corrections it demanded | The oracle row count (31, not 29), the AC2-14 wording (the index exclusion was reverted), the alternates and configuration sentences, and the mapped-drive test's vacuous pass when `DVCC_TEST_MAPPED_DRIVE_DIR` is unset — all corrected in these artifacts. |
+
+Its remaining open point, recorded rather than repaired: the ignored mapped-drive test passes vacuously when the environment variable is unset (the Phase 1 convention: it prints `SKIPPED`). Evidence for it is only valid when the run states that the variable was set — this run did set it once (`net use W: \\localhost\C$`, removed afterwards).
+
+### Wave 6 verification after the repairs
+
+Clean build again (`cargo clean -p devvault-control-center`): `cargo fmt --check` PASS · `cargo clippy --all-targets` PASS (0 warnings) · `cargo test` **68 passed, 2 ignored** · `npx tsc --noEmit` PASS · `npx vitest run` **16 files, 494 tests** · `npm run build` PASS · `npm run tauri build -- --no-bundle` PASS (release exe SHA-256 `9fd7c6702dc487c922ec4adbfc33241a5aba7eff8e15bd7c734dfcf9bb974537`).
+
+Isolated-desktop UI smoke re-run on that binary: seed **PASS**, restart **PASS**, refresh-only **PASS** with the three synthetic repositories **byte-identical** (58 files) before and after a real Refresh All. No DVCC or WebView2 process left behind; `%APPDATA%\DevVault-Control` still shows its pre-run timestamp (17:06:50, from the operator's own instance).
+
+Git state after the branch correction: `feat/evidence-freshness-v0.2` = the work (12 commits ahead of `main` at that point), local `main` = `origin/main` = `f557aa6f15222099f54790180e0ff71c5291734a`, working tree clean, and the branch pushed to the remote for the first time.

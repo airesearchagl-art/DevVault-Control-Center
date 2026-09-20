@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { asGitObservation, failedObservation, isGitStatus, observationForRoot } from "./git";
+import { asGitObservation, failedObservation, isGitStatus, observationForProject } from "./git";
 
 /** Phase 2: an observation is accepted fail closed — anything unexpected carries no facts. */
 
@@ -64,7 +64,7 @@ describe("asGitObservation", () => {
   });
 });
 
-describe("observationForRoot", () => {
+describe("observationForProject", () => {
   const observation = {
     status: "OK" as const,
     head: "1".repeat(40),
@@ -73,20 +73,28 @@ describe("observationForRoot", () => {
     dirty: false,
     observedAt: OBSERVED_AT,
   };
+  const CREATED = "2026-09-01T00:00:00.000Z";
+  const observed = { localRoot: "C:\\repos\\alpha", projectCreatedAt: CREATED, observation };
 
-  it("returns the observation while it still describes the project's root", () => {
-    expect(observationForRoot({ localRoot: "C:\\repos\\alpha", observation }, "C:\\repos\\alpha")).toEqual(observation);
-    expect(observationForRoot({ localRoot: null, observation }, null)).toEqual(observation);
+  it("returns the observation while it still describes the same project and folder", () => {
+    expect(observationForProject(observed, { localRoot: "C:\\repos\\alpha", createdAt: CREATED })).toEqual(observation);
+    expect(
+      observationForProject({ localRoot: null, projectCreatedAt: CREATED, observation }, { localRoot: null, createdAt: CREATED }),
+    ).toEqual(observation);
   });
 
   it("drops it once the recorded root changed, rather than showing facts about another folder", () => {
-    expect(observationForRoot({ localRoot: "C:\\repos\\alpha", observation }, "C:\\repos\\beta")).toBeUndefined();
-    expect(observationForRoot({ localRoot: "C:\\repos\\alpha", observation }, null)).toBeUndefined();
-    expect(observationForRoot({ localRoot: null, observation }, "C:\\repos\\alpha")).toBeUndefined();
+    expect(observationForProject(observed, { localRoot: "C:\\repos\\beta", createdAt: CREATED })).toBeUndefined();
+    expect(observationForProject(observed, { localRoot: null, createdAt: CREATED })).toBeUndefined();
   });
 
-  it("is undefined when nothing was observed", () => {
-    expect(observationForRoot(undefined, "C:\\repos\\alpha")).toBeUndefined();
+  it("drops it for a different project instance under the same id", () => {
+    expect(observationForProject(observed, { localRoot: "C:\\repos\\alpha", createdAt: "2026-09-20T00:00:00.000Z" })).toBeUndefined();
+  });
+
+  it("is undefined when nothing was observed or the project is gone", () => {
+    expect(observationForProject(undefined, { localRoot: "C:\\repos\\alpha", createdAt: CREATED })).toBeUndefined();
+    expect(observationForProject(observed, undefined)).toBeUndefined();
   });
 });
 
