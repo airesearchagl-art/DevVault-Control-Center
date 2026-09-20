@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { isAllowedReviewFile } from "../test/memoryStorage";
-import { MAX_REVIEW_ROUNDS } from "./limits";
+import { GIT_OBSERVATION_TIMEOUT_MS, MAX_REVIEW_ROUNDS } from "./limits";
 import { createReviewSession, emptyReviewForm, type ReviewSession, type RoundRecord } from "./review";
 import { parseSessionFile, serializeSession } from "./schema";
 import { applyReviewAction, canApply } from "./transitions";
@@ -32,6 +32,18 @@ describe("round limit contract (F-11)", () => {
     const rust = readFileSync(new URL("../../src-tauri/src/storage.rs", import.meta.url), "utf8");
     expect(rust).toContain('include_str!("../../contract/limits.json")');
     expect(rust).not.toMatch(/number\.len\(\)\s*<=\s*3/);
+  });
+
+  it("defines the Git observation bound once and reads it on both sides (Phase 2)", () => {
+    const json = JSON.parse(readFileSync(new URL("../../contract/limits.json", import.meta.url), "utf8")) as {
+      gitObservationTimeoutMs: number;
+    };
+    expect(GIT_OBSERVATION_TIMEOUT_MS).toBe(json.gitObservationTimeoutMs);
+    const rust = readFileSync(new URL("../../src-tauri/src/git.rs", import.meta.url), "utf8");
+    expect(rust).toContain('include_str!("../../contract/limits.json")');
+    expect(rust).toContain("git_observation_timeout_ms");
+    // The bound must not be repeated as a literal next to the reader.
+    expect(rust).not.toMatch(new RegExp(`Duration::from_millis\(${json.gitObservationTimeoutMs}\)`));
   });
 
   it("allows starting rounds up to the limit and refuses beyond it (domain + UI gating)", () => {

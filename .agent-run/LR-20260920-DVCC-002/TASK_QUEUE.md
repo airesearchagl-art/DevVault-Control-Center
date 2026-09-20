@@ -22,11 +22,11 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 
 ## Wave 2 — TypeScript model and Freshness derivation
 
-- [ ] `GitObservation` model + service port and Tauri adapter
-- [ ] HEAD comparison helper (40 = exact, 7–39 = prefix, case per schema contract)
-- [ ] Freshness derivation (fixed priority: WORKTREE_DIRTY > REVIEW_STALE > HEAD_CHANGED > ALIGNED > UNKNOWN) + explanations
-- [ ] Independent literal oracle + contract tests (pattern of `src/test/transitionContract.ts`)
-- [ ] Targeted checks (tsc, vitest) → checkpoint
+- [x] `GitObservation` model + service port and Tauri adapter
+- [x] HEAD comparison helper (40 = exact, 7–39 = prefix, case per schema contract)
+- [x] Freshness derivation (fixed priority: WORKTREE_DIRTY > REVIEW_STALE > HEAD_CHANGED > ALIGNED > UNKNOWN) + explanations
+- [x] Independent literal oracle + contract tests (pattern of `src/test/transitionContract.ts`)
+- [x] Targeted checks (tsc, vitest) → checkpoint
 
 ## Wave 3 — UI integration
 

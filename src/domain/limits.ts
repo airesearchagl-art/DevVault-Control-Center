@@ -14,3 +14,6 @@ function positiveInteger(value: unknown, name: string): number {
 
 /** Highest review round number a session may reach (round files are `request-r<N>.md` / `result-r<N>.md`). */
 export const MAX_REVIEW_ROUNDS = positiveInteger(limits.maxReviewRounds, "maxReviewRounds");
+
+/** Bound for one local Git observation, shared with `src-tauri/src/git.rs` (Phase 2). */
+export const GIT_OBSERVATION_TIMEOUT_MS = positiveInteger(limits.gitObservationTimeoutMs, "gitObservationTimeoutMs");
