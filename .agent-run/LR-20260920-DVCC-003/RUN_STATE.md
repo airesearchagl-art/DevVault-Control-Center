@@ -37,7 +37,7 @@ Make the whole Phase 1 + Phase 2 interface available in Japanese (default) and E
 - [x] L10N-14 document language matches the locale — `document.documentElement.lang` asserted as `ja` / `en` / `ja` across the three starts
 - [x] L10N-15 no external translation API and no network use — dictionaries are repository files; no dependency added
 - [x] L10N-16 UI smoke touches no real user data and does not disturb the operator's clipboard — dedicated `DVCC_DATA_DIR` on a hidden desktop; `%APPDATA%\DevVault-Control` keeps its pre-run timestamp (17:06:50); the clipboard is taken only when it holds text the run can put back, restored immediately after each copy, and left alone if anything wrote to it in between (RF-L10N-04)
-- [x] L10N-17 no Phase 1 / Phase 2 regression — 549 tests (19 files) including the untouched Phase 1 / Phase 2 suites, `cargo test` 68 passed / 2 ignored, and the UI smoke ending with the queue and project list intact
+- [x] L10N-17 no Phase 1 / Phase 2 regression — current status: **577 tests (20 files)** including the untouched Phase 1 / Phase 2 suites, `cargo test` 68 passed / 2 ignored (from Wave 5; `src-tauri/` unchanged since), and the repaired UI smoke **24 / 24** ending with the queue and project list intact
 
 ## Completed
 
@@ -47,7 +47,7 @@ Make the whole Phase 1 + Phase 2 interface available in Japanese (default) and E
 
 Complete, as of the final checkpoint.
 
-- The localization layer is in place and wired: dictionaries (377 keys each), translator with `{placeholder}` substitution and `_one` variants, `formatParts` for sentences that carry markup, label keys for every stored enum, React context, language selector, `document.documentElement.lang`.
+- The localization layer is in place and wired: dictionaries (**422 keys each**), translator with `{placeholder}` substitution and `_one` variants, `formatParts` for sentences that carry markup, label keys for every stored enum, React context, language selector, `document.documentElement.lang`.
 - The whole interface — Phase 1 and Phase 2 — renders from the dictionaries. Text produced outside React (validation, transition guards, service failures, file health, recovery notices, the thirteen Freshness explanations) travels as a named `Message` that the interface renders.
 - The review request is written in the language in use; a request already saved keeps the language it was written in.
 - The preference path is hardened: `settings.json` is accepted only at `schemaVersion === 1`; a file this version cannot understand makes the preference read-only for the run (nothing written, the file byte-identical, the Human told); a failed save takes the interface back to the stored language; writes are serialized, carry a precondition on the bytes last seen, and an older request can never decide over a newer one.
