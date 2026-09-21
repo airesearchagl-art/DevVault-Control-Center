@@ -372,6 +372,8 @@ export const en: Dictionary = {
     "{file} could not be read, so the interface language fell back to Japanese. The file was left unchanged.",
   "notice.settingsSaveFailed":
     "The interface language could not be saved to {file}, so it went back to the language that is stored.",
+  "notice.settingsNotWritable":
+    "The display language was not saved because this version of DVCC cannot safely update {file}. The file was left unchanged.",
 
   // --- toasts ------------------------------------------------------------------------------------------------
   "toast.projectCreated": "Project “{name}” created",
@@ -492,6 +494,73 @@ export const en: Dictionary = {
   "service.projectMissing": "Project {id} is not in projects.json",
   "service.eventAppendFailed":
     "State saved, but the event history could not be appended: {error}",
+
+  // --- file health and schema reasons ----------------------------------------------------------------------
+  "health.reason.text": "{text}",
+  "health.reason.backup": "backup: {error}",
+  "health.reason.backupRestoreFailed": "backup restore failed: {error}",
+  "health.missingWithUnreadableBackup":
+    "the file is missing and its backup is unreadable: {backup}",
+  "health.primaryAndBackupUnreadable":
+    "{primary}; the backup is also unreadable: {backup}",
+  "health.sessionMissing": "session.json is missing",
+  "schema.field.mustBeString": "{field} must be a string",
+  "schema.field.mustBeStringOrNull": "{field} must be a string or null",
+  "schema.field.mustBeTimestamp":
+    "{field} must be an ISO-8601 UTC timestamp",
+  "schema.field.mustBeTimestampOrNull":
+    "{field} must be an ISO-8601 UTC timestamp or null",
+  "schema.field.mustBeHeadOrNull":
+    "{field} must be a lowercase 7–40 character hexadecimal commit SHA or null",
+  "schema.field.mustBeObject": "{field} must be an object",
+  "schema.invalidJson": "invalid JSON: {reason}",
+  "schema.topLevelMustBeObject": "the top-level value must be an object",
+  "schema.versionMustBe": "schemaVersion must be {version}",
+  "schema.projects.mustBeArray": "projects must be an array",
+  "schema.projects.duplicateId": "duplicate projectId: {id}",
+  "schema.project.invalidId": "{field} is not a valid project id",
+  "schema.project.displayNameEmpty": "{field} must not be empty",
+  "schema.project.repositoryUrlNotNormalized":
+    "{field} is not a normalized GitHub repository URL",
+  "schema.project.localRootNotAbsolute":
+    "{field} is not an absolute drive path",
+  "schema.round.numberMustBe": "{field} must be {expected}",
+  "schema.round.unknownVerdict": "{field} is not a known verdict",
+  "schema.round.archivedResults":
+    "{field} must list result-r{round}-previous-<ms>.md file names",
+  "schema.session.invalidReviewId":
+    "session.reviewSessionId is not a valid review id",
+  "schema.session.idFolderMismatch":
+    "session.reviewSessionId ({id}) does not match its folder ({folder})",
+  "schema.session.invalidProjectId":
+    "session.projectId is not a valid project id",
+  "schema.session.prNumber":
+    "session.prNumber must be a positive integer or null",
+  "schema.session.reviewTypeEmpty": "session.reviewType must not be empty",
+  "schema.session.unknownResourceState":
+    "session.resourceState is not a known resource state",
+  "schema.session.unknownReviewState":
+    "session.reviewState is not a known review state",
+  "schema.session.suspendedFromNotResumable":
+    "session.suspendedFrom must be a resumable state while SUSPENDED",
+  "schema.session.suspendedFromMustBeNull":
+    "session.suspendedFrom must be null unless SUSPENDED",
+  "schema.session.roundsEmpty": "session.rounds must be a non-empty array",
+  "schema.session.roundsExceedLimit":
+    "session.rounds exceeds the round limit (R{max})",
+  "schema.session.reviewRoundMismatch":
+    "session.reviewRound must equal the number of rounds",
+  "schema.session.threadUrl": "{field}: {reason}",
+  "schema.event.stateChangeMustBeObject":
+    "a state change must be an object or null",
+  "schema.event.stateChangeFromUnknown":
+    "the from of a state change is not a known state",
+  "schema.event.stateChangeToUnknown":
+    "the to of a state change is not a known state",
+  "schema.event.unsupportedVersion": "unsupported event version",
+  "schema.event.unknownType": "unknown event type",
+  "schema.event.invalidReviewId": "invalid reviewSessionId",
+  "schema.event.invalidRound": "invalid round",
 
   // --- time ------------------------------------------------------------------------------------------------------
   "time.pattern": "{year}-{month}-{day} {hour}:{minute}",

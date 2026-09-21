@@ -37,6 +37,8 @@ const placeholders = (text: string): string[] =>
 
 /** Keys whose value is intentionally identical in both languages (names, glyphs, file names). */
 const SHARED_VALUES = new Set([
+  "health.reason.text",
+  "schema.session.threadUrl",
   "app.name",
   "app.subtitle",
   "app.dataDir.envTag",

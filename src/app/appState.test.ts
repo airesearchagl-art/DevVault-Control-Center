@@ -1,3 +1,4 @@
+import { message } from "../domain/message";
 import { describe, expect, it } from "vitest";
 import { createReviewSession, emptyReviewForm, type ReviewSession } from "../domain/review";
 import type { LoadedData } from "../services/persistence";
@@ -26,7 +27,7 @@ describe("appReducer", () => {
       projectsHealth: { status: "restored_from_backup", cause: "corrupt_primary", quarantinedAs: "projects.json.corrupt-1" },
       reviews: [
         { reviewId: "rv-20260101-alpha1", session: session("rv-20260101-alpha1"), health: { status: "restored_from_backup", cause: "missing_primary", quarantinedAs: null } },
-        { reviewId: "rv-20260101-beta01", session: null, health: { status: "unreadable", reason: "bad", setAside: [] } },
+        { reviewId: "rv-20260101-beta01", session: null, health: { status: "unreadable", reason: message("health.reason.text", { text: "bad" }), setAside: [] } },
       ],
     });
     expect(state.phase).toBe("ready");

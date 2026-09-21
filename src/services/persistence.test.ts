@@ -275,7 +275,9 @@ describe("malformed input safety (AC-17)", () => {
   it("reports a review folder without session.json as unreadable", async () => {
     storage.files.set(`reviews/${ALPHA_ID}/checkpoint.md`, "orphan checkpoint");
     const loaded = await loadAll(storage);
-    expect(loaded.reviews).toEqual([{ reviewId: ALPHA_ID, session: null, health: { status: "unreadable", reason: "session.json is missing", setAside: [] } }]);
+    expect(loaded.reviews).toEqual([
+      { reviewId: ALPHA_ID, session: null, health: { status: "unreadable", reason: { key: "health.sessionMissing" }, setAside: [] } },
+    ]);
     expect(loaded.projectsHealth).toEqual({ status: "missing" });
   });
 

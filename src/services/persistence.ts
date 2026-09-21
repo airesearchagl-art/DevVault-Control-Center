@@ -38,8 +38,8 @@ export type FileHealth =
   | { status: "ok" }
   | { status: "missing" }
   | { status: "restored_from_backup"; cause: "corrupt_primary" | "missing_primary"; quarantinedAs: string | null }
-  | { status: "unreadable"; reason: string; setAside: SetAsidePart[] }
-  | { status: "io_error"; reason: string; code: string }
+  | { status: "unreadable"; reason: Message; setAside: SetAsidePart[] }
+  | { status: "io_error"; reason: Message; code: string }
   | { status: "unsupported_version"; version: number };
 
 export function isWritable(health: FileHealth): boolean {
@@ -53,9 +53,9 @@ export function isWritable(health: FileHealth): boolean {
 export function describeHealthProblem(health: FileHealth): Message | null {
   switch (health.status) {
     case "unreadable":
-      return message("health.unreadable", { reason: health.reason });
+      return { key: "health.unreadable", messageParams: { reason: health.reason } };
     case "io_error":
-      return message("health.ioError", { reason: health.reason, code: health.code });
+      return { key: "health.ioError", params: { code: health.code }, messageParams: { reason: health.reason } };
     case "unsupported_version":
       return message("health.unsupportedVersion", { version: health.version });
     default:
@@ -96,8 +96,15 @@ async function readFile(backend: StorageBackend, target: StorageTarget, backup: 
   }
 }
 
-function ioHealth(error: StorageError, context?: string): FileHealth {
-  return { status: "io_error", reason: context ? `${context}: ${error.message}` : error.message, code: error.code };
+/** Where the failure happened; the storage message itself is technical and is shown as it is. */
+type IoContext = "backup" | "backupRestoreFailed";
+
+function ioHealth(error: StorageError, context?: IoContext): FileHealth {
+  const reason =
+    context === undefined
+      ? message("health.reason.text", { text: error.message })
+      : message(context === "backup" ? "health.reason.backup" : "health.reason.backupRestoreFailed", { error: error.message });
+  return { status: "io_error", reason, code: error.code };
 }
 
 type Loaded<T> = { value: T | null; health: FileHealth };
@@ -125,12 +132,12 @@ async function loadJsonWithRecovery<T>(
   parse: (text: string) => ParseResult<T>,
 ): Promise<Loaded<T>> {
   const primary = await readFile(backend, target, false);
-  let primaryProblem: string | null = null;
+  let primaryProblem: Message | null = null;
   switch (primary.kind) {
     case "io_error":
       return { value: null, health: ioHealth(primary.error) };
     case "content_error":
-      primaryProblem = primary.reason;
+      primaryProblem = message("health.reason.text", { text: primary.reason });
       break;
     case "text": {
       const parsed = parse(primary.text);
@@ -156,15 +163,15 @@ async function loadJsonWithRecovery<T>(
   }
 
   const parsedBackup: ParseResult<T> =
-    backup.kind === "text" ? parse(backup.text) : { status: "malformed", reason: backup.reason };
+    backup.kind === "text" ? parse(backup.text) : { status: "malformed", reason: message("health.reason.text", { text: backup.reason }) };
   if (parsedBackup.status === "unsupported_version") {
     return { value: null, health: { status: "unsupported_version", version: parsedBackup.version } };
   }
   if (parsedBackup.status === "malformed") {
-    const reason =
+    const reason: Message =
       primaryProblem === null
-        ? `file is missing and its backup is unreadable: ${parsedBackup.reason}`
-        : `${primaryProblem}; backup is also unreadable: ${parsedBackup.reason}`;
+        ? { key: "health.missingWithUnreadableBackup", messageParams: { backup: parsedBackup.reason } }
+        : { key: "health.primaryAndBackupUnreadable", messageParams: { primary: primaryProblem, backup: parsedBackup.reason } };
     return { value: null, health: { status: "unreadable", reason, setAside: [...primaryParts, "backup"] } };
   }
 
@@ -175,7 +182,7 @@ async function loadJsonWithRecovery<T>(
     await backend.restoreBackup(target);
   } catch (error) {
     // The backup is untouched (restore never modifies it); the next load retries recovery.
-    return { value: null, health: ioHealth(toStorageError(error), "backup restore failed") };
+    return { value: null, health: ioHealth(toStorageError(error), "backupRestoreFailed") };
   }
   return {
     value: parsedBackup.value,
@@ -196,7 +203,9 @@ export async function loadAll(backend: StorageBackend): Promise<LoadedData> {
       parseSessionFile(text, reviewId),
     );
     const health: FileHealth =
-      loaded.health.status === "missing" ? { status: "unreadable", reason: "session.json is missing", setAside: [] } : loaded.health;
+      loaded.health.status === "missing"
+        ? { status: "unreadable", reason: message("health.sessionMissing"), setAside: [] }
+        : loaded.health;
     reviews.push({ reviewId, session: loaded.value, health });
   }
   return { projects: projects.value ?? [], projectsHealth: projects.health, reviews };

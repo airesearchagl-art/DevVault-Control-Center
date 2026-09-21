@@ -1,9 +1,14 @@
 ﻿# Localization UI smoke (Wave 5, LR-20260920-DVCC-003).
 #
 # Runs the release build on a hidden isolated desktop against a dedicated data folder seeded from
-# the synthetic fixtures. Nothing appears on the operator's desktop, nothing outside the temporary
-# data folder is written, and the clipboard is saved before the one action that uses it and put
-# back afterwards.
+# the synthetic fixtures. Nothing appears on the operator's desktop and nothing outside the
+# temporary data folder is written.
+#
+# The clipboard is shared across desktops, so the one action that writes it (Copy review prompt) is
+# guarded: the clipboard is only touched when it holds text this test can put back, it is restored
+# immediately after each copy rather than at the end of the run, and it is left alone if anyone
+# else wrote to it in between (checked with the Windows clipboard sequence number). A clipboard
+# holding an image or files is never overwritten — those checks are skipped instead.
 #
 # Checks: Japanese by default, the switch to English, the review state untouched by a switch,
 # settings.json after each switch, the language restored after a restart, and the review request
@@ -27,6 +32,8 @@ $desktopName = "dvcc-l10n-$runId"
 $results = [System.Collections.Generic.List[object]]::new()
 $failures = 0
 
+$skipped = 0
+
 function Check([string] $name, [bool] $ok, $detail) {
   $script:results.Add([pscustomobject]@{ check = $name; ok = $ok; detail = $detail })
   if (-not $ok) { $script:failures++ }
@@ -34,11 +41,20 @@ function Check([string] $name, [bool] $ok, $detail) {
   Write-Output ("[{0}] {1} :: {2}" -f $mark, $name, ($detail | Out-String).Trim())
 }
 
+# Not a pass and not a failure: the run could not put the operator's clipboard back, so it did not
+# take it in the first place.
+function Skip([string] $name, $detail) {
+  $script:results.Add([pscustomobject]@{ check = $name; ok = $null; detail = $detail })
+  $script:skipped++
+  Write-Output ("[INCONCLUSIVE] {0} :: {1}" -f $name, ($detail | Out-String).Trim())
+}
+
 Add-Type -TypeDefinition @"
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 public static class DvccDesktop {
+  [DllImport("user32.dll")] public static extern uint GetClipboardSequenceNumber();
   [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
   struct STARTUPINFO {
     public int cb; public string lpReserved; public string lpDesktop; public string lpTitle;
@@ -152,11 +168,64 @@ function Start-App([string] $label) {
   $env:DVCC_DATA_DIR = $dataDir
   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$Port"
   $childPid = [DvccDesktop]::Start($Exe, $desktopName)
+  $script:started.Add($childPid)
   if (-not (Connect-Cdp $Port $ReadySeconds)) { throw "$label : no CDP page appeared" }
   if (-not (Wait-For "document.querySelector('[data-testid=queue-list]') !== null" 30)) {
     throw "$label : the app never rendered its queue"
   }
   return $childPid
+}
+
+# --- clipboard ----------------------------------------------------------------------------------
+#
+# The sequence number changes on every write by anyone, which is what makes it safe to put back
+# only what this run itself displaced.
+
+function Get-ClipboardKind {
+  try {
+    if (Get-Clipboard -Format Image -ErrorAction SilentlyContinue) { return "image" }
+    $files = Get-Clipboard -Format FileDropList -ErrorAction SilentlyContinue
+    if ($files -and @($files).Count -gt 0) { return "files" }
+    $text = Get-Clipboard -Raw -ErrorAction SilentlyContinue
+    if ([string]::IsNullOrEmpty($text)) { return "empty" }
+    return "text"
+  }
+  catch { return "unknown" }
+}
+
+function Invoke-CopyPrompt([string] $label) {
+  $kind = Get-ClipboardKind
+  if ($kind -ne "text" -and $kind -ne "empty") {
+    Skip $label "the clipboard holds $kind, which this run cannot put back; Copy review prompt not pressed"
+    return $false
+  }
+  $snapshot = if ($kind -eq "text") { Get-Clipboard -Raw } else { $null }
+  $before = [DvccDesktop]::GetClipboardSequenceNumber()
+
+  Invoke-Cdp "document.querySelector('[data-testid=action-copy-prompt]').click(); true" | Out-Null
+
+  # Wait for DVCC's own write, bounded; the request file is written on the same action.
+  $deadline = (Get-Date).AddSeconds(6)
+  $afterCopy = $before
+  while ((Get-Date) -lt $deadline) {
+    $current = [DvccDesktop]::GetClipboardSequenceNumber()
+    if ($current -ne $before) { $afterCopy = $current; break }
+    Start-Sleep -Milliseconds 100
+  }
+
+  if ($afterCopy -ne $before) {
+    # Put it back at once, and only if nothing has written to it since DVCC did.
+    if ([DvccDesktop]::GetClipboardSequenceNumber() -eq $afterCopy) {
+      try {
+        if ($null -eq $snapshot) { $null | clip.exe } else { Set-Clipboard -Value $snapshot }
+      }
+      catch { Write-Output "[note] the clipboard could not be put back: $_" }
+    }
+    else {
+      Write-Output "[note] the clipboard changed after the copy; left exactly as it is"
+    }
+  }
+  return $true
 }
 
 function Stop-App([int] $processId) {
@@ -198,8 +267,8 @@ New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
 Copy-Item -Path (Join-Path $repo "fixtures\v1\valid\*") -Destination $dataDir -Recurse -Force
 [DvccDesktop]::Create($desktopName)
 
-$clipboardBefore = $null
-try { $clipboardBefore = Get-Clipboard -Raw -ErrorAction SilentlyContinue } catch { }
+# Only processes this run started are ever stopped.
+$started = [System.Collections.Generic.List[int]]::new()
 
 try {
   # --- first start: Japanese, nothing written ------------------------------------------------------
@@ -251,18 +320,24 @@ try {
   if (-not (Wait-For "document.querySelector('[data-testid=action-copy-prompt]') !== null" 15)) {
     throw "the copy-prompt button never appeared"
   }
-  Invoke-Cdp "document.querySelector('[data-testid=action-copy-prompt]').click(); true" | Out-Null
-  Start-Sleep -Milliseconds 1500
+  $copiedEn = Invoke-CopyPrompt "the request is written in English"
+  Start-Sleep -Milliseconds 1200
   $requestEn = if (Test-Path $requestPath) { Get-Content -Path $requestPath -Raw -Encoding UTF8 } else { "" }
-  Check "the request is written in English" ($requestEn -like "*# Independent Review Request*") ($requestEn.Split("`n")[0])
+  if ($copiedEn) {
+    Check "the request is written in English" ($requestEn -like "*# Independent Review Request*") ($requestEn.Split("`n")[0])
+  }
 
   Invoke-Cdp ($switchScript -replace "__LOCALE__", "ja") | Out-Null
   if (-not (Wait-For "document.documentElement.lang === 'ja'" 15)) { throw "the interface never switched back to Japanese" }
-  Invoke-Cdp "document.querySelector('[data-testid=action-copy-prompt]').click(); true" | Out-Null
-  Start-Sleep -Milliseconds 1500
+  $copiedJa = Invoke-CopyPrompt "the request is written in Japanese"
+  Start-Sleep -Milliseconds 1200
   $requestJa = if (Test-Path $requestPath) { Get-Content -Path $requestPath -Raw -Encoding UTF8 } else { "" }
-  Check "the request is written in Japanese" ($requestJa -like "*# 独立レビュー依頼*") ($requestJa.Split("`n")[0])
-  Check "both requests carry the same PR fact" (($requestEn -like "*#12*") -and ($requestJa -like "*#12*")) "pr=#12"
+  if ($copiedJa) {
+    Check "the request is written in Japanese" ($requestJa -like "*# 独立レビュー依頼*") ($requestJa.Split("`n")[0])
+  }
+  if ($copiedEn -and $copiedJa) {
+    Check "both requests carry the same PR fact" (($requestEn -like "*#12*") -and ($requestJa -like "*#12*")) "pr=#12"
+  }
 
   # --- and back again ------------------------------------------------------------------------------------
   Start-Sleep -Milliseconds 700
@@ -277,21 +352,51 @@ try {
   $projectCount = Invoke-Cdp "document.querySelectorAll('[data-testid=project-row]').length"
   Check "Phase 1 data is intact after all of it" (($queueCount -eq 2) -and ($projectCount -eq 3)) "reviews=$queueCount projects=$projectCount"
   Stop-App $appPid
+
+  # --- a preference file this version must not replace ------------------------------------------------------
+  $settingsPath = Join-Path $dataDir "settings.json"
+  $future = @'
+{
+  "schemaVersion": 2,
+  "locale": "en",
+  "futureField": {
+    "example": true
+  }
+}
+'@
+  [System.IO.File]::WriteAllText($settingsPath, $future)
+  $futureBytes = [System.IO.File]::ReadAllBytes($settingsPath)
+  Remove-Item -Path (Join-Path $dataDir "settings.json.bak") -Force -ErrorAction SilentlyContinue
+
+  $appPid = Start-App "future settings start"
+  $langFuture = Invoke-Cdp "document.documentElement.lang"
+  Check "a preference file from a later version means Japanese" ($langFuture -eq "ja") "lang=$langFuture"
+  $warned = Wait-For "Array.from(document.querySelectorAll('[data-testid=toast]')).some((t) => t.dataset.kind === 'warning')" 10
+  Check "and says so" $warned "a warning is shown at start-up"
+
+  Invoke-Cdp ($switchScript -replace "__LOCALE__", "en") | Out-Null
+  Start-Sleep -Milliseconds 1500
+  $langAfterAttempt = Invoke-Cdp "document.documentElement.lang"
+  Check "the interface stays with the language that is stored" ($langAfterAttempt -eq "ja") "lang=$langAfterAttempt"
+  $refusalShown = Invoke-Cdp "Array.from(document.querySelectorAll('[data-testid=toast]')).some((t) => t.dataset.kind === 'warning')"
+  Check "the refusal is visible to the Human" $refusalShown "a warning toast is shown"
+
+  $afterBytes = [System.IO.File]::ReadAllBytes($settingsPath)
+  $identical = ($afterBytes.Length -eq $futureBytes.Length) -and (-not (Compare-Object $afterBytes $futureBytes -SyncWindow 0))
+  Check "the file from the later version is byte-identical" $identical ("bytes=" + $afterBytes.Length)
+  Check "and no backup of it was made" (-not (Test-Path (Join-Path $dataDir "settings.json.bak"))) "settings.json.bak absent"
+  Stop-App $appPid
 }
 finally {
   Close-Cdp
-  Get-Process -Name "devvault-control-center" -ErrorAction SilentlyContinue |
-    Where-Object { $_.Path -eq $Exe } |
-    ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
+  # Only what this run started, by process id: another DVCC belongs to the operator.
+  foreach ($id in $started) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }
   [DvccDesktop]::Release()
   Remove-Item Env:\DVCC_DATA_DIR -ErrorAction SilentlyContinue
   Remove-Item Env:\WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS -ErrorAction SilentlyContinue
-  if ($null -ne $clipboardBefore -and $clipboardBefore -ne "") {
-    try { Set-Clipboard -Value $clipboardBefore } catch { }
-  }
 }
 
 Write-Output ""
-Write-Output ("checks: {0} passed, {1} failed" -f ($results.Count - $failures), $failures)
+Write-Output ("checks: {0} passed, {1} failed, {2} inconclusive" -f ($results.Count - $failures - $skipped), $failures, $skipped)
 Write-Output ("data folder: {0}" -f $dataDir)
 if ($failures -gt 0) { exit 1 }

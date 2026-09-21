@@ -125,7 +125,7 @@ export default function App() {
     void loadSettings(tauriStorage).then(
       (settings) => {
         if (cancelled) return;
-        localeStore.adopt(settings.locale);
+        localeStore.adopt(settings);
         setLocaleState(settings.locale);
         if (settings.problem !== null) {
           dispatch({
@@ -159,10 +159,15 @@ export default function App() {
         void localeStore.save(next).then((result) => {
           if (result.ok || result.superseded) return;
           setLocaleState(result.locale);
+          // A file this version must not replace is a different thing from a write that failed: one
+          // waits for the Human to deal with the file, the other may simply work next time.
+          const blocked = result.refusal === "blocked";
           dispatch({
             type: "toast",
-            kind: "error",
-            message: createTranslator(result.locale)("notice.settingsSaveFailed", { file: "settings.json" }),
+            kind: blocked ? "warning" : "error",
+            message: createTranslator(result.locale)(blocked ? "notice.settingsNotWritable" : "notice.settingsSaveFailed", {
+              file: "settings.json",
+            }),
           });
         });
       },

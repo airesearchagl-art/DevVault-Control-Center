@@ -377,6 +377,8 @@ export const ja = {
     "{file} を読み取れなかったため、表示言語を日本語にしました。ファイルは変更していません。",
   "notice.settingsSaveFailed":
     "{file} に表示言語を保存できなかったため、保存されている言語に戻しました。",
+  "notice.settingsNotWritable":
+    "{file} はこのバージョンのDVCCでは安全に更新できないため、表示言語を保存しませんでした。ファイルは変更していません。",
 
   // --- toasts ------------------------------------------------------------------------------------------------
   "toast.projectCreated": "プロジェクト「{name}」を作成しました",
@@ -494,6 +496,76 @@ export const ja = {
   "service.projectMissing": "プロジェクト {id} は projects.json にありません",
   "service.eventAppendFailed":
     "状態は保存しましたが、履歴を追記できませんでした: {error}",
+
+  // --- file health and schema reasons ----------------------------------------------------------------------
+  "health.reason.text": "{text}",
+  "health.reason.backup": "バックアップ: {error}",
+  "health.reason.backupRestoreFailed": "バックアップからの復元に失敗しました: {error}",
+  "health.missingWithUnreadableBackup":
+    "ファイルが見つからず、バックアップも読み取れません: {backup}",
+  "health.primaryAndBackupUnreadable":
+    "{primary}。バックアップも読み取れません: {backup}",
+  "health.sessionMissing": "session.json がありません",
+  "schema.field.mustBeString": "{field} は文字列である必要があります",
+  "schema.field.mustBeStringOrNull":
+    "{field} は文字列または null である必要があります",
+  "schema.field.mustBeTimestamp":
+    "{field} は ISO-8601 UTC のタイムスタンプである必要があります",
+  "schema.field.mustBeTimestampOrNull":
+    "{field} は ISO-8601 UTC のタイムスタンプまたは null である必要があります",
+  "schema.field.mustBeHeadOrNull":
+    "{field} は小文字16進7〜40文字のコミットSHAまたは null である必要があります",
+  "schema.field.mustBeObject": "{field} はオブジェクトである必要があります",
+  "schema.invalidJson": "JSONとして読み取れません: {reason}",
+  "schema.topLevelMustBeObject":
+    "最上位の値はオブジェクトである必要があります",
+  "schema.versionMustBe": "schemaVersion は {version} である必要があります",
+  "schema.projects.mustBeArray": "projects は配列である必要があります",
+  "schema.projects.duplicateId": "projectId が重複しています: {id}",
+  "schema.project.invalidId": "{field} は有効なプロジェクトIDではありません",
+  "schema.project.displayNameEmpty": "{field} は空にできません",
+  "schema.project.repositoryUrlNotNormalized":
+    "{field} は正規化されたGitHubリポジトリURLではありません",
+  "schema.project.localRootNotAbsolute":
+    "{field} は絶対ドライブパスではありません",
+  "schema.round.numberMustBe": "{field} は {expected} である必要があります",
+  "schema.round.unknownVerdict": "{field} は既知の判定ではありません",
+  "schema.round.archivedResults":
+    "{field} には result-r{round}-previous-<ms>.md 形式のファイル名のみ記載できます",
+  "schema.session.invalidReviewId":
+    "session.reviewSessionId は有効なレビューIDではありません",
+  "schema.session.idFolderMismatch":
+    "session.reviewSessionId（{id}）がフォルダ名（{folder}）と一致しません",
+  "schema.session.invalidProjectId":
+    "session.projectId は有効なプロジェクトIDではありません",
+  "schema.session.prNumber":
+    "session.prNumber は正の整数または null である必要があります",
+  "schema.session.reviewTypeEmpty": "session.reviewType は空にできません",
+  "schema.session.unknownResourceState":
+    "session.resourceState は既知のリソース状態ではありません",
+  "schema.session.unknownReviewState":
+    "session.reviewState は既知のレビュー状態ではありません",
+  "schema.session.suspendedFromNotResumable":
+    "SUSPENDED の間、session.suspendedFrom は再開可能な状態である必要があります",
+  "schema.session.suspendedFromMustBeNull":
+    "SUSPENDED 以外では session.suspendedFrom は null である必要があります",
+  "schema.session.roundsEmpty":
+    "session.rounds は空でない配列である必要があります",
+  "schema.session.roundsExceedLimit":
+    "session.rounds がラウンド上限（R{max}）を超えています",
+  "schema.session.reviewRoundMismatch":
+    "session.reviewRound はラウンド数と一致している必要があります",
+  "schema.session.threadUrl": "{field}: {reason}",
+  "schema.event.stateChangeMustBeObject":
+    "状態変化はオブジェクトまたは null である必要があります",
+  "schema.event.stateChangeFromUnknown":
+    "状態変化の from が既知の状態ではありません",
+  "schema.event.stateChangeToUnknown":
+    "状態変化の to が既知の状態ではありません",
+  "schema.event.unsupportedVersion": "対応していないイベントバージョンです",
+  "schema.event.unknownType": "不明なイベント種別です",
+  "schema.event.invalidReviewId": "reviewSessionId が不正です",
+  "schema.event.invalidRound": "round が不正です",
 
   // --- time ------------------------------------------------------------------------------------------------------
   "time.pattern": "{year}/{month}/{day} {hour}:{minute}",

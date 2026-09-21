@@ -1,6 +1,12 @@
 import { DEFAULT_LOCALE, isLocale, type Locale } from "../i18n/locale";
 import { createSerialQueue } from "./serialQueue";
-import { SETTINGS_TARGET, toStorageError, type StorageBackend, type StorageError } from "./storage";
+import {
+  SETTINGS_TARGET,
+  toStorageError,
+  type StorageBackend,
+  type StorageError,
+  type WritePrecondition,
+} from "./storage";
 
 /**
  * Interface preferences (`<data root>/settings.json`).
@@ -79,10 +85,22 @@ function writeQueueFor(backend: StorageBackend): <T>(task: () => Promise<T>) => 
   return queue;
 }
 
-/** Writes the chosen language. Nothing else in the data folder is touched. */
-export async function saveLocale(backend: StorageBackend, locale: Locale): Promise<void> {
-  await writeQueueFor(backend)(() => backend.write(SETTINGS_TARGET, serializeSettings(locale)));
+/**
+ * Runs one settings write in this backend's queue. Everything the write depends on — the
+ * precondition, and the record of what the file now holds — is computed inside the task, so a
+ * burst of choices cannot have a later write judged against what an earlier one had seen.
+ */
+function queued<T>(backend: StorageBackend, task: () => Promise<T>): Promise<T> {
+  return writeQueueFor(backend)(task);
 }
+
+/** Writes the chosen language. Nothing else in the data folder is touched. */
+export async function saveLocale(backend: StorageBackend, locale: Locale, precondition?: WritePrecondition): Promise<void> {
+  await queued(backend, () => backend.write(SETTINGS_TARGET, serializeSettings(locale), precondition));
+}
+
+/** Why a choice was not stored. `blocked` means the file itself has to be dealt with first. */
+export type SaveRefusal = "blocked" | "write_failed";
 
 export interface SaveLocaleResult {
   /** `false` when the file could not be written, so the choice is not stored. */
@@ -91,43 +109,84 @@ export interface SaveLocaleResult {
   locale: Locale;
   /** `true` when a later choice arrived while this write was in flight: that one decides. */
   superseded: boolean;
+  refusal?: SaveRefusal;
   error?: StorageError;
 }
 
 /**
- * Keeps the interface and the file in step. The caller may follow a choice immediately, but a
- * failed write reports the language that is still stored, so the interface can go back to it
+ * Keeps the interface and the file in step.
+ *
+ * Two rules live here. A file this version cannot understand — a later `schemaVersion`, a broken
+ * one, or one that could not be read at all — puts the preference into a read-only state: the
+ * language still changes on screen, but nothing is written, so a file belonging to another version
+ * of DVCC survives byte for byte, with whatever else it holds, until the Human deals with it. And
+ * a write that fails reports the language that is still stored, so the interface can go back to it
  * instead of showing one that the next start-up would not restore.
  */
 export interface LocaleStore {
   /** The language last written successfully (or adopted from the file at start-up). */
   readonly persisted: Locale;
-  /** Records the language that was read from the file; no write happens. */
-  adopt(locale: Locale): void;
+  /** `false` when the file on disk must not be replaced by this version of DVCC. */
+  readonly writable: boolean;
+  /** Records what was read from the file at start-up; no write happens. */
+  adopt(settings: LoadedSettings): void;
   save(locale: Locale): Promise<SaveLocaleResult>;
 }
 
 export function createLocaleStore(backend: StorageBackend, persisted: Locale = DEFAULT_LOCALE): LocaleStore {
   let stored = persisted;
-  let latest = persisted;
+  let writable = true;
+  // The exact bytes this store last saw in the file. A write replaces only those, so a file that
+  // changed underneath is refused instead of overwritten.
+  let expected: string | null = null;
+  let sequence = 0;
+  let latest = 0;
+
   return {
     get persisted() {
       return stored;
     },
-    adopt(locale: Locale) {
-      stored = locale;
-      latest = locale;
+    get writable() {
+      return writable;
+    },
+    adopt(settings: LoadedSettings) {
+      stored = settings.locale;
+      // Absent or valid: this version owns the file. Anything else: hands off.
+      writable = settings.problem === null;
+      expected = settings.raw;
     },
     async save(locale: Locale): Promise<SaveLocaleResult> {
-      latest = locale;
+      const request = ++sequence;
+      latest = request;
+      // Identity, not value: choosing the same language again is still a later request, so an
+      // older failure can never be mistaken for the newest one.
+      const superseded = () => request !== latest;
+
+      if (!writable) return { ok: false, locale: stored, superseded: superseded(), refusal: "blocked" };
+
+      const content = serializeSettings(locale);
       try {
-        // Serialized by `saveLocale`, so these continuations also resolve in the order they were
-        // requested: the last choice is the one left in the file and in `stored`.
-        await saveLocale(backend, locale);
-        stored = locale;
-        return { ok: true, locale, superseded: latest !== locale };
+        await queued(backend, async () => {
+          // Judged against what the file held when this write's turn came, not when it was asked
+          // for: two choices in quick succession are still one write after another.
+          const precondition: WritePrecondition = expected === null ? { kind: "absent" } : { kind: "matches", content: expected };
+          await backend.write(SETTINGS_TARGET, content, precondition);
+          stored = locale;
+          expected = content;
+        });
+        return { ok: true, locale, superseded: superseded() };
       } catch (error) {
-        return { ok: false, locale: stored, superseded: latest !== locale, error: toStorageError(error) };
+        const failure = toStorageError(error);
+        // The file is no longer what this store read: another program owns it now, so this run
+        // stops writing to it rather than deciding whose content wins.
+        if (failure.code === "CONFLICT") writable = false;
+        return {
+          ok: false,
+          locale: stored,
+          superseded: superseded(),
+          refusal: failure.code === "CONFLICT" ? "blocked" : "write_failed",
+          error: failure,
+        };
       }
     },
   };
