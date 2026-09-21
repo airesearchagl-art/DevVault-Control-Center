@@ -1,13 +1,15 @@
 import { createProject, updateProject, type Project, type ProjectFormInput } from "../domain/project";
-import { buildReviewRequest } from "../domain/prompt";
+import { buildResolutionFollowup, buildReviewRequest } from "../domain/prompt";
 import { DEFAULT_LOCALE, type Locale } from "../i18n/locale";
 import {
   ARCHIVE_CANDIDATES,
   archivedResponseFileName,
   createReviewSession,
   currentRound,
+  type ResponseKind,
   type ReviewFormInput,
   type ReviewSession,
+  type RoundRecord,
 } from "../domain/review";
 import { message, type Message } from "../domain/message";
 import { err, invalid, ok, type FieldErrors, type Result } from "../domain/result";
@@ -22,7 +24,7 @@ import {
   writeSessionAndEvent,
   type FileHealth,
 } from "./persistence";
-import { resultFileName, reviewTarget, type StorageBackend } from "./storage";
+import { judgmentFileName, resultFileName, reviewTarget, type StorageBackend } from "./storage";
 
 /**
  * Use cases combining pure domain rules with persistence. The in-memory state is only
@@ -135,27 +137,76 @@ export async function saveReviewRequest(
   return saved.ok ? ok({ ...saved.value, text }) : saved;
 }
 
+/**
+ * Generates Turn 2, saves `followup-r<N>.md`, records it, and returns the text to copy.
+ *
+ * The protocol invariant is not restated here: `applyReviewAction` is asked first, so a follow-up
+ * is never written for a round whose Fresh Assessment has not come back, whose Final Judgment is
+ * already in, or whose verdict the Human has confirmed (Waves 2.5 / 2.6).
+ */
+export async function saveFollowupRequest(
+  backend: StorageBackend,
+  project: Project,
+  session: ReviewSession,
+  now: string,
+  locale: Locale = DEFAULT_LOCALE,
+): Promise<Result<SaveOutcome & { text: string }>> {
+  const action: ReviewAction = { type: "recordFollowupSaved" };
+  const precheck = applyReviewAction(session, action, now);
+  if (!precheck.ok) return precheck;
+  const text = buildResolutionFollowup(project, session, locale);
+  await ensureSessionUnchanged(backend, session.reviewSessionId);
+  await writeRoundArtifact(backend, session.reviewSessionId, "followup", session.reviewRound, text);
+  const saved = await performReviewAction(backend, session, action, now);
+  return saved.ok ? ok({ ...saved.value, text }) : saved;
+}
+
 function withTrailingNewline(text: string): string {
   return text.endsWith("\n") ? text : `${text}\n`;
 }
 
 /**
- * Chooses where the result about to be replaced is kept (E-2). Candidate names are tried in order;
- * an unrecorded candidate that already holds exactly `previousText` is reused (an earlier attempt
- * archived it but did not finish), an unrecorded candidate holding other text is recorded as well
- * (it is the result an earlier interrupted capture replaced), and the first free name is used.
+ * What differs between the two reviewer responses. Everything else about capturing them — the
+ * confirmation, the archive plan, the order of the writes — is the same, so it is written once.
+ */
+const RESPONSE_SHAPE = {
+  result: {
+    guard: "captureResult",
+    file: resultFileName,
+    empty: "service.resultRequired",
+    tooLong: "service.resultTooLong",
+    archivedOf: (round: RoundRecord) => round.archivedResults,
+    capturedAtOf: (round: RoundRecord) => round.resultCapturedAt,
+  },
+  judgment: {
+    guard: "captureJudgment",
+    file: judgmentFileName,
+    empty: "service.judgmentRequired",
+    tooLong: "service.judgmentTooLong",
+    archivedOf: (round: RoundRecord) => round.archivedJudgments,
+    capturedAtOf: (round: RoundRecord) => round.judgmentCapturedAt,
+  },
+} as const satisfies Record<ResponseKind, unknown>;
+
+/**
+ * Chooses where the response about to be replaced is kept (E-2). Candidate names are tried in
+ * order; an unrecorded candidate that already holds exactly `previousText` is reused (an earlier
+ * attempt archived it but did not finish), an unrecorded candidate holding other text is recorded
+ * as well (it is the response an earlier interrupted capture replaced), and the first free name is
+ * used.
  */
 async function planArchive(
   backend: StorageBackend,
   session: ReviewSession,
+  kind: ResponseKind,
   previousText: string,
   capturedAt: string,
 ): Promise<Result<{ recover: string[]; archivedAs: string; exists: boolean }>> {
   const round = currentRound(session);
   const recover: string[] = [];
   for (let attempt = 0; attempt < ARCHIVE_CANDIDATES; attempt += 1) {
-    const name = archivedResponseFileName("result", round.round, capturedAt, attempt);
-    if (round.archivedResults.includes(name)) continue;
+    const name = archivedResponseFileName(kind, round.round, capturedAt, attempt);
+    if (RESPONSE_SHAPE[kind].archivedOf(round).includes(name)) continue;
     const existing = await backend.read(reviewTarget(session.reviewSessionId, name));
     if (existing === null) return ok({ recover, archivedAs: name, exists: false });
     if (existing === previousText) return ok({ recover, archivedAs: name, exists: true });
@@ -165,50 +216,46 @@ async function planArchive(
 }
 
 /**
- * Saves the Human-pasted result as `result-r<N>.md` (AC-13), the canonical latest result of the
- * round. Does not change the Review State; a verdict needs a separate Human confirmation (AC-14).
+ * Saves a Human-pasted reviewer response as `<kind>-r<N>.md`, the canonical latest response of that
+ * kind for the round. Does not change the Review State; a verdict needs a separate Human
+ * confirmation (AC-14).
  *
- * F-6: an existing result is never silently lost. Replacing a recorded result requires
- * `replaceConfirmed` (explicit Human confirmation); the previous text is first written to
- * `result-r<N>-previous-<ms>[-<n>].md` (write-if-absent, see `planArchive`), then the new result
- * replaces the old one only if it is still exactly the text that was archived, then the session
- * records the archives. Every step can be retried after an interruption (E-2).
+ * F-6: an existing response is never silently lost. Replacing a recorded one requires an explicit
+ * Human confirmation; the previous text is first written to `<kind>-r<N>-previous-<ms>[-<n>].md`
+ * (write-if-absent, see `planArchive`), then the new response replaces the old one only if it is
+ * still exactly the text that was archived, then the session records the archives. Every step can
+ * be retried after an interruption (E-2).
+ *
+ * `buildAction` is asked twice: once with no archive names, to check the confirmation (and, for the
+ * Fresh Assessment, the reviewed HEAD) before anything is read or written, and once with the plan.
  */
-export async function captureReviewResult(
+async function captureResponse(
   backend: StorageBackend,
   session: ReviewSession,
-  resultText: string,
-  reviewedHead: string | null,
-  replaceConfirmed: boolean,
+  kind: ResponseKind,
+  text: string,
+  buildAction: (archives: readonly string[]) => ReviewAction,
   now: string,
 ): Promise<Result<SaveOutcome & { archivedAs: string | null }>> {
-  const guard = guardAction(session, "captureResult");
+  const shape = RESPONSE_SHAPE[kind];
+  const guard = guardAction(session, shape.guard);
   if (guard !== null) return err(guard);
-  if (resultText.trim() === "") return invalid("service.resultRequired");
-  if (resultText.length > TEXT_MAX * 10) return invalid("service.resultTooLong");
+  if (text.trim() === "") return invalid(shape.empty);
+  if (text.length > TEXT_MAX * 10) return invalid(shape.tooLong);
 
   const round = currentRound(session);
-  const target = reviewTarget(session.reviewSessionId, resultFileName(round.round));
+  const target = reviewTarget(session.reviewSessionId, shape.file(round.round));
   const previousText = await backend.read(target);
-  // Confirmation and HEAD are checked before any read of archive candidates or any write.
-  const unconfirmed: ReviewAction = {
-    type: "captureResult",
-    reviewedHead,
-    ...(replaceConfirmed ? { replaceConfirmedByHuman: true as const } : {}),
-  };
-  const precheck = applyReviewAction(session, unconfirmed, now);
+  const precheck = applyReviewAction(session, buildAction([]), now);
   if (!precheck.ok) return precheck;
 
   let plan: { recover: string[]; archivedAs: string; exists: boolean } | null = null;
   if (previousText !== null) {
-    const planned = await planArchive(backend, session, previousText, round.resultCapturedAt ?? now);
+    const planned = await planArchive(backend, session, kind, previousText, shape.capturedAtOf(round) ?? now);
     if (!planned.ok) return planned;
     plan = planned.value;
   }
-  const action: ReviewAction = {
-    ...unconfirmed,
-    archivedResultFiles: plan === null ? [] : [...plan.recover, plan.archivedAs],
-  };
+  const action: ReviewAction = buildAction(plan === null ? [] : [...plan.recover, plan.archivedAs]);
   // Validate the archive names before any write.
   const preview = applyReviewAction(session, action, now);
   if (!preview.ok) return preview;
@@ -227,10 +274,46 @@ export async function captureReviewResult(
   }
   await backend.write(
     target,
-    withTrailingNewline(resultText),
+    withTrailingNewline(text),
     previousText === null ? { kind: "absent" } : { kind: "matches", content: previousText },
   );
   const saved = await performReviewAction(backend, session, action, now);
   const archivedAs = plan === null ? null : plan.archivedAs;
   return saved.ok ? ok({ ...saved.value, archivedAs }) : saved;
+}
+
+/** The Fresh Assessment (Turn 1's answer), saved as `result-r<N>.md` (AC-13). */
+export function captureReviewResult(
+  backend: StorageBackend,
+  session: ReviewSession,
+  resultText: string,
+  reviewedHead: string | null,
+  replaceConfirmed: boolean,
+  now: string,
+): Promise<Result<SaveOutcome & { archivedAs: string | null }>> {
+  return captureResponse(backend, session, "result", resultText, (archivedResultFiles) => ({
+    type: "captureResult",
+    reviewedHead,
+    ...(replaceConfirmed ? { replaceConfirmedByHuman: true as const } : {}),
+    archivedResultFiles,
+  }), now);
+}
+
+/**
+ * The Final Judgment (Turn 2's answer), saved as `judgment-r<N>.md`. It is kept beside the Fresh
+ * Assessment, never over it: both responses of a round survive, which is what the two-turn protocol
+ * is for.
+ */
+export function captureFinalJudgment(
+  backend: StorageBackend,
+  session: ReviewSession,
+  judgmentText: string,
+  replaceConfirmed: boolean,
+  now: string,
+): Promise<Result<SaveOutcome & { archivedAs: string | null }>> {
+  return captureResponse(backend, session, "judgment", judgmentText, (archivedJudgmentFiles) => ({
+    type: "captureJudgment",
+    ...(replaceConfirmed ? { replaceConfirmedByHuman: true as const } : {}),
+    archivedJudgmentFiles,
+  }), now);
 }

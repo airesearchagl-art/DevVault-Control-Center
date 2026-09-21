@@ -123,3 +123,98 @@ export function buildReviewRequest(project: Project, session: ReviewSession, loc
   const f = facts(project, session, locale);
   return locale === "en" ? english(project, f) : japanese(project, f);
 }
+/**
+ * Turn 2 — the Resolution Follow-up: the canonical Stage 3 + Stage 4 message.
+ *
+ * It goes out only after the Fresh Assessment has come back, and it carries what Turn 1 withheld on
+ * purpose — the background and the implementation history, items 7 and 8 of the canonical input
+ * list — then asks for the Final Judgment. Two rules travel with that context: say which findings
+ * the added Evidence changed, and let the Artifact win wherever the narrative disagrees with it.
+ *
+ * Like the request, this is a document rather than interface chrome, so both languages live here
+ * and a saved follow-up is never rewritten when the interface language changes.
+ */
+
+interface FollowupFacts {
+  round: number;
+  project: string;
+  reviewType: string;
+  expectedHead: string;
+}
+
+function followupFacts(project: Project, session: ReviewSession, locale: Locale): FollowupFacts {
+  const round = currentRound(session);
+  return {
+    round: session.reviewRound,
+    project: `${project.displayName} (${project.projectId})`,
+    reviewType: session.reviewType,
+    expectedHead: round.expectedHead ?? UNRECORDED[locale],
+  };
+}
+
+function japaneseFollowup(project: Project, f: FollowupFacts): string {
+  const human = HUMAN_FILLS.ja;
+  return [
+    `# 解決フォローアップ（Turn 2） — ${project.displayName} / R${f.round}`,
+    "",
+    "初回assessmentを受領しました。findingの解消とintent確認のため、ここで初めて追加contextを共有します。",
+    "",
+    "## Stage 3 — Resolution Context（追加context）",
+    "",
+    `- プロジェクト: ${f.project}`,
+    `- レビュー種別: ${f.reviewType}`,
+    `- レビュー対象HEAD: ${f.expectedHead}`,
+    `- 背景・目的: ${human}`,
+    `- すでに決まっている方針・実装経緯: ${human}`,
+    `- known trade-offs / 過去の検討 / 関連する過去レビュー: ${human}`,
+    "",
+    "- このcontextは、findingの解消・矛盾の確認・intentの確認に使ってください。",
+    "- 追加contextによって初回findingを変更してかまいませんが、どのfindingがどの追加Evidenceによって変わったのかを区別して示してください。",
+    "- このcontextとArtifactのEvidenceが矛盾する場合は、ArtifactのEvidenceを優先してください。",
+    "",
+    "## Stage 4 — Final Judgment（最終判断）",
+    "",
+    "- 初回assessmentと本contextを統合し、最終判断を同じ出力形式で更新してください。",
+    "- 初回から変更した判断には、変更の根拠となった追加Evidenceを明記してください。",
+    "- 変更しなかった指摘は、追加contextを踏まえてもなお有効であることを示してください。",
+    "",
+  ].join("\n");
+}
+
+function englishFollowup(project: Project, f: FollowupFacts): string {
+  const human = HUMAN_FILLS.en;
+  return [
+    `# Resolution Follow-up (Turn 2) — ${project.displayName} / R${f.round}`,
+    "",
+    "Your initial assessment has arrived. Here, for the first time, is the additional context — for resolving findings and confirming intent.",
+    "",
+    "## Stage 3 — Resolution Context",
+    "",
+    `- Project: ${f.project}`,
+    `- Review Type: ${f.reviewType}`,
+    `- Reviewed HEAD: ${f.expectedHead}`,
+    `- Background and purpose: ${human}`,
+    `- Decisions already taken, and the implementation history: ${human}`,
+    `- Known trade-offs / earlier considerations / related past reviews: ${human}`,
+    "",
+    "- Use this context to resolve findings, check contradictions and confirm intent.",
+    "- You may change an initial finding because of it, but show which findings changed and which added Evidence changed them.",
+    "- Where this context and the Artifact's Evidence disagree, the Artifact's Evidence wins.",
+    "",
+    "## Stage 4 — Final Judgment",
+    "",
+    "- Combine your initial assessment with this context and restate your judgment in the same output format.",
+    "- For anything you changed from the initial assessment, name the added Evidence that changed it.",
+    "- For anything you did not change, say that it still stands with this context in hand.",
+    "",
+  ].join("\n");
+}
+
+export function buildResolutionFollowup(
+  project: Project,
+  session: ReviewSession,
+  locale: Locale = DEFAULT_LOCALE,
+): string {
+  const f = followupFacts(project, session, locale);
+  return locale === "en" ? englishFollowup(project, f) : japaneseFollowup(project, f);
+}

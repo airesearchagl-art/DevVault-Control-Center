@@ -527,9 +527,11 @@ export const ja = {
   "service.projectsNotModifiable": "projects.json を変更できません: {problem}",
   "service.unknownProject": "未登録のプロジェクトです: {id}",
   "service.noArchiveName":
-    "R{round} の以前の結果を保持できるファイル名が残っていません",
+    "R{round} の以前の回答を保持できるファイル名が残っていません",
   "service.resultRequired": "保存する前にレビュー結果を貼り付けてください",
   "service.resultTooLong": "レビュー結果が長すぎます",
+  "service.judgmentRequired": "保存する前に最終判断を貼り付けてください",
+  "service.judgmentTooLong": "最終判断が長すぎます",
   "service.reviewIdCollision":
     "一意のレビューIDを採番できませんでした。もう一度お試しください",
   "service.reviewUnavailable": "レビュー {id} を利用できません",

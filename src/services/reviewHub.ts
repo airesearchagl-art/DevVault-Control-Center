@@ -15,10 +15,12 @@ import {
   type ReviewArtifacts,
 } from "./persistence";
 import {
+  captureFinalJudgment,
   captureReviewResult,
   performReviewAction,
   saveEditedProject,
   saveNewProject,
+  saveFollowupRequest,
   saveNewReview,
   saveReviewRequest,
   type SaveOutcome,
@@ -179,6 +181,39 @@ export class ReviewHub {
       const session = this.session(reviewId);
       if (!session) return invalid("service.reviewUnavailable", { id: reviewId });
       const result = await captureReviewResult(this.storage, session, text, reviewedHead, replaceConfirmed, this.now());
+      if (result.ok) {
+        this.storeSession(result.value.session);
+        this.commit();
+      }
+      return result;
+    });
+  }
+
+  /** Turn 2 of the Fresh Context protocol: the Resolution Follow-up for the current round. */
+  saveFollowup(reviewId: string, locale?: Locale): Promise<Result<SaveOutcome & { text: string }>> {
+    return this.run(async () => {
+      const session = this.session(reviewId);
+      if (!session) return invalid("service.reviewUnavailable", { id: reviewId });
+      const project = this.projects.find((p) => p.projectId === session.projectId);
+      if (!project) return invalid("service.projectMissing", { id: session.projectId });
+      const result = await saveFollowupRequest(this.storage, project, session, this.now(), locale);
+      if (result.ok) {
+        this.storeSession(result.value.session);
+        this.commit();
+      }
+      return result;
+    });
+  }
+
+  captureJudgment(
+    reviewId: string,
+    text: string,
+    replaceConfirmed: boolean,
+  ): Promise<Result<SaveOutcome & { archivedAs: string | null }>> {
+    return this.run(async () => {
+      const session = this.session(reviewId);
+      if (!session) return invalid("service.reviewUnavailable", { id: reviewId });
+      const result = await captureFinalJudgment(this.storage, session, text, replaceConfirmed, this.now());
       if (result.ok) {
         this.storeSession(result.value.session);
         this.commit();

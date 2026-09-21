@@ -525,9 +525,11 @@ export const en: Dictionary = {
   "service.projectsNotModifiable": "projects.json cannot be modified: {problem}",
   "service.unknownProject": "Unknown project: {id}",
   "service.noArchiveName":
-    "R{round} has no free archive name left for the previous result",
+    "R{round} has no free archive name left for the previous response",
   "service.resultRequired": "Paste the review result before saving",
   "service.resultTooLong": "Review result is too long",
+  "service.judgmentRequired": "Paste the Final Judgment before saving",
+  "service.judgmentTooLong": "Final Judgment is too long",
   "service.reviewIdCollision":
     "Could not allocate a unique review id; try again",
   "service.reviewUnavailable": "Review {id} is not available",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Project } from "./project";
-import { buildReviewRequest } from "./prompt";
+import { buildResolutionFollowup, buildReviewRequest } from "./prompt";
 import { createReviewSession, emptyReviewForm } from "./review";
 import { applyReviewAction } from "./transitions";
 
@@ -108,5 +108,52 @@ describe("buildReviewRequest", () => {
     expect(text).toContain("/ R2");
     // The verdict is a stored value: it is reported as it is, in either language.
     expect(text).toContain("- Previous round verdict: R1: FIX_REQUIRED");
+  });
+});
+
+describe("buildResolutionFollowup", () => {
+  const input = session({ prNumber: "45", expectedHead: "abcdef1234567" });
+
+  it("carries the Stage 3 context and asks for the Stage 4 judgment", () => {
+    const text = buildResolutionFollowup(project, input, "en");
+    expect(text).toContain("# Resolution Follow-up (Turn 2) — Project Alpha / R1");
+    expect(text).toContain("## Stage 3 — Resolution Context");
+    expect(text).toContain("## Stage 4 — Final Judgment");
+    expect(text).toContain("- Reviewed HEAD: abcdef1234567");
+  });
+
+  it("states the two rules the added context comes with", () => {
+    const en = buildResolutionFollowup(project, input, "en");
+    expect(en).toContain("which added Evidence changed them");
+    expect(en).toContain("the Artifact's Evidence wins");
+    const ja = buildResolutionFollowup(project, input);
+    expect(ja).toContain("どの追加Evidenceによって変わったのか");
+    expect(ja).toContain("ArtifactのEvidenceを優先");
+  });
+
+  it("carries the same values in both languages", () => {
+    const ja = buildResolutionFollowup(project, input, "ja");
+    const en = buildResolutionFollowup(project, input, "en");
+    for (const value of ["Project Alpha (project-alpha)", "abcdef1234567", "R1"]) {
+      expect(ja).toContain(value);
+      expect(en).toContain(value);
+    }
+    expect(ja.split("\n").length).toBe(en.split("\n").length);
+  });
+
+  it("never volunteers the local, private context", () => {
+    for (const locale of ["ja", "en"] as const) {
+      const text = buildResolutionFollowup(project, input, locale);
+      // The background is the Human's to write; DVCC does not fill it from the project record.
+      expect(text).not.toContain("secret-local-root");
+      expect(text).not.toContain("PRIVATE-NOTES");
+      expect(text).not.toContain("PRIVATE-NEXT-ACTION");
+      expect(text).not.toContain("SESSION-NEXT-ACTION");
+    }
+  });
+
+  it("marks an unrecorded HEAD instead of guessing", () => {
+    expect(buildResolutionFollowup(project, session(), "en")).toContain("- Reviewed HEAD: not recorded");
+    expect(buildResolutionFollowup(project, session())).toContain("- レビュー対象HEAD: 未記録");
   });
 });

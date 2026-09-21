@@ -151,6 +151,22 @@ describe("no silent overwrite of external changes (F-3)", () => {
     expect(memory.files).toEqual(before);
   });
 
+  it("checks session.json before writing the follow-up or the judgment (E-3)", async () => {
+    const memory = new MemoryStorage();
+    const { hub, reviewId } = await seededHub(memory);
+    unwrapOk(await hub.apply(reviewId, { type: "markReady" }));
+    unwrapOk(await hub.apply(reviewId, { type: "startReview" }));
+    unwrapOk(await hub.saveRequest(reviewId));
+    unwrapOk(await hub.captureResult(reviewId, "the fresh assessment", null, false));
+    const sessionPath = `reviews/${reviewId}/session.json`;
+    const external = memory.files.get(sessionPath)!.replace('"nextAction": ""', '"nextAction": "edited in another process"');
+    memory.files.set(sessionPath, external);
+    const before = new Map(memory.files);
+
+    await expect(hub.saveFollowup(reviewId)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(memory.files).toEqual(before);
+  });
+
   it("refuses to overwrite projects.json changed by another process", async () => {
     const memory = new MemoryStorage();
     const { hub } = await seededHub(memory);
@@ -180,5 +196,47 @@ describe("no silent overwrite of external changes (F-3)", () => {
     ]);
     expect(conflict.status).toBe("rejected");
     expect(applied.status === "fulfilled" && applied.value.ok).toBe(true);
+  });
+});
+
+describe("the two-turn protocol through the hub", () => {
+  it("runs Turn 1, Turn 2 and both responses, and keeps every file of the round", async () => {
+    const memory = new MemoryStorage();
+    const { hub, reviewId } = await seededHub(memory);
+    unwrapOk(await hub.apply(reviewId, { type: "markReady" }));
+    unwrapOk(await hub.apply(reviewId, { type: "startReview" }));
+    unwrapOk(await hub.saveRequest(reviewId));
+    unwrapOk(await hub.captureResult(reviewId, "the fresh assessment", null, false));
+    unwrapOk(await hub.saveFollowup(reviewId));
+    unwrapOk(await hub.captureJudgment(reviewId, "the final judgment", false));
+
+    const round = hub.session(reviewId)!.rounds[0];
+    expect(round.requestSavedAt).not.toBeNull();
+    expect(round.resultCapturedAt).not.toBeNull();
+    expect(round.followupSavedAt).not.toBeNull();
+    expect(round.judgmentCapturedAt).not.toBeNull();
+    for (const file of ["request-r1.md", "result-r1.md", "followup-r1.md", "judgment-r1.md"]) {
+      expect(memory.files.get(`reviews/${reviewId}/${file}`)).toBeDefined();
+    }
+    // Disk and application state agree, as after every hub operation.
+    expect(parseSessionFile(memory.files.get(`reviews/${reviewId}/session.json`)!, reviewId)).toEqual({
+      status: "ok",
+      value: hub.session(reviewId),
+    });
+  });
+
+  it("refuses Turn 2 out of order without touching the round", async () => {
+    const memory = new MemoryStorage();
+    const { hub, reviewId } = await seededHub(memory);
+    unwrapOk(await hub.apply(reviewId, { type: "markReady" }));
+    unwrapOk(await hub.apply(reviewId, { type: "startReview" }));
+    unwrapOk(await hub.saveRequest(reviewId));
+
+    const refused = await hub.saveFollowup(reviewId);
+    expect(refused.ok).toBe(false);
+    if (refused.ok) return;
+    expect(refused.error.key).toBe("action.followup.assessmentRequired");
+    expect(hub.session(reviewId)!.rounds[0].followupSavedAt).toBeNull();
+    expect(memory.files.get(`reviews/${reviewId}/followup-r1.md`)).toBeUndefined();
   });
 });
