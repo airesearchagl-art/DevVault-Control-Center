@@ -38,3 +38,34 @@ Nothing in the vault was modified. Notion was not accessed. No web search was us
 Assessed against Task Packet §5 and passed; the table is in `CANONICAL_REVIEW_CONTRACT.md` §7. One
 point is canonically silent — an override licensing a second substantive review of the same head —
 and Phase 3 does not invent one (DECISIONS RW-003).
+
+### Canonical set re-bound to latest main (2026-09-21)
+
+The delegated cross-project scan found five local mirrors of the vault repository and reported that
+the newest one carries a `Tier 2 Review Execution Contract` the working copy does not. Checked
+directly: `C:\Users\shuns\obsidian-vault\...\DevVault_Review_Depth_Tiering.md` is 2026-09-03,
+7 103 bytes, 58 lines; the 2026-09-16 mirror is 9 845 bytes, 88 lines. The working copy this session
+read first was therefore **stale**, and the missing section is exactly the one that defines evidence
+reuse.
+
+The Human then authorized a read-only fetch of `airesearchagl-art/obsidian-vault` main for this
+discovery only. `gh api` was used to read the commit and five file blobs; nothing was written to the
+vault, the repository or Notion, and no clone was made inside this repository. Main was
+`77ce41e6ff9e243ac2c8dc37ee29f5d5f4f24157` (2026-09-21T04:34:07Z). Both load-bearing files came back
+**byte-identical** to the 2026-09-16 mirror (diff empty after CRLF normalization), confirming that
+mirror is current and the working vault copy is not.
+
+What this changed in the contract:
+
+- **Evidence reuse** is explicit on latest main (`DevVault_Review_Depth_Tiering.md` lines 43–47):
+  SHA-bound evidence is reused, and only the part with a stated reason to be stale (head, base, the
+  blob under review, the relevant contract, the execution environment) is re-checked. Duplicate
+  execution without such a reason is prohibited.
+- **Same-head duplicate** is therefore a prohibition **with a condition**, not an unconditional block
+  and not a bare warning. The earlier reading — taken from the stale copy, which has no such
+  condition — is superseded (DECISIONS RW-003 → RW-012).
+- No override, no standing permission: the only exception routes in the canonical set are the CI
+  degraded-mode ones, which are a different route, single-use and rebound to a fresh head and base.
+
+The fetched files live in the session scratchpad and are not committed; the contract file cites them
+by path, commit and line number so an independent reviewer can fetch the same bytes.

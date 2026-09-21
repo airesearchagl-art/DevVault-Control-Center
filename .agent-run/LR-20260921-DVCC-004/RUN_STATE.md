@@ -3,7 +3,7 @@
 - Run ID: LR-20260921-DVCC-004
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — Wave 0 (preflight, canonical discovery, design)
+- Current state: RUNNING — Wave 0 complete (preflight, canonical discovery bound to latest main, design)
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/review-workflow-v0.3
 - Base SHA: 4c1962b0c47321805554be2218bba996ff5de92f
@@ -24,20 +24,21 @@ surface stays Human-operated.
 
 ## Canonical contract
 
-Discovered read-only and recorded in `CANONICAL_REVIEW_CONTRACT.md`. Phase 3 implements the meanings
-found there and invents none. Sources: the DevVault AI Review Request prompt (2-turn Fresh-Context
-protocol, the 16 input items, the Stage 1–4 templates), the Review Depth Tiering note (Risk Tier
-0 / 1 / 2, the escalation rule, one substantive review per head), the GitHub Review Attestation note
-(what may not be carried across heads or PRs), plus the finding / judgment vocabulary and the
-same-head test case located by a delegated read-only scan.
+Bound to `airesearchagl-art/obsidian-vault` **main @ `77ce41e6ff9e243ac2c8dc37ee29f5d5f4f24157`**
+(2026-09-21T04:34:07Z), read read-only with the Human's explicit authorization. The working vault
+copy is 2026-09-03 and stale — it lacks the Tier 2 Review Execution Contract, where evidence reuse is
+defined; the 2026-09-16 mirror is byte-identical to latest main for both load-bearing files.
+`CANONICAL_REVIEW_CONTRACT.md` records every concept with its file, line numbers and canonical lines.
 
-SPEC_GAP gate: **passed**. One point is canonically silent — an override that would license a second
-substantive review of the same head. Phase 3 does not invent one (see DECISIONS RW-003).
+SPEC_GAP gate: **passed at `77ce41e`**. Every trigger is answered by a canonical line, including the
+one that looked silent in the stale copy: a second substantive review of the same head is prohibited
+**unless a 合理的な失効理由 is stated** (Depth Tiering line 46), which is what Phase 3 implements
+(DECISIONS RW-012). No free-form override and no standing permission exist.
 
 ## Acceptance Criteria
 
 - [x] RW-01 branch created from fresh merged main `4c1962b`
-- [x] RW-02 canonical contract discovered and recorded; SPEC_GAP assessed
+- [x] RW-02 canonical contract discovered at latest main `77ce41e` and recorded with line-level citations; SPEC_GAP assessed and passed
 - [ ] RW-03 Fresh Context Turn 1 / Turn 2 implemented as canonically defined
 - [ ] RW-04 Risk Tier 0 / 1 / 2 implemented as canonically defined
 - [ ] RW-05 Risk Tier independent of Review / Resource / Freshness
@@ -64,8 +65,10 @@ substantive review of the same head. Phase 3 does not invent one (see DECISIONS 
 ## Completed
 
 - Wave 0: fresh preflight; branch from `origin/main`; Task Packet revision 1 snapshot bound by
-  digest; canonical review contract discovery (vault read-only, plus a delegated read-only scan of
-  the other local projects); SPEC_GAP gate assessed and passed.
+  digest; canonical review contract discovery — two delegated read-only scans, then this session read
+  the load-bearing sources itself, and finally the whole set was re-bound to the repository's latest
+  main after the scans showed the working vault copy was stale; SPEC_GAP gate assessed and passed;
+  data model and workflow design decided (RW-004..RW-012).
 
 ## Current implementation state
 
@@ -101,12 +104,12 @@ See DECISIONS.md (RW-001..).
 
 ## Next action
 
-Wave 0 design: decide the stage model, the duplicate key, the evidence-reuse shape, the artifact
-naming for Turn 1 / Turn 2, and the event additions — comparing the minimal options against the
-existing data contract before any code is written.
+Wave 1: the pure workflow domain — the derived stage model with a literal contract table, Risk Tier
+with the escalation rule, same-head duplicate detection over Phase 2's `compareHead`, and the
+evidence-eligibility contract, each with an independent oracle.
 
 ## Remaining tasks
 
-- Wave 0 design, then Waves 1–5.
+- Waves 1–5.
 - Final Convergence, Independent Verification in a separate context, Draft PR.
 - Phase 4 stays blocked until Phase 3 merges.

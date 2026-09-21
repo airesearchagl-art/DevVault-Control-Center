@@ -5,10 +5,11 @@
 - [x] Fresh preflight (origin/main `4c1962b`, PR #3 merged, clean tree, branch created from fresh main)
 - [x] Task Packet snapshot written and bound by digest
 - [x] Canonical review contract discovery (vault, read-only) — `CANONICAL_REVIEW_CONTRACT.md`
-- [ ] Reuse scan of other local projects for shared-contract references (delegated, read-only)
-- [x] SPEC_GAP gate — passed, with the one canonically silent point recorded
-- [ ] Data model and workflow design (stage model, duplicate key, evidence reuse, artifacts, events)
-- [ ] Checkpoint
+- [x] Reuse scan of other local projects for shared-contract references (delegated, read-only)
+- [x] Canonical set re-bound to `airesearchagl-art/obsidian-vault` main @ `77ce41e` (read-only, Human-authorized)
+- [x] SPEC_GAP gate — passed at latest main; every trigger answered by a canonical line
+- [x] Data model and workflow design (stage model, duplicate key, evidence reuse, artifacts, events)
+- [x] Checkpoint
 
 ## Wave 1 — pure workflow domain
 
