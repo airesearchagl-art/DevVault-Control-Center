@@ -266,3 +266,20 @@ pre-run timestamp (17:06:50). The temporary data folder was removed afterwards.
 
 Targeted checks at `d436711`: `npx tsc --noEmit` PASS, `npx vitest run` PASS (20 files, 577 tests),
 `npm run build` PASS. `src-tauri/` byte-unchanged since `4a1345b`, so the Rust suite was not re-run.
+
+
+## Focused Independent Re-review closure (2026-09-21)
+
+A separate reviewer re-reviewed only RF-L10N-01..04 at exact head `b472bdc747ecfe0f6ff019d6965025c6c8e85dcb`, with the product frozen at `d436711b60591c8c2519b1b9ef4f43cd435259e6`. The reviewer made no repository or PR mutation.
+
+- **RF-L10N-01 / P2-1: CLOSED.** Future/invalid settings were independently exercised across nine patterns; unsafe files remained byte-identical, no backup was created, no backend write was attempted, and external changes were refused by the queued exact-byte precondition.
+- **RF-L10N-02 / P2-2: CLOSED.** The three previously observed English recovery strings rendered in Japanese, the English equivalents kept their original meaning, nested validation messages localized correctly, and L10N-06 was independently reclassified **PASS**. The original FAIL at `4a1345b` remains preserved above as historical evidence.
+- **RF-L10N-03 / P3-1: CLOSED.** Request-identity ordering was independently replayed, including the former failing same-value sequence; final UI locale, store state and settings file agreed in every exercised case.
+- **RF-L10N-04 / P3-2: CLOSED.** The clipboard harness now uses sequence-number guarding, skips non-text clipboard states as INCONCLUSIVE, restores immediately when safe, and cleans up only PIDs started by the run.
+- Translation parity was independently measured at **422 JA / 422 EN**, with no missing, extra, blank, duplicate or placeholder-mismatch entries.
+- Independent local replay: TypeScript PASS, Vitest **577 / 577**, Vite build PASS, Cargo test **68 passed / 2 ignored**. GitHub CI remains absent.
+- The reviewer did **not** re-run the release/UI smoke because available memory remained below the 12 GiB heavy-verification gate; that execution is explicitly **INCONCLUSIVE**, not PASS. It independently verified the added six smoke assertions from source and reproduced the repaired product contracts through scratch probes. The implementation-run repaired smoke remains **24 / 24 PASS, 0 inconclusive**.
+- Hard Checks: Security PASS, Privacy PASS, Permission PASS, Data integrity PASS, Irreversible-data safety PASS.
+- New BLOCKER / P1 / P2 / P3 findings: **none**. Required Fixes: **none**. Final assessment: **READY CANDIDATE**.
+
+Phase 3 remains blocked until PR #3 is merged.

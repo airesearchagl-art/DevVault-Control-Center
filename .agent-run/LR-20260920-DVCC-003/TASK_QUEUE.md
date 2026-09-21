@@ -68,5 +68,5 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 ## Final
 
 - [x] Final Convergence (freeze, full diff review, Required Checks, Hard Checks, Quality Debt, unverified items)
-- [ ] Independent Verification (separate context)
+- [x] Independent Verification (Focused Independent Re-review) — RF-L10N-01..04 CLOSED, L10N-06 PASS, Required Fixes none, READY CANDIDATE
 - [x] Draft PR → STOP — PR #3 (Draft)

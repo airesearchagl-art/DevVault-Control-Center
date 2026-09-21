@@ -3,13 +3,13 @@
 - Run ID: LR-20260920-DVCC-003
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: COMPLETE_PENDING_FULL_VERIFY — Focused Repair RF-L10N-01..04 written, checked and verified in the running app; independent verification not yet run
+- Current state: COMPLETE_VERIFIED — Focused Independent Re-review closed RF-L10N-01..04; Required Fixes none; READY CANDIDATE
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/localization-foundation-v0.2.1
 - Base SHA: 318e273a1afe66c605da897a4f7603aaa921fc83
-- Current head: the Focused Repair checkpoint on `feat/localization-foundation-v0.2.1`; Draft PR #3
-- Current wave: Focused Repair complete (P2-1, P2-2, P3-1, P3-2); P3-3 and the advisories deferred by the Human
-- Last successful checkpoint: Focused Repair verification checkpoint
+- Current head: final evidence-only closure on `feat/localization-foundation-v0.2.1`; product frozen at `d436711b60591c8c2519b1b9ef4f43cd435259e6`; Draft PR #3
+- Current wave: Focused Repair independently re-reviewed; RF-L10N-01..04 CLOSED, L10N-06 PASS; P3-3 and the advisories remain deferred by the Human
+- Last successful checkpoint: Focused Independent Re-review — READY CANDIDATE
 - Task Packet ID: LRP-20260920-DVCC-003
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260920-DVCC-003/TASK_PACKET_SNAPSHOT.md
@@ -26,7 +26,7 @@ Make the whole Phase 1 + Phase 2 interface available in Japanese (default) and E
 - [x] L10N-03 English can be selected and applies immediately — UI smoke: the badge reads `Reviewing` right after the switch, with no reload
 - [x] L10N-04 the chosen locale survives a restart — UI smoke: second start comes up `lang=en` / `+ Project`; `settings.json` holds `{"schemaVersion":1,"locale":"en"}`
 - [x] L10N-05 Japanese can be selected again — UI smoke: switched back, preference written, third start comes up Japanese
-- [~] L10N-06 every Phase 1 user-facing surface exists in JA and EN — **FAIL at `4a1345b`** in the Final Independent FULL Review: schema and recovery sentences (`projects must be an array`, `session.json is missing`, `session.projectId is not a valid project id`) still reached a Japanese interface. Repaired in RF-L10N-02; **fixed pending independent verification**
+- [x] L10N-06 every Phase 1 user-facing surface exists in JA and EN — **FAIL at `4a1345b`** in the Final Independent FULL Review: schema and recovery sentences (`projects must be an array`, `session.json is missing`, `session.projectId is not a valid project id`) still reached a Japanese interface. Repaired in RF-L10N-02 and independently re-verified at `b472bdc`: **PASS / CLOSED**
 - [x] L10N-07 every Phase 2 user-facing surface exists in JA and EN — Waves 2 and 3: Git evidence card, status labels, Freshness badges and all thirteen explanations
 - [x] L10N-08 internal state / resource / freshness values unchanged — label maps left the domain; `data-state`, class fragments, schema fields, file names and error codes are untouched, and the UI smoke shows `data-state=REVIEWING` in both languages
 - [x] L10N-09 JA / EN key parity enforced by a test — compile-time key type plus parity, blank, duplicate and placeholder tests
@@ -75,8 +75,8 @@ Carried forward from Phase 2 and out of scope here: QD-001 (reader threads detac
 
 ## Findings of the Final Independent FULL Review of PR #3 (2026-09-21)
 
-- P2-1 future-schema `settings.json` overwritten on the first language switch — **fixed pending independent verification** (RF-L10N-01).
-- P2-2 untranslated recovery and schema text in a Japanese interface — **fixed pending independent verification** (RF-L10N-02).
+- P2-1 future-schema `settings.json` overwritten on the first language switch — **CLOSED by Focused Independent Re-review** (RF-L10N-01).
+- P2-2 untranslated recovery and schema text in a Japanese interface — **CLOSED by Focused Independent Re-review; L10N-06 PASS** (RF-L10N-02).
 - P3-1 an older failed save could decide over a newer one when both asked for the same language — fixed (RF-L10N-03).
 - P3-2 the UI smoke restored the clipboard unconditionally — fixed (RF-L10N-04).
 - P3-3 the hard-coded-text scan is a regular expression, not an AST walk — deferred by the Human; see QUALITY_DEBT.
@@ -84,8 +84,7 @@ Carried forward from Phase 2 and out of scope here: QD-001 (reader threads detac
 
 ## Explicit unverified items
 
-- Independent verification of all Acceptance Criteria (this session implemented them, so its own
-  sign-off is not independent evidence).
+- The Focused Independent Re-review did not re-run the release/UI smoke because its available-memory gate stayed below 12 GiB; it marked that execution INCONCLUSIVE. It independently reproduced the repaired product contracts with source inspection, scratch probes and local test replay, and still returned **READY CANDIDATE / Required Fixes none**. The repaired implementation-run isolated UI smoke remains 24 / 24 PASS.
 - No GitHub CI exists for this repository (0 status checks, no Actions workflow); every check is local.
 
 ## Known failures
@@ -102,13 +101,12 @@ New: `src/i18n/{locale,types,ja,en,index,context}.ts`, `src/i18n/i18n.test.ts`, 
 
 ## Remaining tasks
 
-- Independent Verification in a separate context.
-- Human Gate after independent verification: Ready / merge.
+- Human Gate: Ready / merge PR #3.
 - Phase 3 remains blocked until Localization Foundation is merged.
 
 ## Next action
 
-Stop. Draft PR #3 is open against `main` (`318e273`); independent verification runs in a separate context, and Phase 3 does not start until this merges.
+Human Gate: if fresh PR state is unchanged, mark PR #3 Ready and merge. Phase 3 may start only after the merge is confirmed on `main`.
 
 ## Stop conditions status
 
