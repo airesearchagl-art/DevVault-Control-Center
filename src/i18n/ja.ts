@@ -148,6 +148,7 @@ export const ja = {
   "detail.events.skipped_one":
     "events.jsonl の読み取れない{count}行をスキップしました（ファイルは変更していません）。",
   "detail.events.none": "履歴はありません。",
+  "detail.events.round": "ラウンド R{round}",
   "detail.events.stateChange": "{from} → {to}",
   "detail.events.noState": "∅",
   "detail.events.note": " — {note}",
@@ -231,6 +232,46 @@ export const ja = {
   "state.verdict.blocked": "ブロック",
 
   // --- event type labels -----------------------------------------------------------------------------
+  // --- review workflow (Phase 3) -------------------------------------------------------------------------------
+  "state.freshContext.turn1NotSent": "Turn 1未送信",
+  "state.freshContext.awaitingAssessment": "Fresh Assessment待ち",
+  "state.freshContext.assessmentReceived": "Fresh Assessment受領",
+  "state.freshContext.turn2Sent": "Turn 2送信済み・Final Judgment待ち",
+  "state.freshContext.judgmentReceived": "Final Judgment受領",
+  "state.freshContext.judgmentConfirmed": "判定確定済み",
+  "state.riskTier.tier0": "Tier 0",
+  "state.riskTier.tier1": "Tier 1",
+  "state.riskTier.tier2": "Tier 2",
+  "state.tier2Subject.security": "セキュリティ",
+  "state.tier2Subject.privacy": "プライバシー",
+  "state.tier2Subject.credential": "認証情報",
+  "state.tier2Subject.production": "本番環境",
+  "state.tier2Subject.migration": "データ移行",
+
+  "detail.card.workflow": "レビューワークフロー",
+  "workflow.fresh.title": "Fresh Context（2ターン）",
+  "workflow.fresh.turn1": "Turn 1（レビュー依頼）",
+  "workflow.fresh.assessment": "Fresh Assessment（初回評価）",
+  "workflow.fresh.turn2": "Turn 2（解決フォローアップ）",
+  "workflow.fresh.judgment": "Final Judgment（最終判断）",
+  "workflow.fresh.notSent": "未送信",
+  "workflow.fresh.notReceived": "未受領",
+  "workflow.fresh.hint":
+    "Turn 1では背景・実装経緯を渡しません。初回評価を受け取ってから、Turn 2で追加contextを共有します。",
+  "workflow.actions.ariaLabel": "ワークフロー操作",
+  "workflow.actions.copyFollowup": "Turn 2をコピー",
+  "workflow.actions.captureJudgment": "最終判断を保存",
+  "workflow.actions.setRiskTier": "Risk Tierを設定",
+  "workflow.followup.needsAssessment": "Fresh Assessmentを保存するまでTurn 2は送れません",
+  "workflow.followup.answered": "Final Judgment受領後はTurn 2を書き換えられません",
+  "workflow.judgment.needsFollowup": "Turn 2を送るまで最終判断は保存できません",
+  "workflow.riskTier.title": "Risk Tier",
+  "workflow.riskTier.unset": "未設定",
+  "workflow.riskTier.subjectsLabel": "Tier 2対象",
+  "workflow.riskTier.noSubjects": "Tier 2対象の宣言なし",
+  "workflow.riskTier.hint":
+    "Risk Tierはレビュー状態・リソース状態・Freshnessとは独立した、Humanが決める軸です。",
+
   "events.type.reviewCreated": "レビュー作成",
   "events.type.reviewReady": "レビュー準備完了",
   "events.type.reviewStarted": "レビュー開始",
@@ -337,6 +378,27 @@ export const ja = {
     "レビュー結果を読んだうえで、この判定を確定します。",
   "review.verdict.later": "あとで決める",
   "review.verdict.submit": "判定を確定",
+  // --- risk tier dialog (Phase 3) ------------------------------------------------------------------------------
+  "review.riskTier.title": "Risk Tierを設定（R{round}）",
+  "review.riskTier.tier": "Risk Tier",
+  "review.riskTier.subjects": "Tier 2対象（該当するものをすべて）",
+  "review.riskTier.tier0Description": "軽微・可逆・影響範囲が限定される変更",
+  "review.riskTier.tier1Description": "通常の機能変更。標準的なレビュー深度",
+  "review.riskTier.tier2Description": "セキュリティ・プライバシー・認証情報・本番環境・データ移行に関わる変更",
+  "review.riskTier.acknowledgement": "このRisk TierをHumanとして確定します",
+  "review.riskTier.rule":
+    "宣言したTier 2対象がある場合、Tier 0 / Tier 1は選べません。DVCCは黙って引き上げず、理由を示して拒否します。",
+  "review.riskTier.submit": "Risk Tierを設定",
+
+  // --- final judgment dialog (Phase 3) -------------------------------------------------------------------------
+  "review.judgment.title": "最終判断を保存（R{round}）",
+  "review.judgment.text": "Final Judgment（Turn 2の回答）",
+  "review.judgment.textHint":
+    "Fresh Assessmentは上書きされません。judgment-r{round}.md として別に保存されます。",
+  "review.judgment.replace": "保存済みの最終判断を置き換えます（以前の内容は別ファイルに退避します）",
+  "review.judgment.submitSave": "最終判断を保存",
+  "review.judgment.submitReplace": "最終判断を置き換える",
+
   "review.nextRound.title": "ラウンド R{round} を開始",
   "review.nextRound.body":
     "R{previous} の成果物はそのまま残ります。R{round} は{readyLabel}として開始します。",
@@ -397,6 +459,13 @@ export const ja = {
   "toast.reviewBlocked": "レビューをブロックしました",
   "toast.reviewClosed": "レビューを完了にしました",
   "toast.verdictConfirmed": "判定を確定しました: {verdict}",
+  "toast.followupSaved":
+    "Turn 2を followup-r{round}.md として保存し、クリップボードにコピーしました",
+  "toast.followupSavedCopyFailed":
+    "followup-r{round}.md を保存しましたが、クリップボードへのコピーに失敗しました: {error}",
+  "toast.judgmentCaptured":
+    "最終判断を judgment-r{round}.md として保存しました。{kept}Fresh Assessmentはそのまま残ります。",
+  "toast.riskTierSet": "Risk Tierを {tier} に設定しました",
   "toast.requestSaved":
     "レビュー依頼を request-r{round}.md として保存し、クリップボードにコピーしました",
   "toast.requestSavedCopyFailed":

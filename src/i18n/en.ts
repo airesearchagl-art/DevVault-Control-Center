@@ -140,6 +140,7 @@ export const en: Dictionary = {
   "detail.events.skipped_one":
     "{count} unreadable line in events.jsonl was skipped (file left unchanged).",
   "detail.events.none": "No events.",
+  "detail.events.round": "Round R{round}",
   "detail.events.stateChange": "{from} → {to}",
   "detail.events.noState": "∅",
   "detail.events.note": " — {note}",
@@ -222,6 +223,46 @@ export const en: Dictionary = {
   "state.verdict.blocked": "Blocked",
 
   // --- event type labels -----------------------------------------------------------------------------
+  // --- review workflow (Phase 3) -------------------------------------------------------------------------------
+  "state.freshContext.turn1NotSent": "Turn 1 not sent",
+  "state.freshContext.awaitingAssessment": "Awaiting the Fresh Assessment",
+  "state.freshContext.assessmentReceived": "Fresh Assessment received",
+  "state.freshContext.turn2Sent": "Turn 2 sent, awaiting the Final Judgment",
+  "state.freshContext.judgmentReceived": "Final Judgment received",
+  "state.freshContext.judgmentConfirmed": "Verdict confirmed",
+  "state.riskTier.tier0": "Tier 0",
+  "state.riskTier.tier1": "Tier 1",
+  "state.riskTier.tier2": "Tier 2",
+  "state.tier2Subject.security": "Security",
+  "state.tier2Subject.privacy": "Privacy",
+  "state.tier2Subject.credential": "Credentials",
+  "state.tier2Subject.production": "Production",
+  "state.tier2Subject.migration": "Data migration",
+
+  "detail.card.workflow": "Review workflow",
+  "workflow.fresh.title": "Fresh Context (two turns)",
+  "workflow.fresh.turn1": "Turn 1 (review request)",
+  "workflow.fresh.assessment": "Fresh Assessment",
+  "workflow.fresh.turn2": "Turn 2 (resolution follow-up)",
+  "workflow.fresh.judgment": "Final Judgment",
+  "workflow.fresh.notSent": "not sent",
+  "workflow.fresh.notReceived": "not received",
+  "workflow.fresh.hint":
+    "Turn 1 carries no background and no implementation history. That context is shared in Turn 2, after the initial assessment has come back.",
+  "workflow.actions.ariaLabel": "Workflow actions",
+  "workflow.actions.copyFollowup": "Copy Turn 2",
+  "workflow.actions.captureJudgment": "Save the Final Judgment",
+  "workflow.actions.setRiskTier": "Set the Risk Tier",
+  "workflow.followup.needsAssessment": "Turn 2 cannot be sent until the Fresh Assessment is saved",
+  "workflow.followup.answered": "Turn 2 cannot be rewritten once the Final Judgment is in",
+  "workflow.judgment.needsFollowup": "The Final Judgment cannot be saved until Turn 2 has gone out",
+  "workflow.riskTier.title": "Risk Tier",
+  "workflow.riskTier.unset": "not set",
+  "workflow.riskTier.subjectsLabel": "Tier 2 subjects",
+  "workflow.riskTier.noSubjects": "no Tier 2 subject declared",
+  "workflow.riskTier.hint":
+    "The Risk Tier is the Human's own axis, independent of Review State, Resource State and Freshness.",
+
   "events.type.reviewCreated": "Review created",
   "events.type.reviewReady": "Marked ready for review",
   "events.type.reviewStarted": "Review started",
@@ -332,6 +373,27 @@ export const en: Dictionary = {
     "I have read the review result and confirm this verdict.",
   "review.verdict.later": "Decide later",
   "review.verdict.submit": "Confirm verdict",
+  // --- risk tier dialog (Phase 3) ------------------------------------------------------------------------------
+  "review.riskTier.title": "Set the Risk Tier (R{round})",
+  "review.riskTier.tier": "Risk Tier",
+  "review.riskTier.subjects": "Tier 2 subjects (tick every one that applies)",
+  "review.riskTier.tier0Description": "Small, reversible, narrow in effect",
+  "review.riskTier.tier1Description": "An ordinary change, reviewed at the standard depth",
+  "review.riskTier.tier2Description": "Touches security, privacy, credentials, production or a data migration",
+  "review.riskTier.acknowledgement": "I confirm this Risk Tier as the Human",
+  "review.riskTier.rule":
+    "With a Tier 2 subject declared, Tier 0 and Tier 1 cannot be chosen. DVCC refuses with the reason rather than quietly raising it.",
+  "review.riskTier.submit": "Set the Risk Tier",
+
+  // --- final judgment dialog (Phase 3) -------------------------------------------------------------------------
+  "review.judgment.title": "Save the Final Judgment (R{round})",
+  "review.judgment.text": "Final Judgment (the answer to Turn 2)",
+  "review.judgment.textHint":
+    "The Fresh Assessment is not overwritten: this is kept separately as judgment-r{round}.md.",
+  "review.judgment.replace": "Replace the saved Final Judgment (the previous text is kept in its own file)",
+  "review.judgment.submitSave": "Save the Final Judgment",
+  "review.judgment.submitReplace": "Replace the Final Judgment",
+
   "review.nextRound.title": "Start round R{round}",
   "review.nextRound.body":
     "R{previous} artifacts stay as they are. R{round} starts as {readyLabel}.",
@@ -391,6 +453,13 @@ export const en: Dictionary = {
   "toast.reviewBlocked": "Review blocked",
   "toast.reviewClosed": "Review closed",
   "toast.verdictConfirmed": "Verdict confirmed: {verdict}",
+  "toast.followupSaved":
+    "Turn 2 saved as followup-r{round}.md and copied to the clipboard",
+  "toast.followupSavedCopyFailed":
+    "Saved followup-r{round}.md, but copying to the clipboard failed: {error}",
+  "toast.judgmentCaptured":
+    "Final Judgment saved as judgment-r{round}.md. {kept}The Fresh Assessment is left as it is.",
+  "toast.riskTierSet": "Risk Tier set to {tier}",
   "toast.requestSaved":
     "Review request saved as request-r{round}.md and copied to the clipboard",
   "toast.requestSavedCopyFailed":

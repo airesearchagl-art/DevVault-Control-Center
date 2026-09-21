@@ -3,8 +3,18 @@ import { excerpt } from "../../app/format";
 import { Dialog, Field, FormError } from "../../components/Dialog";
 import type { Message } from "../../domain/message";
 import { currentRound, type ReviewSession } from "../../domain/review";
+import { RISK_TIERS, TIER_2_SUBJECTS, type RiskTier, type Tier2Subject } from "../../domain/riskTier";
 import { normalizeHead } from "../../domain/validation";
-import { formatParts, RESOURCE_HINT_KEYS, RESOURCE_STATE_KEYS, REVIEW_STATE_KEYS, VERDICT_KEYS, type TranslationKey } from "../../i18n";
+import {
+  formatParts,
+  RESOURCE_HINT_KEYS,
+  RESOURCE_STATE_KEYS,
+  REVIEW_STATE_KEYS,
+  RISK_TIER_KEYS,
+  TIER_2_SUBJECT_KEYS,
+  VERDICT_KEYS,
+  type TranslationKey,
+} from "../../i18n";
 import { useT } from "../../i18n/context";
 
 function useSubmit() {
@@ -295,6 +305,174 @@ export function NextRoundDialog({
         </button>
         <button type="button" className="primary" disabled={saving} onClick={submit} data-testid="next-round-submit">
           {t("review.nextRound.submit", { round: next })}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+/**
+ * The Final Judgment (Turn 2's answer). It is kept beside the Fresh Assessment, never over it, so
+ * the dialog says which file it goes to and only asks about replacing a judgment.
+ */
+export function CaptureJudgmentDialog({
+  session,
+  onSubmit,
+  onCancel,
+}: {
+  session: ReviewSession;
+  onSubmit: (text: string, replaceConfirmed: boolean) => Promise<Message | null>;
+  onCancel: () => void;
+}) {
+  const round = currentRound(session);
+  const replacing = round.judgmentCapturedAt !== null;
+  const [text, setText] = useState("");
+  const [replaceConfirmed, setReplaceConfirmed] = useState(false);
+  const { error, setError, saving, run } = useSubmit();
+  const t = useT();
+
+  return (
+    <Dialog title={t("review.judgment.title", { round: session.reviewRound })} onClose={onCancel} testId="judgment-dialog" wide>
+      {replacing && (
+        <label className="checkbox replace-confirm">
+          <input
+            type="checkbox"
+            checked={replaceConfirmed}
+            onChange={(e) => setReplaceConfirmed(e.target.checked)}
+            data-testid="judgment-replace-confirm"
+          />
+          <span>{t("review.judgment.replace")}</span>
+        </label>
+      )}
+      <Field
+        label={t("review.judgment.text")}
+        htmlFor="judgment-text"
+        hint={t("review.judgment.textHint", { round: session.reviewRound })}
+      >
+        <textarea
+          id="judgment-text"
+          rows={14}
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            setError(null);
+          }}
+          autoFocus
+          data-testid="judgment-text"
+        />
+      </Field>
+      <FormError message={error} />
+      <div className="dialog-actions">
+        <button type="button" onClick={onCancel}>
+          {t("dialog.cancel")}
+        </button>
+        <button
+          type="button"
+          className="primary"
+          disabled={saving || text.trim() === "" || (replacing && !replaceConfirmed)}
+          onClick={() => run(() => onSubmit(text, replaceConfirmed))}
+          data-testid="judgment-submit"
+        >
+          {replacing ? t("review.judgment.submitReplace") : t("review.judgment.submitSave")}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+const TIER_DESCRIPTIONS: Record<RiskTier, TranslationKey> = {
+  TIER_0: "review.riskTier.tier0Description",
+  TIER_1: "review.riskTier.tier1Description",
+  TIER_2: "review.riskTier.tier2Description",
+};
+
+/**
+ * The Risk Tier, chosen by the Human. The tier and the subjects are sent to the domain exactly as
+ * ticked: nothing here derives a tier from the checkboxes, and nothing raises a choice quietly. A
+ * tier below what the declared subjects require comes back as a refusal with the reason, which is
+ * shown where every other form error is shown.
+ */
+export function RiskTierDialog({
+  session,
+  onSubmit,
+  onCancel,
+}: {
+  session: ReviewSession;
+  onSubmit: (tier: RiskTier, subjects: Tier2Subject[]) => Promise<Message | null>;
+  onCancel: () => void;
+}) {
+  const round = currentRound(session);
+  const [tier, setTier] = useState<RiskTier | null>(round.riskTier);
+  const [subjects, setSubjects] = useState<Tier2Subject[]>([...round.riskTierSubjects]);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const { error, setError, saving, run } = useSubmit();
+  const t = useT();
+
+  const toggle = (subject: Tier2Subject) => {
+    setError(null);
+    setSubjects((current) => (current.includes(subject) ? current.filter((s) => s !== subject) : [...current, subject]));
+  };
+
+  return (
+    <Dialog title={t("review.riskTier.title", { round: session.reviewRound })} onClose={onCancel} testId="risk-tier-dialog">
+      <fieldset className="field">
+        <legend>{t("review.riskTier.tier")}</legend>
+        <div className="verdict-options">
+          {RISK_TIERS.map((value) => (
+            <label key={value} className={`verdict-option${tier === value ? " selected" : ""}`}>
+              <input
+                type="radio"
+                name="risk-tier"
+                checked={tier === value}
+                onChange={() => {
+                  setTier(value);
+                  setError(null);
+                }}
+                data-testid={`risk-tier-${value}`}
+              />
+              <span>
+                <strong>{t(RISK_TIER_KEYS[value])}</strong>
+                <span className="muted">
+                  {t("review.verdict.separator")}
+                  {t(TIER_DESCRIPTIONS[value])}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset className="field">
+        <legend>{t("review.riskTier.subjects")}</legend>
+        {TIER_2_SUBJECTS.map((subject) => (
+          <label key={subject} className="checkbox">
+            <input
+              type="checkbox"
+              checked={subjects.includes(subject)}
+              onChange={() => toggle(subject)}
+              data-testid={`risk-subject-${subject}`}
+            />
+            {t(TIER_2_SUBJECT_KEYS[subject])}
+          </label>
+        ))}
+      </fieldset>
+      <p className="hint">{t("review.riskTier.rule")}</p>
+      <label className="checkbox">
+        <input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} data-testid="risk-tier-ack" />
+        {t("review.riskTier.acknowledgement")}
+      </label>
+      <FormError message={error} />
+      <div className="dialog-actions">
+        <button type="button" onClick={onCancel}>
+          {t("dialog.cancel")}
+        </button>
+        <button
+          type="button"
+          className="primary"
+          disabled={saving || tier === null || !acknowledged}
+          onClick={() => run(() => onSubmit(tier as RiskTier, subjects))}
+          data-testid="risk-tier-submit"
+        >
+          {t("review.riskTier.submit")}
         </button>
       </div>
     </Dialog>

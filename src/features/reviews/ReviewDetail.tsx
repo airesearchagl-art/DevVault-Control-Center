@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { excerpt } from "../../app/format";
+import { ActionButton } from "../../components/ActionButton";
+import { Row } from "../../components/DetailRow";
 import { FreshnessBadge, ResourceStateBadge, ReviewStateBadge } from "../../components/StateBadge";
 import type { FreshnessResult } from "../../domain/freshness";
 import type { GitObservation } from "../../domain/git";
@@ -7,6 +9,7 @@ import { MAX_REVIEW_ROUNDS } from "../../domain/limits";
 import type { Project } from "../../domain/project";
 import { currentRound, latestCapturedRound, type ReviewSession } from "../../domain/review";
 import { RESOURCE_STATES, type ResourceState } from "../../domain/states";
+import { timelineByRound } from "../../domain/timeline";
 import { canApply, type ReviewAction } from "../../domain/transitions";
 import { pullRequestUrl } from "../../domain/validation";
 import {
@@ -22,8 +25,20 @@ import {
 } from "../../i18n";
 import { useT } from "../../i18n/context";
 import type { ReviewArtifacts } from "../../services/persistence";
+import { ReviewWorkflow } from "./ReviewWorkflow";
 
-export type DetailDialog = "suspend" | "capture" | "verdict" | "block" | "close" | "nextRound" | "editReview" | "editProject";
+export type DetailDialog =
+  | "suspend"
+  | "capture"
+  | "verdict"
+  | "block"
+  | "close"
+  | "nextRound"
+  | "editReview"
+  | "editProject"
+  // Phase 3
+  | "judgment"
+  | "riskTier";
 
 interface ReviewDetailProps {
   session: ReviewSession;
@@ -40,18 +55,9 @@ interface ReviewDetailProps {
   onOpenChatgpt: () => void;
   onOpenFolder: () => void;
   onCopyPrompt: () => void;
+  /** Saves Turn 2 for the current round and copies it, the way `onCopyPrompt` does for Turn 1. */
+  onCopyFollowup: () => void;
   onSaveNextAction: (text: string) => Promise<boolean>;
-}
-
-function Row({ label, children, testId, mono }: { label: string; children: ReactNode; testId?: string; mono?: boolean }) {
-  return (
-    <div className="detail-row">
-      <dt>{label}</dt>
-      <dd className={mono ? "mono" : undefined} data-testid={testId}>
-        {children}
-      </dd>
-    </div>
-  );
 }
 
 function unrecorded(t: Translator): ReactNode {
@@ -73,28 +79,6 @@ function currentBranch(t: Translator, observation: GitObservation | undefined): 
   return observation.detached === true ? t("git.branch.detached") : unobserved(t);
 }
 
-function ActionButton({
-  label,
-  testId,
-  onClick,
-  enabled,
-  primary,
-  title,
-}: {
-  label: string;
-  testId: string;
-  onClick: () => void;
-  enabled: boolean;
-  primary?: boolean;
-  title?: string;
-}) {
-  return (
-    <button type="button" className={primary ? "primary" : undefined} onClick={onClick} disabled={!enabled} data-testid={testId} title={title}>
-      {label}
-    </button>
-  );
-}
-
 export function ReviewDetail({
   session,
   project,
@@ -109,6 +93,7 @@ export function ReviewDetail({
   onOpenChatgpt,
   onOpenFolder,
   onCopyPrompt,
+  onCopyFollowup,
   onSaveNextAction,
 }: ReviewDetailProps) {
   const t = useT();
@@ -132,7 +117,8 @@ export function ReviewDetail({
     project?.repositoryUrl && session.prNumber !== null ? pullRequestUrl(project.repositoryUrl, session.prNumber) : (project?.repositoryUrl ?? null);
   const resultText = artifacts?.latestResult?.text ?? null;
   const shownResult = resultText === null ? null : showFullResult ? { text: resultText, truncated: false } : excerpt(resultText, 20);
-  const recentEvents = artifacts ? artifacts.events.slice(-8).reverse() : [];
+  // The last events, grouped by the round they belong to, newest round first (RW-12).
+  const recentRounds = artifacts ? timelineByRound(artifacts.events.slice(-12)).reverse() : [];
   const UNRECORDED = unrecorded(t);
   const UNOBSERVED = unobserved(t);
 
@@ -423,6 +409,16 @@ export function ReviewDetail({
         )}
       </section>
 
+      <ReviewWorkflow
+        session={session}
+        round={round}
+        busy={busy}
+        projectMissing={project === null}
+        onCopyFollowup={onCopyFollowup}
+        onCaptureJudgment={() => onOpenDialog("judgment")}
+        onSetRiskTier={() => onOpenDialog("riskTier")}
+      />
+
       <section className="card">
         <header className="card-header">
           <h3>{t("detail.card.previousResult")}</h3>
@@ -472,37 +468,42 @@ export function ReviewDetail({
           <p className="warning-text">{t("detail.events.skipped", { count: artifacts.skippedEventLines })}</p>
         )}
         {artifacts && artifacts.errors.length > 0 && <p className="error-text">{artifacts.errors.join(" / ")}</p>}
-        {recentEvents.length === 0 ? (
+        {recentRounds.length === 0 ? (
           <p className="muted">{t("detail.events.none")}</p>
         ) : (
-          <ol className="event-list" data-testid="detail-events">
-            {recentEvents.map((event, index) => (
-              <li key={`${event.ts}-${index}`} data-event-type={event.type}>
-                <span className="mono small">{formatTimestamp(t, event.ts)}</span> <strong>{t(EVENT_TYPE_KEYS[event.type])}</strong>
-                {event.reviewState && (
-                  <span className="muted small">
-                    {" "}
-                    {t("detail.events.stateChange", {
-                      from: event.reviewState.from ? t(REVIEW_STATE_KEYS[event.reviewState.from]) : t("detail.events.noState"),
-                      to: t(REVIEW_STATE_KEYS[event.reviewState.to]),
-                    })}
-                  </span>
-                )}
-                {event.resourceState && (
-                  <span className="muted small">
-                    {" "}
-                    [
-                    {t("detail.events.stateChange", {
-                      from: event.resourceState.from ? t(RESOURCE_STATE_KEYS[event.resourceState.from]) : t("detail.events.noState"),
-                      to: t(RESOURCE_STATE_KEYS[event.resourceState.to]),
-                    })}
-                    ]
-                  </span>
-                )}
-                {event.note && <span className="small">{t("detail.events.note", { note: event.note })}</span>}
-              </li>
-            ))}
-          </ol>
+          recentRounds.map((group) => (
+            <div key={group.round} className="event-round" data-testid={`detail-events-r${group.round}`}>
+              <h4 className="subhead">{t("detail.events.round", { round: group.round })}</h4>
+              <ol className="event-list">
+                {group.events.map((event, index) => (
+                  <li key={`${event.ts}-${index}`} data-event-type={event.type}>
+                    <span className="mono small">{formatTimestamp(t, event.ts)}</span> <strong>{t(EVENT_TYPE_KEYS[event.type])}</strong>
+                    {event.reviewState && (
+                      <span className="muted small">
+                        {" "}
+                        {t("detail.events.stateChange", {
+                          from: event.reviewState.from ? t(REVIEW_STATE_KEYS[event.reviewState.from]) : t("detail.events.noState"),
+                          to: t(REVIEW_STATE_KEYS[event.reviewState.to]),
+                        })}
+                      </span>
+                    )}
+                    {event.resourceState && (
+                      <span className="muted small">
+                        {" "}
+                        [
+                        {t("detail.events.stateChange", {
+                          from: event.resourceState.from ? t(RESOURCE_STATE_KEYS[event.resourceState.from]) : t("detail.events.noState"),
+                          to: t(RESOURCE_STATE_KEYS[event.resourceState.to]),
+                        })}
+                        ]
+                      </span>
+                    )}
+                    {event.note && <span className="small">{t("detail.events.note", { note: event.note })}</span>}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ))
         )}
       </section>
     </article>

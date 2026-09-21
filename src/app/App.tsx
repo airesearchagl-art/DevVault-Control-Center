@@ -20,7 +20,15 @@ import type { ReviewAction } from "../domain/transitions";
 import { pullRequestUrl } from "../domain/validation";
 import { ProjectFormDialog } from "../features/projects/ProjectForm";
 import { ReviewDetail, type DetailDialog } from "../features/reviews/ReviewDetail";
-import { CaptureResultDialog, NextRoundDialog, SuspendDialog, VerdictDialog, type VerdictChoice } from "../features/reviews/ReviewDialogs";
+import {
+  CaptureJudgmentDialog,
+  CaptureResultDialog,
+  NextRoundDialog,
+  RiskTierDialog,
+  SuspendDialog,
+  VerdictDialog,
+  type VerdictChoice,
+} from "../features/reviews/ReviewDialogs";
 import { CreateReviewDialog, EditReviewDialog } from "../features/reviews/ReviewForm";
 import { ReviewQueue } from "../features/reviews/ReviewQueue";
 import { copyText } from "../services/clipboard";
@@ -39,6 +47,7 @@ import {
   translate,
   REVIEW_STATE_KEYS,
   REVIEW_TYPE_SUGGESTION_KEYS,
+  RISK_TIER_KEYS,
   VERDICT_KEYS,
   type Locale,
   type Translator,
@@ -375,6 +384,42 @@ export default function App() {
     }
   };
 
+  /** Turn 2: saved for the round, then copied, exactly as the request is. */
+  const copyFollowup = async (session: ReviewSession) => {
+    try {
+      const result = await track(hub.saveFollowup(session.reviewSessionId, locale));
+      if (!result.ok) {
+        notify("error", translate(t, result.error));
+        return;
+      }
+      warnIfNeeded(result.value);
+      const round = result.value.session.reviewRound;
+      try {
+        await copyText(result.value.text);
+        notify("info", t("toast.followupSaved", { round }));
+      } catch (error) {
+        notify("error", t("toast.followupSavedCopyFailed", { round, error: describeError(t, error) }));
+      }
+    } catch (error) {
+      notify("error", translate(t, saveFailed(t, error)));
+    }
+  };
+
+  const submitJudgment = async (session: ReviewSession, text: string, replaceConfirmed: boolean): Promise<Message | null> => {
+    try {
+      const result = await track(hub.captureJudgment(session.reviewSessionId, text, replaceConfirmed));
+      if (!result.ok) return result.error;
+      warnIfNeeded(result.value);
+      const saved = result.value.session;
+      const kept = result.value.archivedAs ? `${t("toast.resultSavedKept", { file: result.value.archivedAs })} ` : "";
+      notify("info", t("toast.judgmentCaptured", { round: saved.reviewRound, kept }));
+      setDialog(null);
+      return null;
+    } catch (error) {
+      return saveFailed(t, error);
+    }
+  };
+
   const submitCapture = async (
     session: ReviewSession,
     text: string,
@@ -500,6 +545,9 @@ export default function App() {
         }}
         onCopyPrompt={() => {
           void copyPrompt(selectedSession);
+        }}
+        onCopyFollowup={() => {
+          void copyFollowup(selectedSession);
         }}
         onSaveNextAction={async (text) => (await runAction(selectedSession, { type: "setNextAction", nextAction: text }, t("toast.nextActionSaved"))) === null}
       />
@@ -708,6 +756,28 @@ export default function App() {
         <CaptureResultDialog
           session={dialogSession}
           onSubmit={(text, reviewedHead, replaceConfirmed) => submitCapture(dialogSession, text, reviewedHead, replaceConfirmed)}
+          onCancel={closeDialog}
+        />
+      )}
+      {dialog?.kind === "judgment" && dialogSession && (
+        <CaptureJudgmentDialog
+          session={dialogSession}
+          onSubmit={(text, replaceConfirmed) => submitJudgment(dialogSession, text, replaceConfirmed)}
+          onCancel={closeDialog}
+        />
+      )}
+      {dialog?.kind === "riskTier" && dialogSession && (
+        <RiskTierDialog
+          session={dialogSession}
+          onSubmit={(riskTier, subjects) =>
+            withDialogClose(
+              runAction(
+                dialogSession,
+                { type: "setRiskTier", riskTier, subjects, confirmedByHuman: true },
+                t("toast.riskTierSet", { tier: t(RISK_TIER_KEYS[riskTier]) }),
+              ),
+            )
+          }
           onCancel={closeDialog}
         />
       )}

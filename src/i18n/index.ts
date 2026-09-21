@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import type { ReviewEventType } from "../domain/events";
+import type { FreshContextState } from "../domain/freshContext";
+import type { RiskTier, Tier2Subject } from "../domain/riskTier";
 import type { Message } from "../domain/message";
 import type { Freshness } from "../domain/freshness";
 import type { GitStatus } from "../domain/git";
@@ -108,6 +110,29 @@ export const VERDICT_KEYS: Record<Verdict, TranslationKey> = {
   FIX_REQUIRED: "state.verdict.fixRequired",
   REVIEW_PASS: "state.verdict.reviewPass",
   BLOCKED: "state.verdict.blocked",
+};
+
+export const FRESH_CONTEXT_STATE_KEYS: Record<FreshContextState, TranslationKey> = {
+  TURN_1_NOT_SENT: "state.freshContext.turn1NotSent",
+  AWAITING_ASSESSMENT: "state.freshContext.awaitingAssessment",
+  ASSESSMENT_RECEIVED: "state.freshContext.assessmentReceived",
+  TURN_2_SENT: "state.freshContext.turn2Sent",
+  JUDGMENT_RECEIVED: "state.freshContext.judgmentReceived",
+  JUDGMENT_CONFIRMED: "state.freshContext.judgmentConfirmed",
+};
+
+export const RISK_TIER_KEYS: Record<RiskTier, TranslationKey> = {
+  TIER_0: "state.riskTier.tier0",
+  TIER_1: "state.riskTier.tier1",
+  TIER_2: "state.riskTier.tier2",
+};
+
+export const TIER_2_SUBJECT_KEYS: Record<Tier2Subject, TranslationKey> = {
+  SECURITY: "state.tier2Subject.security",
+  PRIVACY: "state.tier2Subject.privacy",
+  CREDENTIAL: "state.tier2Subject.credential",
+  PRODUCTION: "state.tier2Subject.production",
+  MIGRATION: "state.tier2Subject.migration",
 };
 
 export const FRESHNESS_KEYS: Record<Freshness, TranslationKey> = {
