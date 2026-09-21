@@ -56,6 +56,15 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 - [x] Phase 1 / Phase 2 regression
 - [x] Checkpoint
 
+## Focused Repair — RF-L10N-01..04 (after the Final Independent FULL Review of PR #3)
+
+- [x] RF-L10N-01 a preference file this version cannot understand is never replaced (P2-1)
+- [x] RF-L10N-02 schema and recovery text the Human reads is localized (P2-2)
+- [x] RF-L10N-03 which choice decides is request identity, not the language value (P3-1)
+- [x] RF-L10N-04 the UI smoke only takes a clipboard it can put back (P3-2)
+- [ ] Full verification at the repaired head (release build + UI smoke)
+- [ ] Checkpoint
+
 ## Final
 
 - [x] Final Convergence (freeze, full diff review, Required Checks, Hard Checks, Quality Debt, unverified items)

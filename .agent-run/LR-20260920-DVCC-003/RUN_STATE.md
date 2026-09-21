@@ -3,13 +3,13 @@
 - Run ID: LR-20260920-DVCC-003
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: COMPLETE_PENDING_FULL_VERIFY — all waves complete, independent verification not yet run
+- Current state: RUNNING — Focused Repair RF-L10N-01..04 after the Final Independent FULL Review of PR #3
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/localization-foundation-v0.2.1
 - Base SHA: 318e273a1afe66c605da897a4f7603aaa921fc83
-- Current head: the final run-artifact checkpoint on `feat/localization-foundation-v0.2.1` (product frozen at `3117414`); Draft PR #3
-- Current wave: all waves complete; Final Convergence done; Draft PR #3 open
-- Last successful checkpoint: Wave 5 checkpoint
+- Current head: the Focused Repair checkpoint on `feat/localization-foundation-v0.2.1`; Draft PR #3
+- Current wave: Focused Repair (P2-1, P2-2, P3-1, P3-2); P3-3 and the advisories deferred by the Human
+- Last successful checkpoint: Focused Repair code checkpoint (`0193b1d`)
 - Task Packet ID: LRP-20260920-DVCC-003
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260920-DVCC-003/TASK_PACKET_SNAPSHOT.md
@@ -26,7 +26,7 @@ Make the whole Phase 1 + Phase 2 interface available in Japanese (default) and E
 - [x] L10N-03 English can be selected and applies immediately — UI smoke: the badge reads `Reviewing` right after the switch, with no reload
 - [x] L10N-04 the chosen locale survives a restart — UI smoke: second start comes up `lang=en` / `+ Project`; `settings.json` holds `{"schemaVersion":1,"locale":"en"}`
 - [x] L10N-05 Japanese can be selected again — UI smoke: switched back, preference written, third start comes up Japanese
-- [x] L10N-06 every Phase 1 user-facing surface exists in JA and EN — Wave 2: shell, queue, both forms, five dialogs, detail pane, shared components, plus validation / guard / service / health / notice messages; enforced by the compile-time key type, the parity test and `noHardCodedText.test.ts`
+- [~] L10N-06 every Phase 1 user-facing surface exists in JA and EN — **FAIL at `4a1345b`** in the Final Independent FULL Review: schema and recovery sentences (`projects must be an array`, `session.json is missing`, `session.projectId is not a valid project id`) still reached a Japanese interface. Repaired in RF-L10N-02; **fixed pending independent verification**
 - [x] L10N-07 every Phase 2 user-facing surface exists in JA and EN — Waves 2 and 3: Git evidence card, status labels, Freshness badges and all thirteen explanations
 - [x] L10N-08 internal state / resource / freshness values unchanged — label maps left the domain; `data-state`, class fragments, schema fields, file names and error codes are untouched, and the UI smoke shows `data-state=REVIEWING` in both languages
 - [x] L10N-09 JA / EN key parity enforced by a test — compile-time key type plus parity, blank, duplicate and placeholder tests
@@ -50,10 +50,12 @@ Complete, as of the final checkpoint.
 - The localization layer is in place and wired: dictionaries (377 keys each), translator with `{placeholder}` substitution and `_one` variants, `formatParts` for sentences that carry markup, label keys for every stored enum, React context, language selector, `document.documentElement.lang`.
 - The whole interface — Phase 1 and Phase 2 — renders from the dictionaries. Text produced outside React (validation, transition guards, service failures, file health, recovery notices, the thirteen Freshness explanations) travels as a named `Message` that the interface renders.
 - The review request is written in the language in use; a request already saved keeps the language it was written in.
-- The preference path is hardened: `settings.json` is accepted only at `schemaVersion === 1`, a failed save takes the interface back to the stored language and says so, and preference writes are serialized so rapid switching cannot land out of order.
+- The preference path is hardened: `settings.json` is accepted only at `schemaVersion === 1`; a file this version cannot understand makes the preference read-only for the run (nothing written, the file byte-identical, the Human told); a failed save takes the interface back to the stored language; writes are serialized, carry a precondition on the bytes last seen, and an older request can never decide over a newer one.
 - Four gates guard the rule: the compile-time key type, the parity test, the hard-coded-text scan, and the request comparison.
 
 ## Checks
+
+Focused Repair RF-L10N-01..04: `npx tsc --noEmit` PASS, `npx vitest run` PASS (20 files, 577 tests), `npm run build` PASS (`src-tauri/` byte-unchanged, so the Rust suite was not re-run). Release build and UI smoke pending the 12 GiB memory gate.
 
 Wave 1: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, 524 tests), `npm run build` PASS, `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (68 passed, 2 ignored).
 
@@ -70,6 +72,15 @@ Wave 1.5: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, 534 tests), 
 ## Quality Debt
 
 Carried forward from Phase 2 and out of scope here: QD-001 (reader threads detached after a timeout), QD-002 (`git status` executes filters configured in the observed repository). Nothing new open.
+
+## Findings of the Final Independent FULL Review of PR #3 (2026-09-21)
+
+- P2-1 future-schema `settings.json` overwritten on the first language switch — **fixed pending independent verification** (RF-L10N-01).
+- P2-2 untranslated recovery and schema text in a Japanese interface — **fixed pending independent verification** (RF-L10N-02).
+- P3-1 an older failed save could decide over a newer one when both asked for the same language — fixed (RF-L10N-03).
+- P3-2 the UI smoke restored the clipboard unconditionally — fixed (RF-L10N-04).
+- P3-3 the hard-coded-text scan is a regular expression, not an AST walk — deferred by the Human; see QUALITY_DEBT.
+- Advisories (start-up race, Rust `CommandError` wording, `app.subtitle` and detached-HEAD wording, unused-key scan) — deferred by the Human.
 
 ## Explicit unverified items
 
@@ -91,6 +102,7 @@ New: `src/i18n/{locale,types,ja,en,index,context}.ts`, `src/i18n/i18n.test.ts`, 
 
 ## Remaining tasks
 
+- Full verification at the repaired head (release build and UI smoke), once available memory is at or above 12 GiB.
 - Independent Verification in a separate context.
 - Human Gate after independent verification: Ready / merge.
 - Phase 3 remains blocked until Localization Foundation is merged.

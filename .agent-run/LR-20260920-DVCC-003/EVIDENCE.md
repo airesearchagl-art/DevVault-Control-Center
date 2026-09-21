@@ -163,3 +163,76 @@ AC coverage from this run: L10N-01 (Japanese default), L10N-02 (switch), L10N-03
 GitHub Actions CI: none in this repository; no CI result is claimed.
 
 Diff versus `origin/main` (`318e273`): 59 files, +3 648 / −576; excluding run artifacts, 52 files, +2 940 / −576. No dependency added, no capability change, no `tauri.conf.json` change. `src-tauri/` changed only in Wave 1 (the `settings` storage target).
+
+## Focused Repair after the Final Independent FULL Review of PR #3 (2026-09-21)
+
+The review found two Required Fixes and two P3 items the Human authorized fixing with them. What
+the review reported stands as it was reported: **L10N-06 was FAIL** at `4a1345b`, because a Japanese
+interface still showed English sentences such as `projects must be an array`.
+
+### RF-L10N-01 — a preference file this version must not replace (P2-1)
+
+Loading already refused a `schemaVersion` that is not 1; saving did not, so the first language
+switch rewrote the file as version 1 and the fields belonging to the later version were gone.
+
+`LocaleStore` now takes the whole `LoadedSettings` (`adopt`), and a file with any problem — later
+version, broken, or unreadable — makes the preference **read-only for the run**: `save` returns
+`refusal: "blocked"` without reaching the backend, the interface goes back to the stored language,
+and `App` shows `notice.settingsNotWritable` (a warning, not an error: there is nothing to retry).
+Every write also carries a precondition on the exact bytes the store last saw, computed **inside**
+the write queue so a burst of choices cannot judge a later write against what an earlier one saw; a
+`CONFLICT` marks the file read-only for the rest of the run as well.
+
+Tests (13 new in `settings.test.ts`): a fresh install creates version 1; a valid version 1 file is
+replaced in both directions; six unusable files (`schemaVersion` 2, 99 with unknown fields, missing,
+wrong type, 0, and content that is not JSON) each refuse the save with the file **byte-identical**
+and **no `.bak` created**; repeated attempts stay refused; a file changed underneath is refused with
+`CONFLICT`; an unreadable file is never touched; project and review files are unchanged throughout.
+
+Mutation probe: removing the read-only guard fails 7 of those tests (reverted immediately).
+
+### RF-L10N-02 — the text the Human reads on a bad file (P2-2)
+
+All 38 schema parse reasons became named messages; so did the three file-health compositions
+(`backup: …`, `backup restore failed: …`, the missing-with-unreadable-backup and
+primary-and-backup sentences) and `session.json is missing`. `ParseResult.malformed.reason` and
+`FileHealth`'s two `reason` fields are `Message` now, and a rejected thread URL carries the
+validator's own message nested inside the schema one.
+
+Left literal, inside a localized sentence: field paths (`projects[0].displayName`), file names,
+error codes, and the messages the storage layer reports.
+
+Tests (`src/i18n/recoveryText.test.ts`, 8): the three sentences the review quoted, read in both
+languages; a field path kept as it is inside a Japanese sentence; the nested thread-URL reason; the
+missing-session and unreadable-backup health sentences; and a scan of `schema.ts` and
+`persistence.ts` for any string literal holding a sentence of its own.
+
+Mutation probe: putting `projects must be an array` back into `schema.ts` as a parameter fails the
+scan (reverted immediately).
+
+### RF-L10N-03 — which choice decides (P3-1)
+
+`superseded` compared language values, so asking for the same language again made an older, failed
+request look like the newest one and the interface was pulled back to `ja` while `en` was what got
+written. It is a monotonic request number now.
+
+The review's scenario is a test: three choices issued before the first write finishes (`en` failing
+slowly, then `ja`, then `en`), after which the failed result is `superseded`, the file holds `en`,
+the store reports `en` and the interface shows `en`. Six more sequences (including a failure
+followed by the same language again) assert screen == store == file.
+
+Mutation probe: restoring the value comparison fails exactly that scenario (reverted immediately).
+
+### RF-L10N-04 — the operator's clipboard (P3-2)
+
+`scripts/verify-localization-ui.ps1` no longer restores the clipboard unconditionally at the end of
+the run. It reads the Windows clipboard sequence number around each **Copy review prompt**: it takes
+the clipboard only when it holds text it can put back, puts it back immediately after that copy,
+and leaves it alone when the number moved in between. An image or a file list is never overwritten —
+the two request checks report INCONCLUSIVE instead. Cleanup stops only the process ids this run
+started, rather than every process with the same name.
+
+### Checks after the repair
+
+`npx tsc --noEmit` PASS, `npx vitest run` PASS (20 files, **577 tests**), `npm run build` PASS.
+`src-tauri/` is byte-unchanged, so the Rust suite was not re-run (§11).
