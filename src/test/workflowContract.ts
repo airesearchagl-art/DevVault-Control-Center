@@ -128,6 +128,64 @@ export const FRESH_CONTEXT_STATE_TABLE: {
   },
 ];
 
+/**
+ * When the Human may confirm a verdict. The canonical protocol decides it: with no Turn 2 the Fresh
+ * Assessment is the final review response, and once Turn 2 has been sent the Final Judgment is what
+ * the decision is made against (`AI_Review_Request_Prompt.md` lines 44–47 and 147–149).
+ *
+ * `judgmentCapturedAt` without `followupSavedAt` is not in this table: it is not a state the
+ * protocol can reach, and the schema parser refuses such a file rather than the domain guarding it.
+ */
+export const VERDICT_GATE_TABLE: {
+  label: string;
+  resultCapturedAt: string | null;
+  followupSavedAt: string | null;
+  judgmentCapturedAt: string | null;
+  allowed: boolean;
+  refusal: string | null;
+}[] = [
+  {
+    label: "no Fresh Assessment yet",
+    resultCapturedAt: null,
+    followupSavedAt: null,
+    judgmentCapturedAt: null,
+    allowed: false,
+    refusal: "action.verdict.resultRequired",
+  },
+  {
+    label: "Fresh Assessment captured, no Turn 2",
+    resultCapturedAt: "2026-09-21T11:00:00.000Z",
+    followupSavedAt: null,
+    judgmentCapturedAt: null,
+    allowed: true,
+    refusal: null,
+  },
+  {
+    label: "Turn 2 sent, Final Judgment missing",
+    resultCapturedAt: "2026-09-21T11:00:00.000Z",
+    followupSavedAt: "2026-09-21T12:00:00.000Z",
+    judgmentCapturedAt: null,
+    allowed: false,
+    refusal: "action.verdict.judgmentRequired",
+  },
+  {
+    label: "Turn 2 sent, Final Judgment captured",
+    resultCapturedAt: "2026-09-21T11:00:00.000Z",
+    followupSavedAt: "2026-09-21T12:00:00.000Z",
+    judgmentCapturedAt: "2026-09-21T12:30:00.000Z",
+    allowed: true,
+    refusal: null,
+  },
+  {
+    label: "a round written before Phase 3: no follow-up key at all",
+    resultCapturedAt: "2026-01-01T11:00:00.000Z",
+    followupSavedAt: null,
+    judgmentCapturedAt: null,
+    allowed: true,
+    refusal: null,
+  },
+];
+
 // --- Risk Tier -------------------------------------------------------------------------------
 
 export const CONTRACT_TIERS = ["TIER_0", "TIER_1", "TIER_2"] as const;

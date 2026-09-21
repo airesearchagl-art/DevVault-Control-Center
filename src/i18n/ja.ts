@@ -478,6 +478,8 @@ export const ja = {
   "action.suspend.notResumable": "{state} からは一時中断できません",
   "action.resource.unchanged": "リソース状態はすでに {state} です",
   "action.verdict.unknown": "不明な判定です",
+  "action.verdict.judgmentRequired":
+    "Turn 2を送ったラウンドでは、最終判断（judgment-r{round}.md）を保存してから判定を確定してください",
   "action.block.confirmationRequired": "ブロックには明示的な確認が必要です",
   "action.block.reasonRequired": "レビューをブロックするには理由が必要です",
   "action.block.reasonTooLong": "理由が長すぎます",
@@ -539,6 +541,8 @@ export const ja = {
     "{field} には result-r{round}-previous-<ms>.md 形式のファイル名のみ記載できます",
   "schema.field.mustBeArray": "{field} は配列である必要があります",
   "schema.round.unknownRiskTier": "{field} は既知のRisk Tierではありません",
+  "schema.round.judgmentWithoutFollowup":
+    "{field} がありますが、対応するTurn 2の記録がありません",
   "schema.round.archivedJudgments":
     "{field} には judgment-r{round}-previous-<ms>.md 形式のファイル名のみ記載できます",
   "schema.round.invalidationReason": "{field} は既知の失効理由ではありません",

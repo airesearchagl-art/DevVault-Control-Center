@@ -183,3 +183,40 @@ stored verbatim, never translated and never parsed. `session.json` stays the aut
 Data integrity, irreversible-data safety: nothing is renamed, overwritten or deleted; every new path
 goes through the existing atomic write with its `.bak` and precondition; every new file name is added
 to the allow-list on both sides of the boundary.
+
+---
+
+## Correction — the two-turn protocol invariant (Wave 2.5)
+
+§1 of this document said the existing verdict guard "keeps working unchanged, because
+`resultCapturedAt` is still set first in every round". That was **not accurate**, and the sentence
+is left above exactly as it was written so the correction is visible rather than silent.
+
+What it missed: the old guard asks only whether a Fresh Assessment exists. So a round that had sent
+a Turn 2 and was still waiting for the Final Judgment would have let the Human confirm a verdict
+against the *first* response — the one the follow-up was sent to supersede. The canonical protocol
+says the opposite: with no Turn 2 the Fresh Assessment is what the decision is made against
+(`AI_Review_Request_Prompt.md` line 47), and after a Turn 2 the decision is Stage 4, the Final
+Judgment (lines 44–47, 147–149).
+
+**The invariant, enforced in the domain and not only in the interface:**
+
+| Round | Confirm verdict |
+|---|---|
+| `followupSavedAt === null` | allowed once `resultCapturedAt !== null` — the Fresh Assessment is the final review response |
+| `followupSavedAt !== null` | allowed only when `resultCapturedAt !== null` **and** `judgmentCapturedAt !== null` |
+| `followupSavedAt !== null`, judgment missing | **refused** (`action.verdict.judgmentRequired`); no Review State changes |
+| written before Phase 3 (no follow-up key at all) | unchanged: allowed once the result is captured |
+
+`judgmentCapturedAt` without `followupSavedAt` is not a state this protocol can reach. It is refused
+**by the schema parser** (`schema.round.judgmentWithoutFollowup`), not by the domain guard, so such a
+file is reported as unreadable and left untouched rather than loaded into an impossible round.
+
+**Handed forward to Wave 3.** The actions that wave adds carry the same guards in the domain and the
+service, not merely as a disabled button:
+
+- *Save Turn 2* — requires a captured Fresh Assessment (`resultCapturedAt !== null`) and no confirmed
+  verdict; it is a Human action.
+- *Capture Final Judgment* — requires `followupSavedAt !== null` and the Fresh Assessment to exist;
+  the Human pastes it and it is written to `judgment-r<N>.md`.
+- *Confirm Verdict* — as the table above.

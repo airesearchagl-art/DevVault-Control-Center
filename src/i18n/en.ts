@@ -473,6 +473,8 @@ export const en: Dictionary = {
   "action.suspend.notResumable": "Cannot suspend from {state}",
   "action.resource.unchanged": "Resource is already {state}",
   "action.verdict.unknown": "Unknown verdict",
+  "action.verdict.judgmentRequired":
+    "This round sent a Turn 2, so capture the Final Judgment (judgment-r{round}.md) before confirming a verdict",
   "action.block.confirmationRequired":
     "Blocking requires explicit Human confirmation",
   "action.block.reasonRequired": "A reason is required to block the review",
@@ -535,6 +537,8 @@ export const en: Dictionary = {
     "{field} must list result-r{round}-previous-<ms>.md file names",
   "schema.field.mustBeArray": "{field} must be an array",
   "schema.round.unknownRiskTier": "{field} is not a known Risk Tier",
+  "schema.round.judgmentWithoutFollowup":
+    "{field} is present but the round has no record of a Turn 2",
   "schema.round.archivedJudgments":
     "{field} must list judgment-r{round}-previous-<ms>.md file names",
   "schema.round.invalidationReason": "{field} is not a known invalidation reason",

@@ -249,6 +249,13 @@ function parseRound(value: unknown, index: number): RoundRecord {
   if (!Array.isArray(archived) || !archived.every((name) => isArchivedResponseFileName("result", name, index + 1))) {
     fail("schema.round.archivedResults", { field: `${where}.archivedResults`, round: index + 1 });
   }
+  // A Final Judgment only exists as the answer to a Turn 2: one without the other is not a state
+  // this protocol can reach, so the file is refused rather than read into an impossible round.
+  const followup = optionalTimestamp(value, "followupSavedAt", where);
+  const judgment = optionalTimestamp(value, "judgmentCapturedAt", where);
+  if (judgment !== null && followup === null) {
+    fail("schema.round.judgmentWithoutFollowup", { field: `${where}.judgmentCapturedAt` });
+  }
   const archivedJudgments = value.archivedJudgments === undefined ? [] : value.archivedJudgments;
   if (!Array.isArray(archivedJudgments) || !archivedJudgments.every((name) => isArchivedResponseFileName("judgment", name, index + 1))) {
     fail("schema.round.archivedJudgments", { field: `${where}.archivedJudgments`, round: index + 1 });
@@ -262,8 +269,8 @@ function parseRound(value: unknown, index: number): RoundRecord {
     verdict,
     verdictConfirmedAt: nullableTimestamp(value, "verdictConfirmedAt", where),
     verdictNote: nullableStr(value, "verdictNote", where),
-    followupSavedAt: optionalTimestamp(value, "followupSavedAt", where),
-    judgmentCapturedAt: optionalTimestamp(value, "judgmentCapturedAt", where),
+    followupSavedAt: followup,
+    judgmentCapturedAt: judgment,
     riskTier: parseRiskTier(value.riskTier, where),
     revalidation: parseRevalidation(value.revalidation, where),
     evidenceDecisions: parseEvidenceDecisions(value.evidenceDecisions, where),

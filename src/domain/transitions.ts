@@ -223,8 +223,14 @@ export function applyReviewAction(session: ReviewSession, action: ReviewAction, 
     case "confirmVerdict": {
       if (action.confirmedByHuman !== true) return invalid("action.verdict.confirmationRequired");
       if (action.verdict !== "FIX_REQUIRED" && action.verdict !== "REVIEW_PASS") return invalid("action.verdict.unknown");
-      if (currentRound(session).resultCapturedAt === null) {
+      const deciding = currentRound(session);
+      if (deciding.resultCapturedAt === null) {
         return invalid("action.verdict.resultRequired", { round: session.reviewRound });
+      }
+      // The canonical protocol: with no Turn 2 the Fresh Assessment is the final review response,
+      // but once Turn 2 has been sent the Final Judgment is what the Human decides against.
+      if (deciding.followupSavedAt !== null && deciding.judgmentCapturedAt === null) {
+        return invalid("action.verdict.judgmentRequired", { round: session.reviewRound });
       }
       const note = trimmedOrNull(action.note);
       return ok(

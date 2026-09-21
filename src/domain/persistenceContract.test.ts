@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { buildReReviewHandoff, buildRequiredFixHandoff, latestResponse } from "./handoff";
 import { newRound, type ReviewSession, type RoundRecord } from "./review";
 import { parseEventLine, parseSessionFile, serializeEvent, serializeSession } from "./schema";
+import { applyReviewAction } from "./transitions";
+import { VERDICT_GATE_TABLE } from "../test/workflowContract";
 
 /**
  * Phase 3 persistence: what the new fields mean, that a file written before Phase 3 still means what
@@ -298,5 +300,55 @@ describe("handoff", () => {
     buildReReviewHandoff(session([firstRound, second]));
     buildRequiredFixHandoff(session([firstRound]), firstRound);
     expect(JSON.stringify(firstRound)).toBe(before);
+  });
+});
+
+describe("the two-turn protocol invariant", () => {
+  const base: RoundRecord = { ...newRound(1, HEAD_A), reviewedHead: HEAD_A, requestSavedAt: "2026-01-01T10:00:00.000Z" };
+
+  it.each(VERDICT_GATE_TABLE)("$label", (row) => {
+    const round: RoundRecord = {
+      ...base,
+      resultCapturedAt: row.resultCapturedAt,
+      followupSavedAt: row.followupSavedAt,
+      judgmentCapturedAt: row.judgmentCapturedAt,
+    };
+    const start = { ...session([round]), reviewState: "REVIEWING" as const };
+    const result = applyReviewAction(
+      start,
+      { type: "confirmVerdict", verdict: "REVIEW_PASS", note: null, confirmedByHuman: true },
+      "2026-01-01T14:00:00.000Z",
+    );
+    expect(result.ok).toBe(row.allowed);
+    if (!result.ok) expect(result.error.key).toBe(row.refusal);
+    // Whatever the answer, the round's own record is untouched by asking.
+    expect(round.verdict).toBeNull();
+  });
+
+  it("refuses a file that claims a Final Judgment without a Turn 2", () => {
+    const impossible = {
+      ...newRound(1, HEAD_A),
+      resultCapturedAt: "2026-01-01T11:00:00.000Z",
+      judgmentCapturedAt: "2026-01-01T12:30:00.000Z",
+    };
+    const parsed = parseSessionFile(serializeSession(session([impossible])), REVIEW_ID);
+    expect(parsed.status).toBe("malformed");
+    if (parsed.status !== "malformed") return;
+    expect(parsed.reason.key).toBe("schema.round.judgmentWithoutFollowup");
+  });
+
+  it("lets a round written before Phase 3 confirm a verdict exactly as it used to", () => {
+    const fixture = readFileSync(`fixtures/v1/valid/reviews/${REVIEW_ID}/session.json`, "utf8");
+    const parsed = parseSessionFile(fixture, REVIEW_ID);
+    if (parsed.status !== "ok") throw new Error("fixture must parse");
+    const round = parsed.value.rounds[parsed.value.rounds.length - 1];
+    expect(round.followupSavedAt).toBeNull();
+    const start = { ...parsed.value, reviewState: "REVIEWING" as const };
+    const result = applyReviewAction(
+      start,
+      { type: "confirmVerdict", verdict: "REVIEW_PASS", note: null, confirmedByHuman: true },
+      "2026-01-01T14:00:00.000Z",
+    );
+    expect(result.ok).toBe(round.resultCapturedAt !== null);
   });
 });
