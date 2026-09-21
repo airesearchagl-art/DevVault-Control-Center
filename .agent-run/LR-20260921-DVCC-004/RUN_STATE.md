@@ -3,13 +3,13 @@
 - Run ID: LR-20260921-DVCC-004
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — Wave 1 complete (pure workflow domain with an independent oracle)
+- Current state: RUNNING — Wave 2 complete (persistence, events and handoff)
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/review-workflow-v0.3
 - Base SHA: 4c1962b0c47321805554be2218bba996ff5de92f
-- Current head: Wave 1 checkpoint commit
-- Current wave: Wave 1 → Wave 2 (persistence and handoff)
-- Last successful checkpoint: Wave 1 checkpoint
+- Current head: Wave 2 checkpoint commit
+- Current wave: Wave 2 → Wave 3 (Review Workflow UI, JA and EN together)
+- Last successful checkpoint: Wave 2 checkpoint
 - Task Packet ID: LRP-20260921-DVCC-004
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260921-DVCC-004/TASK_PACKET_SNAPSHOT.md
@@ -39,21 +39,21 @@ one that looked silent in the stale copy: a second substantive review of the sam
 
 - [x] RW-01 branch created from fresh merged main `4c1962b`
 - [x] RW-02 canonical contract discovered at latest main `77ce41e` and recorded with line-level citations; SPEC_GAP assessed and passed
-- [~] RW-03 Fresh Context Turn 1 / Turn 2 — the domain model is in place (Wave 1); the artifacts and the surface follow in Waves 2–4
-- [~] RW-04 Risk Tier 0 / 1 / 2 — values, subjects, escalation and refusal implemented (Wave 1); persistence and display follow
+- [~] RW-03 Fresh Context Turn 1 / Turn 2 — the domain model and both artifacts are in place (Waves 1–2); the surface follows in Waves 3–4
+- [~] RW-04 Risk Tier 0 / 1 / 2 — values, subjects, escalation, refusal and persistence implemented (Waves 1–2); display follows
 - [x] RW-05 Risk Tier independent of Review / Resource / Freshness — its module imports none of them, asserted by a test
 - [x] RW-06 same-head duplicate detected — pure function over Phase 2's `compareHead`, nine oracle cases, mutation M1
 - [ ] RW-07 duplicates are shown to the Human; never silently skipped or auto-closed
 - [ ] RW-08 evidence reuse implemented only as the canonical contract allows
 - [ ] RW-09 reused evidence shows source, head and age
-- [ ] RW-10 FIX_REQUIRED hands off to re-review without losing the round relation
+- [~] RW-10 FIX_REQUIRED hands off to re-review without losing the round relation — both handoff models implemented and tested (Wave 2); the surface follows in Wave 3
 - [ ] RW-11 past request / result / checkpoint artifacts are never rewritten automatically
 - [ ] RW-12 the review timeline reads per round
 - [ ] RW-13 Phase 2 Freshness stays separate from Review State
 - [~] RW-14 UNKNOWN is never filled in by guesswork — the domain reports `UNDECIDABLE` and `UNAVAILABLE` instead of guessing; the surface follows in Wave 3
 - [ ] RW-15 JA / EN parity
 - [ ] RW-16 new workflow prompts are semantically equal in JA and EN
-- [ ] RW-17 existing Phase 1 / 2 / Localization runtime data still loads
+- [~] RW-17 existing Phase 1 / 2 / Localization runtime data still loads — asserted against the v1 fixture, with a mutation probe; the running app is verified in Wave 5
 - [ ] RW-18 no ChatGPT login, send or scrape
 - [ ] RW-19 no GitHub API automation
 - [ ] RW-20 no IDE bridge brought forward from Phase 4
@@ -72,14 +72,20 @@ one that looked silent in the stale copy: a second substantive review of the sam
 
 ## Current implementation state
 
-The Phase 3 domain exists as pure functions with an independent contract table behind them: the
-Fresh Context turns and stages, the Risk Tier rules, same-head duplicate detection over Phase 2's
-`compareHead`, revalidation permission by canonical reason code, and per-item evidence reuse.
+The Phase 3 domain is in place as pure functions with an independent contract table behind them,
+and it is persisted: six optional round fields, two new round artifacts (`followup-r<N>.md`,
+`judgment-r<N>.md`) with the allow-list extended on both sides of the boundary, five new
+language-neutral event types with a closed typed `detail`, and the two handoff models.
 
-Nothing is persisted, rendered or emitted yet: no session field, no event type, no artifact, no UI.
-Phase 1, Phase 2 and Localization are untouched.
+Nothing is rendered yet — there is no Phase 3 UI, and no prompt change — so the workflow is not
+reachable from the interface. Phase 1, Phase 2 and Localization behave exactly as before, and
+`schemaVersion` is still 1.
 
 ## Checks
+
+Wave 2: `npx tsc --noEmit` PASS, `npx vitest run` PASS (22 files, 672 tests), `npm run build` PASS,
+`cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (68
+passed, 2 ignored). Two mutation probes, both reverted.
 
 Wave 1: `npx tsc --noEmit` PASS, `npx vitest run` PASS (21 files, 653 tests), `npm run build` PASS.
 `src-tauri/` untouched, so the Rust suite was not re-run. Five mutation probes, each reverted: see
@@ -93,7 +99,11 @@ localization scanner's AST candidate. See QUALITY_DEBT.md.
 
 ## Explicit unverified items
 
-- Everything except RW-01 and RW-02: implementation has not started.
+- RW-03, RW-04, RW-14: the domain and its persistence are in place and tested; the surface that shows
+  them to the Human is Wave 3, so the criteria are not closed yet.
+- RW-07 to RW-13, RW-15 to RW-17, RW-21: not reachable from the interface until Wave 3–4, and not
+  verified in the running app until Wave 5.
+- RW-23, RW-24: the isolated-desktop smoke and the documentation reconciliation have not run.
 - No GitHub CI exists for this repository; every check is local.
 
 ## Known failures
@@ -106,18 +116,21 @@ See DECISIONS.md (RW-001..).
 
 ## Files changed
 
-New: `src/domain/{freshContext,riskTier,duplicate,revalidation,evidenceReuse}.ts`,
-`src/domain/workflowContract.test.ts`, `src/test/workflowContract.ts`. Plus
-`.agent-run/LR-20260921-DVCC-004/*`.
+New: `src/domain/{freshContext,riskTier,duplicate,revalidation,evidenceReuse,handoff}.ts`,
+`src/domain/{workflowContract,persistenceContract}.test.ts`, `src/test/workflowContract.ts`.
+Changed: `src/domain/{review,schema,events,transitions}.ts`, `src/services/{storage,reviewService}.ts`,
+`src/test/memoryStorage.ts`, `src/i18n/{index,ja,en}.ts`, `src-tauri/src/storage.rs`,
+`src/domain/transitionContract.test.ts`. Plus `.agent-run/LR-20260921-DVCC-004/*`.
 
 ## Next action
 
-Wave 2: persistence and handoff — the two optional round fields, the four event types, the artifact
-naming for Turn 2, backward compatibility with existing runtime data, and the Required Fix /
-re-review handoff model.
+Wave 3: the Review Workflow UI in Japanese and English at once — where the Human is in the protocol,
+what to copy, what came back, the duplicate warning with its allowed paths, the evidence-reuse
+surface, the Required Fix / re-review handoff, and a timeline that reads per round.
 
 ## Remaining tasks
 
-- Waves 1–5.
+- Wave 3 (UI in both languages), Wave 4 (prompts, accessibility, Freshness integration, README and
+  data-contract updates), Wave 5 (regression, scenarios, isolated-desktop smoke).
 - Final Convergence, Independent Verification in a separate context, Draft PR.
 - Phase 4 stays blocked until Phase 3 merges.

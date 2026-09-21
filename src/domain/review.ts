@@ -1,4 +1,26 @@
 import type { ReviewEvent } from "./events";
+import type { RiskTier } from "./riskTier";
+import type { InvalidationReason } from "./revalidation";
+import type { EvidenceReason, EvidenceSource, EvidenceStatus } from "./evidenceReuse";
+
+/** Why a second substantive review of an already-reviewed head was allowed (Phase 3). */
+export interface RoundRevalidation {
+  reason: InvalidationReason;
+  priorReviews: { reviewId: string; round: number }[];
+  /** The Human's own words. Stored verbatim, never translated and never parsed. */
+  explanation: string | null;
+}
+
+/** What was decided about one piece of evidence offered for reuse (Phase 3). */
+export interface RoundEvidenceDecision {
+  id: string;
+  source: EvidenceSource;
+  boundHead: string | null;
+  capturedAt: string | null;
+  status: EvidenceStatus;
+  reason: EvidenceReason;
+}
+
 import { message } from "./message";
 import { err, ok, type FieldErrors, type Result } from "./result";
 import { isResourceState, type ResourceState, type ResumableState, type ReviewState, type Verdict } from "./states";
@@ -20,7 +42,23 @@ export interface RoundRecord {
   resultCapturedAt: string | null;
   verdict: Verdict | null;
   verdictConfirmedAt: string | null;
+  /**
+   * Phase 3. All of these are absent in files written before it and read as null / empty, so a
+   * round from Phase 1 or 2 means exactly what it meant: no Turn 2 happened.
+   */
+  /** When the Turn 2 request (`followup-r<N>.md`) was written. */
+  followupSavedAt: string | null;
+  /** Capture time of the canonical Final Judgment `judgment-r<N>.md`. */
+  judgmentCapturedAt: string | null;
+  /** The Risk Tier the Human confirmed for this round. */
+  riskTier: RiskTier | null;
+  /** Why a second substantive review of an already-reviewed head was allowed, if it was. */
+  revalidation: RoundRevalidation | null;
+  /** What was decided about each piece of evidence offered for reuse in this round. */
+  evidenceDecisions: RoundEvidenceDecision[];
   verdictNote: string | null;
+  /** Earlier Final Judgments of this round kept when one was replaced, oldest first. */
+  archivedJudgments: string[];
   /**
    * Earlier results of this round kept when a result was replaced (F-6), oldest first:
    * `result-r<N>-previous-<capture time in ms>.md`, or `...-<ms>-<n>.md` when that name was
@@ -29,30 +67,46 @@ export interface RoundRecord {
   archivedResults: string[];
 }
 
-const ARCHIVED_RESULT_PATTERN = /^result-r([1-9]\d*)-previous-(\d{1,20})(?:-([1-9]\d{0,2}))?\.md$/;
+/**
+ * The two reviewer responses a round can hold, named after the canonical protocol messages:
+ * `result` is the Fresh Assessment (the answer to Turn 1) and `judgment` is the Final Judgment
+ * (the answer to Turn 2). They share one file shape, so they share one set of helpers.
+ */
+export const RESPONSE_KINDS = ["result", "judgment"] as const;
+export type ResponseKind = (typeof RESPONSE_KINDS)[number];
+
+const ARCHIVED_RESPONSE_PATTERN: Record<ResponseKind, RegExp> = {
+  result: /^result-r([1-9]\d*)-previous-(\d{1,20})(?:-([1-9]\d{0,2}))?\.md$/,
+  judgment: /^judgment-r([1-9]\d*)-previous-(\d{1,20})(?:-([1-9]\d{0,2}))?\.md$/,
+};
 
 /** Candidate archive names per replaced result: the base name, then `-1` .. `-999`. */
 export const ARCHIVE_CANDIDATES = 1000;
 
 /**
- * Archive name for the result captured at `capturedAt` in `round`. `attempt` 0 is the base name;
+ * Archive name for the response captured at `capturedAt` in `round`. `attempt` 0 is the base name;
  * later attempts add a numeric suffix so an interrupted capture never blocks a retry (E-2).
  */
-export function archivedResultFileName(round: number, capturedAt: string, attempt = 0): string {
+export function archivedResponseFileName(kind: ResponseKind, round: number, capturedAt: string, attempt = 0): string {
   const suffix = attempt === 0 ? "" : `-${attempt}`;
-  return `result-r${round}-previous-${Date.parse(capturedAt)}${suffix}.md`;
+  return `${kind}-r${round}-previous-${Date.parse(capturedAt)}${suffix}.md`;
 }
 
-export function isArchivedResultFileName(name: unknown, round: number): name is string {
+export function isArchivedResponseFileName(kind: ResponseKind, name: unknown, round: number): name is string {
   if (typeof name !== "string") return false;
-  const match = ARCHIVED_RESULT_PATTERN.exec(name);
+  const match = ARCHIVED_RESPONSE_PATTERN[kind].exec(name);
   return match !== null && Number(match[1]) === round;
 }
 
-/** True when `name` is one of the candidate archive names for the result captured at `capturedAt`. */
-export function isArchiveCandidateFor(name: string, round: number, capturedAt: string): boolean {
-  const match = ARCHIVED_RESULT_PATTERN.exec(name);
+/** True when `name` is one of the candidate archive names for the response captured at `capturedAt`. */
+export function isArchiveCandidateFor(kind: ResponseKind, name: string, round: number, capturedAt: string): boolean {
+  const match = ARCHIVED_RESPONSE_PATTERN[kind].exec(name);
   return match !== null && Number(match[1]) === round && match[2] === String(Date.parse(capturedAt));
+}
+
+/** The canonical file name of a round's response. */
+export function responseFileName(kind: ResponseKind, round: number): string {
+  return `${kind}-r${round}.md`;
 }
 
 export interface ReviewSession {
@@ -103,6 +157,27 @@ export interface ReviewMetadata {
   expectedHead: string | null;
   chatgptThreadTitle: string | null;
   chatgptThreadUrl: string | null;
+}
+
+/** A round as it starts: nothing handed over, nothing captured, nothing decided. */
+export function newRound(round: number, expectedHead: string | null): RoundRecord {
+  return {
+    round,
+    expectedHead,
+    reviewedHead: null,
+    requestSavedAt: null,
+    resultCapturedAt: null,
+    verdict: null,
+    verdictConfirmedAt: null,
+    verdictNote: null,
+    followupSavedAt: null,
+    judgmentCapturedAt: null,
+    riskTier: null,
+    revalidation: null,
+    evidenceDecisions: [],
+    archivedJudgments: [],
+    archivedResults: [],
+  };
 }
 
 export function emptyReviewForm(projectId = "", reviewType: string = DEFAULT_REVIEW_TYPE): ReviewFormInput {
@@ -198,19 +273,7 @@ export function createReviewSession(
     reviewState: "NEW",
     suspendedFrom: null,
     nextAction: input.nextAction.trim(),
-    rounds: [
-      {
-        round: 1,
-        expectedHead,
-        reviewedHead: null,
-        requestSavedAt: null,
-        resultCapturedAt: null,
-        verdict: null,
-        verdictConfirmedAt: null,
-        verdictNote: null,
-        archivedResults: [],
-      },
-    ],
+    rounds: [newRound(1, expectedHead)],
     createdAt: now,
     updatedAt: now,
   };
@@ -223,6 +286,7 @@ export function createReviewSession(
     reviewState: { from: null, to: "NEW" },
     resourceState: { from: null, to: input.resourceState },
     note: null,
+    detail: null,
   };
   return ok({ session, event });
 }

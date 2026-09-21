@@ -111,3 +111,47 @@ Checks: `npx tsc --noEmit` PASS, `npx vitest run` PASS (21 files, **653 tests**)
 PASS. `src-tauri/` untouched, so the Rust suite was not re-run. The localization gates are part of
 the suite and pass; the new domain adds no user-facing text, and its values map to translation keys
 in a later wave.
+
+## Wave 2 — persistence, events and handoff (2026-09-21)
+
+The Data Contract Gate was resolved first and is recorded in `DATA_CONTRACT_GATE.md`: which artifact
+holds which reviewer response, why `archivedResults` is not reused for the Fresh Assessment, and how
+the audit facts are stored as data rather than prose.
+
+**Round record.** Six optional fields, all absent-means-empty in older files: `followupSavedAt`,
+`judgmentCapturedAt`, `riskTier`, `revalidation`, `evidenceDecisions`, `archivedJudgments`. A single
+`newRound()` factory now builds a fresh round, so the two construction sites cannot drift.
+
+**Artifacts.** `followup-r<N>.md` (the Turn 2 request) and `judgment-r<N>.md` (the Final Judgment),
+with `judgment-r<N>-previous-<ms>[-<n>].md` for a replaced judgment. The archive helpers are
+parameterised by response kind rather than copied. Both names were added to the allow-list in the
+Rust boundary and its TypeScript mirror, with six new allowed names and five new refusals asserted in
+the Rust test.
+
+**Events.** Five language-neutral types (`followup_saved`, `judgment_captured`, `risk_tier_set`,
+`duplicate_continued`, `evidence_reused`) and an optional `detail` that is a closed union — one shape
+per type, and its `kind` must equal the event's own type. A malformed or mismatched detail makes the
+line unreadable, which the existing loader already skips and counts. `note` stays Human text that
+nothing reads back.
+
+**Handoff.** `buildRequiredFixHandoff` and `buildReReviewHandoff` are pure and read-only: they
+collect what is already recorded (reviewed head, the response artifact the verdict was made against,
+the verdict and its note, the next action, the next expected head, the previous round, the evidence
+decisions and the revalidation reason) and invent nothing. A test asserts the previous round is not
+mutated while a handoff is built.
+
+**Tests** (18 new, 672 total): an older fixture still loads with every Phase 3 field empty and still
+means "no Turn 2 happened"; a full round trip of all six fields; three refusals (unknown Risk Tier,
+unknown invalidation reason, an archived judgment from another round); four event-detail cases
+including a mismatched kind and a malformed payload; and seven handoff cases.
+
+**Mutation probes** (both reverted, file restored):
+
+| Mutation | Result |
+|---|---|
+| Phase 3 keys read with the strict v1 helper (absent no longer means null) | 3 failed / 15 passed — the backward-compatibility tests |
+| an event detail whose `kind` does not match its type is accepted | 1 failed / 17 passed |
+
+Checks: `npx tsc --noEmit` PASS, `npx vitest run` PASS (22 files, **672 tests**), `npm run build`
+PASS, `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS
+(68 passed, 2 ignored). `schemaVersion` is unchanged at 1.

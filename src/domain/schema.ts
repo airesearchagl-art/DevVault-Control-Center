@@ -1,8 +1,18 @@
-import { isReviewEventType, type ReviewEvent, type StateChange } from "./events";
+import { isReviewEventType, type ReviewEvent, type ReviewEventDetail, type StateChange } from "./events";
 import { message, type Message } from "./message";
 import type { TranslationKey, TranslationParams } from "../i18n/types";
 import type { Project } from "./project";
-import { SCHEMA_VERSION, isArchivedResultFileName, type ReviewSession, type RoundRecord } from "./review";
+import {
+  SCHEMA_VERSION,
+  isArchivedResponseFileName,
+  type ReviewSession,
+  type RoundEvidenceDecision,
+  type RoundRecord,
+  type RoundRevalidation,
+} from "./review";
+import { isRiskTier, isTier2Subject, type RiskTier, type Tier2Subject } from "./riskTier";
+import { isInvalidationReason } from "./revalidation";
+import { EVIDENCE_REASONS, EVIDENCE_SOURCES, EVIDENCE_STATUSES } from "./evidenceReuse";
 import { MAX_REVIEW_ROUNDS } from "./limits";
 import {
   isResourceState,
@@ -76,6 +86,18 @@ function nullableTimestamp(obj: Obj, key: string, where: string): string | null 
   if (value === null) return null;
   if (!isIsoTimestamp(value)) fail("schema.field.mustBeTimestampOrNull", { field: `${where}.${key}` });
   return value;
+}
+
+/**
+ * Phase 3 keys are absent in older files, so "not there" has to read the same as "null". The v1
+ * helpers deliberately refuse `undefined`, which is right for the keys v1 always writes.
+ */
+function optionalTimestamp(obj: Obj, key: string, where: string): string | null {
+  return obj[key] === undefined ? null : nullableTimestamp(obj, key, where);
+}
+
+function optionalHead(obj: Obj, key: string, where: string): string | null {
+  return obj[key] === undefined ? null : nullableHead(obj, key, where);
 }
 
 function nullableHead(obj: Obj, key: string, where: string): string | null {
@@ -162,6 +184,60 @@ export function parseProjectsFile(text: string): ParseResult<Project[]> {
   });
 }
 
+/**
+ * Phase 3 fields. Every one of them is absent in files written before Phase 3 and reads as null or
+ * empty, so an older round means exactly what it meant: no Turn 2 happened, no tier was recorded,
+ * no duplicate was continued, no evidence was carried over.
+ */
+function parseRiskTier(value: unknown, where: string): RiskTier | null {
+  if (value === undefined || value === null) return null;
+  if (!isRiskTier(value)) fail("schema.round.unknownRiskTier", { field: `${where}.riskTier` });
+  return value;
+}
+
+function parseRevalidation(value: unknown, where: string): RoundRevalidation | null {
+  const field = `${where}.revalidation`;
+  if (value === undefined || value === null) return null;
+  if (!isObject(value)) fail("schema.field.mustBeObject", { field });
+  if (!isInvalidationReason(value.reason)) fail("schema.round.invalidationReason", { field: `${field}.reason` });
+  const priorReviews = value.priorReviews;
+  if (!Array.isArray(priorReviews)) fail("schema.field.mustBeArray", { field: `${field}.priorReviews` });
+  const parsed = priorReviews.map((entry, position) => {
+    const at = `${field}.priorReviews[${position}]`;
+    if (!isObject(entry)) fail("schema.field.mustBeObject", { field: at });
+    const reviewId = str(entry, "reviewId", at);
+    if (!isValidReviewId(reviewId)) fail("schema.round.priorReviewId", { field: `${at}.reviewId` });
+    if (!positiveInt(entry.round)) fail("schema.round.priorReviewRound", { field: `${at}.round` });
+    return { reviewId, round: entry.round };
+  });
+  const explanation = value.explanation === undefined ? null : nullableStr(value, "explanation", field);
+  return { reason: value.reason, priorReviews: parsed, explanation };
+}
+
+function parseEvidenceDecisions(value: unknown, where: string): RoundEvidenceDecision[] {
+  const field = `${where}.evidenceDecisions`;
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) fail("schema.field.mustBeArray", { field });
+  return value.map((entry, position) => {
+    const at = `${field}[${position}]`;
+    if (!isObject(entry)) fail("schema.field.mustBeObject", { field: at });
+    const source = str(entry, "source", at);
+    if (!(EVIDENCE_SOURCES as readonly string[]).includes(source)) fail("schema.round.evidenceSource", { field: `${at}.source` });
+    const status = str(entry, "status", at);
+    if (!(EVIDENCE_STATUSES as readonly string[]).includes(status)) fail("schema.round.evidenceStatus", { field: `${at}.status` });
+    const reason = str(entry, "reason", at);
+    if (!(EVIDENCE_REASONS as readonly string[]).includes(reason)) fail("schema.round.evidenceReason", { field: `${at}.reason` });
+    return {
+      id: str(entry, "id", at),
+      source: source as RoundEvidenceDecision["source"],
+      boundHead: optionalHead(entry, "boundHead", at),
+      capturedAt: optionalTimestamp(entry, "capturedAt", at),
+      status: status as RoundEvidenceDecision["status"],
+      reason: reason as RoundEvidenceDecision["reason"],
+    };
+  });
+}
+
 function parseRound(value: unknown, index: number): RoundRecord {
   const where = `rounds[${index}]`;
   if (!isObject(value)) fail("schema.field.mustBeObject", { field: where });
@@ -170,8 +246,12 @@ function parseRound(value: unknown, index: number): RoundRecord {
   if (verdict !== null && !isVerdict(verdict)) fail("schema.round.unknownVerdict", { field: `${where}.verdict` });
   // `archivedResults` was added in the repair (F-6); files written before it omit the key.
   const archived = value.archivedResults === undefined ? [] : value.archivedResults;
-  if (!Array.isArray(archived) || !archived.every((name) => isArchivedResultFileName(name, index + 1))) {
+  if (!Array.isArray(archived) || !archived.every((name) => isArchivedResponseFileName("result", name, index + 1))) {
     fail("schema.round.archivedResults", { field: `${where}.archivedResults`, round: index + 1 });
+  }
+  const archivedJudgments = value.archivedJudgments === undefined ? [] : value.archivedJudgments;
+  if (!Array.isArray(archivedJudgments) || !archivedJudgments.every((name) => isArchivedResponseFileName("judgment", name, index + 1))) {
+    fail("schema.round.archivedJudgments", { field: `${where}.archivedJudgments`, round: index + 1 });
   }
   return {
     round: index + 1,
@@ -182,6 +262,12 @@ function parseRound(value: unknown, index: number): RoundRecord {
     verdict,
     verdictConfirmedAt: nullableTimestamp(value, "verdictConfirmedAt", where),
     verdictNote: nullableStr(value, "verdictNote", where),
+    followupSavedAt: optionalTimestamp(value, "followupSavedAt", where),
+    judgmentCapturedAt: optionalTimestamp(value, "judgmentCapturedAt", where),
+    riskTier: parseRiskTier(value.riskTier, where),
+    revalidation: parseRevalidation(value.revalidation, where),
+    evidenceDecisions: parseEvidenceDecisions(value.evidenceDecisions, where),
+    archivedJudgments: [...(archivedJudgments as string[])],
     archivedResults: [...(archived as string[])],
   };
 }
@@ -264,6 +350,53 @@ function parseChange<T>(value: unknown, isState: (v: unknown) => v is T): StateC
   return { from: value.from as T | null, to: value.to };
 }
 
+/**
+ * A detail is closed: one shape per event type, and its `kind` must be the event's own type. A
+ * malformed detail makes the line unreadable rather than half-read — the loader already skips
+ * unreadable event lines and reports how many it skipped.
+ */
+function parseEventDetail(value: unknown, type: string, where: string): ReviewEventDetail | null {
+  if (value === undefined || value === null) return null;
+  const field = `${where}.detail`;
+  if (!isObject(value)) fail("schema.field.mustBeObject", { field });
+  const kind = str(value, "kind", field);
+  if (kind !== type) fail("schema.event.detailKindMismatch", { field: `${field}.kind` });
+
+  if (kind === "duplicate_continued") {
+    if (!isInvalidationReason(value.invalidationReason)) {
+      fail("schema.round.invalidationReason", { field: `${field}.invalidationReason` });
+    }
+    const priorReviews = value.priorReviews;
+    if (!Array.isArray(priorReviews)) fail("schema.field.mustBeArray", { field: `${field}.priorReviews` });
+    const parsed = priorReviews.map((entry, position) => {
+      const at = `${field}.priorReviews[${position}]`;
+      if (!isObject(entry)) fail("schema.field.mustBeObject", { field: at });
+      const reviewId = str(entry, "reviewId", at);
+      if (!isValidReviewId(reviewId)) fail("schema.round.priorReviewId", { field: `${at}.reviewId` });
+      if (!positiveInt(entry.round)) fail("schema.round.priorReviewRound", { field: `${at}.round` });
+      return { reviewId, round: entry.round };
+    });
+    return { kind, invalidationReason: value.invalidationReason, priorReviews: parsed };
+  }
+
+  if (kind === "evidence_reused") {
+    return { kind, items: parseEvidenceDecisions(value.items, field) };
+  }
+
+  if (kind === "risk_tier_set") {
+    const riskTier = parseRiskTier(value.riskTier, field);
+    if (riskTier === null) fail("schema.round.unknownRiskTier", { field: `${field}.riskTier` });
+    const subjects = value.subjects === undefined ? [] : value.subjects;
+    if (!Array.isArray(subjects)) fail("schema.field.mustBeArray", { field: `${field}.subjects` });
+    for (const subject of subjects) {
+      if (!isTier2Subject(subject)) fail("schema.event.unknownTierSubject", { field: `${field}.subjects` });
+    }
+    return { kind, riskTier, subjects: [...(subjects as Tier2Subject[])] };
+  }
+
+  fail("schema.event.detailKindMismatch", { field: `${field}.kind` });
+}
+
 export function parseEventLine(line: string): ReviewEvent | null {
   const result = guarded<ReviewEvent>(() => {
     const data = parseJson(line);
@@ -283,6 +416,7 @@ export function parseEventLine(line: string): ReviewEvent | null {
         reviewState: parseChange<ReviewState>(data.reviewState, isReviewState),
         resourceState: parseChange<ResourceState>(data.resourceState, isResourceState),
         note: nullableStr(data, "note", "event"),
+        detail: parseEventDetail(data.detail, data.type, "event"),
       },
     };
   });

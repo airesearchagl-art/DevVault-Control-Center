@@ -50,6 +50,8 @@ export interface FreshContextProgress {
   assessmentCapturedAt: string | null;
   /** Turn 2 has been written out (optional: only when a finding needs resolving). */
   turn2SavedAt: string | null;
+  /** The reviewer's Final Judgment has been captured (only ever after a Turn 2). */
+  judgmentCapturedAt: string | null;
   /** The Human has confirmed the verdict for this round. */
   verdictConfirmedAt: string | null;
 }
@@ -63,12 +65,14 @@ export const FRESH_CONTEXT_STATES = [
   "AWAITING_ASSESSMENT",
   "ASSESSMENT_RECEIVED",
   "TURN_2_SENT",
+  "JUDGMENT_RECEIVED",
   "JUDGMENT_CONFIRMED",
 ] as const;
 export type FreshContextState = (typeof FRESH_CONTEXT_STATES)[number];
 
 export function freshContextState(progress: FreshContextProgress): FreshContextState {
   if (progress.verdictConfirmedAt !== null) return "JUDGMENT_CONFIRMED";
+  if (progress.judgmentCapturedAt !== null) return "JUDGMENT_RECEIVED";
   if (progress.turn2SavedAt !== null) return "TURN_2_SENT";
   if (progress.assessmentCapturedAt !== null) return "ASSESSMENT_RECEIVED";
   if (progress.turn1SavedAt !== null) return "AWAITING_ASSESSMENT";

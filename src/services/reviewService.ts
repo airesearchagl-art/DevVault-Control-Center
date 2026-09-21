@@ -3,7 +3,7 @@ import { buildReviewRequest } from "../domain/prompt";
 import { DEFAULT_LOCALE, type Locale } from "../i18n/locale";
 import {
   ARCHIVE_CANDIDATES,
-  archivedResultFileName,
+  archivedResponseFileName,
   createReviewSession,
   currentRound,
   type ReviewFormInput,
@@ -154,7 +154,7 @@ async function planArchive(
   const round = currentRound(session);
   const recover: string[] = [];
   for (let attempt = 0; attempt < ARCHIVE_CANDIDATES; attempt += 1) {
-    const name = archivedResultFileName(round.round, capturedAt, attempt);
+    const name = archivedResponseFileName("result", round.round, capturedAt, attempt);
     if (round.archivedResults.includes(name)) continue;
     const existing = await backend.read(reviewTarget(session.reviewSessionId, name));
     if (existing === null) return ok({ recover, archivedAs: name, exists: false });

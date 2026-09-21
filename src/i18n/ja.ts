@@ -245,6 +245,11 @@ export const ja = {
   "events.type.resourceChanged": "リソース状態の変更",
   "events.type.nextActionUpdated": "次のアクションを更新",
   "events.type.metadataUpdated": "レビュー情報を更新",
+  "events.type.followupSaved": "Turn 2の依頼を保存",
+  "events.type.judgmentCaptured": "最終判断を保存",
+  "events.type.riskTierSet": "Risk Tierを設定",
+  "events.type.duplicateContinued": "重複レビューを継続",
+  "events.type.evidenceReused": "Evidenceを再利用",
 
   // --- project form ------------------------------------------------------------------------------------
   "project.form.createTitle": "プロジェクトを登録",
@@ -532,6 +537,16 @@ export const ja = {
   "schema.round.unknownVerdict": "{field} は既知の判定ではありません",
   "schema.round.archivedResults":
     "{field} には result-r{round}-previous-<ms>.md 形式のファイル名のみ記載できます",
+  "schema.field.mustBeArray": "{field} は配列である必要があります",
+  "schema.round.unknownRiskTier": "{field} は既知のRisk Tierではありません",
+  "schema.round.archivedJudgments":
+    "{field} には judgment-r{round}-previous-<ms>.md 形式のファイル名のみ記載できます",
+  "schema.round.invalidationReason": "{field} は既知の失効理由ではありません",
+  "schema.round.priorReviewId": "{field} は有効なレビューIDではありません",
+  "schema.round.priorReviewRound": "{field} は正の整数である必要があります",
+  "schema.round.evidenceSource": "{field} は既知のEvidence種別ではありません",
+  "schema.round.evidenceStatus": "{field} は既知のEvidence判定ではありません",
+  "schema.round.evidenceReason": "{field} は既知のEvidence理由ではありません",
   "schema.session.invalidReviewId":
     "session.reviewSessionId は有効なレビューIDではありません",
   "schema.session.idFolderMismatch":
@@ -562,6 +577,8 @@ export const ja = {
     "状態変化の from が既知の状態ではありません",
   "schema.event.stateChangeToUnknown":
     "状態変化の to が既知の状態ではありません",
+  "schema.event.detailKindMismatch": "{field} がイベント種別と一致しません",
+  "schema.event.unknownTierSubject": "{field} は既知のTier 2主題ではありません",
   "schema.event.unsupportedVersion": "対応していないイベントバージョンです",
   "schema.event.unknownType": "不明なイベント種別です",
   "schema.event.invalidReviewId": "reviewSessionId が不正です",

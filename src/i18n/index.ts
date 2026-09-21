@@ -142,6 +142,11 @@ export const EVENT_TYPE_KEYS: Record<ReviewEventType, TranslationKey> = {
   resource_changed: "events.type.resourceChanged",
   next_action_updated: "events.type.nextActionUpdated",
   metadata_updated: "events.type.metadataUpdated",
+  followup_saved: "events.type.followupSaved",
+  judgment_captured: "events.type.judgmentCaptured",
+  risk_tier_set: "events.type.riskTierSet",
+  duplicate_continued: "events.type.duplicateContinued",
+  evidence_reused: "events.type.evidenceReused",
 };
 
 /** Review-type suggestions are UI chrome; the value the Human picks is stored verbatim. */

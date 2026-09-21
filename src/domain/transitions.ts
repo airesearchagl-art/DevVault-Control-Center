@@ -2,7 +2,8 @@ import type { ReviewEvent, ReviewEventType, StateChange } from "./events";
 import {
   currentRound,
   isArchiveCandidateFor,
-  isArchivedResultFileName,
+  isArchivedResponseFileName,
+  newRound,
   type ReviewMetadata,
   type ReviewSession,
   type RoundRecord,
@@ -131,6 +132,7 @@ function build(
       reviewState,
       resourceState,
       note,
+      detail: null,
     },
   };
 }
@@ -152,17 +154,7 @@ export function applyReviewAction(session: ReviewSession, action: ReviewAction, 
     case "startNextRound": {
       if (action.expectedHead !== null && !isValidHead(action.expectedHead)) return invalid("action.expectedHead.invalid");
       const round = session.reviewRound + 1;
-      const next: RoundRecord = {
-        round,
-        expectedHead: action.expectedHead,
-        reviewedHead: null,
-        requestSavedAt: null,
-        resultCapturedAt: null,
-        verdict: null,
-        verdictConfirmedAt: null,
-        verdictNote: null,
-        archivedResults: [],
-      };
+      const next: RoundRecord = newRound(round, action.expectedHead);
       return ok(
         build(
           session,
@@ -199,10 +191,10 @@ export function applyReviewAction(session: ReviewSession, action: ReviewAction, 
         return invalid("action.capture.replaceConfirmationRequired", { round: round.round });
       }
       for (const [index, name] of archived.entries()) {
-        if (!isArchivedResultFileName(name, round.round)) return invalid("action.archive.roundMismatch");
+        if (!isArchivedResponseFileName("result", name, round.round)) return invalid("action.archive.roundMismatch");
         // A recorded result is archived under its own capture time; an orphan result file
         // (written but never recorded, e.g. after a crash) may use any valid archive name.
-        if (round.resultCapturedAt !== null && !isArchiveCandidateFor(name, round.round, round.resultCapturedAt)) {
+        if (round.resultCapturedAt !== null && !isArchiveCandidateFor("result", name, round.round, round.resultCapturedAt)) {
           return invalid("action.archive.resultMismatch");
         }
         if (round.archivedResults.includes(name) || archived.indexOf(name) !== index) {

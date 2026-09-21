@@ -79,6 +79,7 @@ describe("Fresh Context", () => {
       turn1SavedAt: row.turn1SavedAt,
       assessmentCapturedAt: row.assessmentCapturedAt,
       turn2SavedAt: row.turn2SavedAt,
+      judgmentCapturedAt: row.judgmentCapturedAt,
       verdictConfirmedAt: row.verdictConfirmedAt,
     };
     expect(freshContextState(progress)).toBe(row.expected);

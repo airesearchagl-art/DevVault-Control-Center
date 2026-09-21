@@ -24,11 +24,13 @@
 
 ## Wave 2 — persistence and handoff
 
-- [ ] Persistence of the new fields with backward compatibility (old fixtures load unchanged)
-- [ ] Event additions (language-neutral types)
-- [ ] Required Fix handoff model
-- [ ] Re-review handoff model (previous round, previous head, previous verdict, reuse, reason)
-- [ ] Checkpoint
+- [x] Data Contract Gate resolved before any persistence code (`DATA_CONTRACT_GATE.md`)
+- [x] Persistence of the new fields with backward compatibility (old fixtures load unchanged)
+- [x] Event additions (language-neutral types) with a closed, typed `detail`
+- [x] Review file allow-list extended on both sides of the boundary, with Rust tests
+- [x] Required Fix handoff model
+- [x] Re-review handoff model (previous round, previous head, previous verdict, reuse, reason)
+- [x] Checkpoint
 
 ## Wave 3 — Review Workflow UI (JA and EN together)
 

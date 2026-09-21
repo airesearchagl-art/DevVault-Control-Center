@@ -51,6 +51,7 @@ export const FRESH_CONTEXT_STATE_TABLE: {
   turn1SavedAt: string | null;
   assessmentCapturedAt: string | null;
   turn2SavedAt: string | null;
+  judgmentCapturedAt: string | null;
   verdictConfirmedAt: string | null;
   expected: string;
   canSendTurn2: boolean;
@@ -60,6 +61,7 @@ export const FRESH_CONTEXT_STATE_TABLE: {
     turn1SavedAt: null,
     assessmentCapturedAt: null,
     turn2SavedAt: null,
+    judgmentCapturedAt: null,
     verdictConfirmedAt: null,
     expected: "TURN_1_NOT_SENT",
     canSendTurn2: false,
@@ -69,6 +71,7 @@ export const FRESH_CONTEXT_STATE_TABLE: {
     turn1SavedAt: "2026-09-21T10:00:00.000Z",
     assessmentCapturedAt: null,
     turn2SavedAt: null,
+    judgmentCapturedAt: null,
     verdictConfirmedAt: null,
     expected: "AWAITING_ASSESSMENT",
     canSendTurn2: false,
@@ -78,6 +81,7 @@ export const FRESH_CONTEXT_STATE_TABLE: {
     turn1SavedAt: "2026-09-21T10:00:00.000Z",
     assessmentCapturedAt: "2026-09-21T11:00:00.000Z",
     turn2SavedAt: null,
+    judgmentCapturedAt: null,
     verdictConfirmedAt: null,
     expected: "ASSESSMENT_RECEIVED",
     canSendTurn2: true,
@@ -87,6 +91,7 @@ export const FRESH_CONTEXT_STATE_TABLE: {
     turn1SavedAt: "2026-09-21T10:00:00.000Z",
     assessmentCapturedAt: "2026-09-21T11:00:00.000Z",
     turn2SavedAt: "2026-09-21T12:00:00.000Z",
+    judgmentCapturedAt: null,
     verdictConfirmedAt: null,
     expected: "TURN_2_SENT",
     canSendTurn2: true,
@@ -96,15 +101,27 @@ export const FRESH_CONTEXT_STATE_TABLE: {
     turn1SavedAt: "2026-09-21T10:00:00.000Z",
     assessmentCapturedAt: "2026-09-21T11:00:00.000Z",
     turn2SavedAt: "2026-09-21T12:00:00.000Z",
+    judgmentCapturedAt: "2026-09-21T12:30:00.000Z",
     verdictConfirmedAt: "2026-09-21T13:00:00.000Z",
     expected: "JUDGMENT_CONFIRMED",
     canSendTurn2: false,
+  },
+  {
+    label: "the Final Judgment is in, the Human has not decided yet",
+    turn1SavedAt: "2026-09-21T10:00:00.000Z",
+    assessmentCapturedAt: "2026-09-21T11:00:00.000Z",
+    turn2SavedAt: "2026-09-21T12:00:00.000Z",
+    judgmentCapturedAt: "2026-09-21T12:30:00.000Z",
+    verdictConfirmedAt: null,
+    expected: "JUDGMENT_RECEIVED",
+    canSendTurn2: true,
   },
   {
     label: "a follow-up cannot precede the assessment",
     turn1SavedAt: "2026-09-21T10:00:00.000Z",
     assessmentCapturedAt: null,
     turn2SavedAt: null,
+    judgmentCapturedAt: null,
     verdictConfirmedAt: null,
     expected: "AWAITING_ASSESSMENT",
     canSendTurn2: false,

@@ -236,6 +236,11 @@ export const en: Dictionary = {
   "events.type.resourceChanged": "Resource state changed",
   "events.type.nextActionUpdated": "Next action updated",
   "events.type.metadataUpdated": "Review details updated",
+  "events.type.followupSaved": "Turn 2 request saved",
+  "events.type.judgmentCaptured": "Final Judgment captured",
+  "events.type.riskTierSet": "Risk Tier set",
+  "events.type.duplicateContinued": "Duplicate review continued",
+  "events.type.evidenceReused": "Evidence reused",
 
   // --- project form ------------------------------------------------------------------------------------
   "project.form.createTitle": "Create project",
@@ -528,6 +533,16 @@ export const en: Dictionary = {
   "schema.round.unknownVerdict": "{field} is not a known verdict",
   "schema.round.archivedResults":
     "{field} must list result-r{round}-previous-<ms>.md file names",
+  "schema.field.mustBeArray": "{field} must be an array",
+  "schema.round.unknownRiskTier": "{field} is not a known Risk Tier",
+  "schema.round.archivedJudgments":
+    "{field} must list judgment-r{round}-previous-<ms>.md file names",
+  "schema.round.invalidationReason": "{field} is not a known invalidation reason",
+  "schema.round.priorReviewId": "{field} is not a valid review id",
+  "schema.round.priorReviewRound": "{field} must be a positive integer",
+  "schema.round.evidenceSource": "{field} is not a known evidence source",
+  "schema.round.evidenceStatus": "{field} is not a known evidence status",
+  "schema.round.evidenceReason": "{field} is not a known evidence reason",
   "schema.session.invalidReviewId":
     "session.reviewSessionId is not a valid review id",
   "schema.session.idFolderMismatch":
@@ -557,6 +572,8 @@ export const en: Dictionary = {
     "the from of a state change is not a known state",
   "schema.event.stateChangeToUnknown":
     "the to of a state change is not a known state",
+  "schema.event.detailKindMismatch": "{field} does not match the event type",
+  "schema.event.unknownTierSubject": "{field} is not a known Tier 2 subject",
   "schema.event.unsupportedVersion": "unsupported event version",
   "schema.event.unknownType": "unknown event type",
   "schema.event.invalidReviewId": "invalid reviewSessionId",
