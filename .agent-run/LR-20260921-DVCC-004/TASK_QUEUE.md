@@ -13,12 +13,14 @@
 
 ## Wave 1 — pure workflow domain
 
-- [ ] Workflow stage model (Turn 1 / Turn 2 as canonical stages) with a literal contract table
-- [ ] Risk Tier values, labels and the escalation rule; independent oracle
-- [ ] Same-head duplicate detection as a pure function, reusing Phase 2 `compareHead`
-- [ ] Evidence eligibility / reuse contract as a pure function
-- [ ] Independent oracle tests (no shared branching with the implementation)
-- [ ] Checkpoint
+- [x] Workflow stage model (Turn 1 / Turn 2 as canonical stages) with a literal contract table
+- [x] Risk Tier values and the escalation rule; independent oracle
+- [x] Same-head duplicate detection as a pure function, reusing Phase 2 `compareHead`
+- [x] Revalidation permission as its own function, decided by a reason code
+- [x] Evidence eligibility / reuse contract as a pure function, per item
+- [x] Independent oracle tests (no shared branching with the implementation)
+- [x] Mutation probes M1–M5
+- [x] Checkpoint
 
 ## Wave 2 — persistence and handoff
 

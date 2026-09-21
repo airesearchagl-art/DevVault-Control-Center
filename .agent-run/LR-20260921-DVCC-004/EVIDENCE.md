@@ -69,3 +69,45 @@ What this changed in the contract:
 
 The fetched files live in the session scratchpad and are not committed; the contract file cites them
 by path, commit and line number so an independent reviewer can fetch the same bytes.
+
+## Wave 1 — pure workflow domain (2026-09-21)
+
+Five modules, no UI, no persistence, no events, no prompt change. Every value is language-neutral;
+nothing in `src/domain` carries a word the Human reads.
+
+| Module | What it decides |
+|---|---|
+| `src/domain/freshContext.ts` | the canonical turns, stages and the 16 input items' turn split; the derived state of a round; whether Turn 2 may be sent yet; that a single-turn send is not a fresh-context review |
+| `src/domain/riskTier.ts` | the three tiers, the five Tier 2 subjects, the ambiguity rule (higher candidate, Tier 0 vs Tier 1 stops at Tier 1), and a refusal — never a silent correction — when a choice sits below what the contract requires |
+| `src/domain/duplicate.ts` | whether this head already has a substantive review, over Phase 2's `compareHead`; `UNDECIDABLE` when a head cannot be compared |
+| `src/domain/revalidation.ts` | whether a second substantive review may go ahead: `NO_DUPLICATE` / `DUPLICATE_BLOCKED` / `REVALIDATION_ALLOWED` / `UNDECIDABLE`, decided by a canonical reason code |
+| `src/domain/evidenceReuse.ts` | per evidence item: `REUSABLE` / `RECHECK_REQUIRED` / `UNAVAILABLE`, with the reason that decided it |
+
+**Independent oracle.** `src/test/workflowContract.ts` states the contract as literal tables and
+imports nothing from `src/domain`: turn→stage, the 16 input items, the five fresh-context states,
+tier escalation, tier choice validation, nine duplicate cases, nine revalidation cases and ten
+evidence cases. `src/domain/workflowContract.test.ts` compares the implementation against it — 76
+tests, all passing — and also checks that the vocabulary itself matches the contract and that every
+persisted value is `[A-Z0-9_]+`.
+
+**Mutation probes** (each reverted immediately; the file was restored byte-for-byte and verified):
+
+| # | Mutation | Result |
+|---|---|---|
+| M1 | duplicate detection ignores the head comparison | 4 failed / 72 passed |
+| M2 | revalidation allowed without an invalidation reason | 4 failed / 72 passed |
+| M3 | evidence is always reusable | 8 failed / 68 passed |
+| M4 | the Tier 2 subject rule is removed | 2 failed / 74 passed |
+| M5 | Turn 1 and Turn 2 carry each other's stages | 2 failed / 74 passed |
+
+**Scenarios from the Task Packet §12**, all covered by the tables: 1 same head with prior evidence
+and no reason → blocked; 2 contract changed → allowed, and only contract-bound evidence rechecked;
+3 head changed → old evidence not reused as-is; 4 environment changed → only environment-bound
+evidence rechecked; 5 different head → not a duplicate; 6 Tier 2 changes nothing else (the module
+exports no review, resource or freshness value); 7 unknown binding → never `REUSABLE`; 8 explanation
+without a reason code → not allowed.
+
+Checks: `npx tsc --noEmit` PASS, `npx vitest run` PASS (21 files, **653 tests**), `npm run build`
+PASS. `src-tauri/` untouched, so the Rust suite was not re-run. The localization gates are part of
+the suite and pass; the new domain adds no user-facing text, and its values map to translation keys
+in a later wave.

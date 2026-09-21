@@ -3,13 +3,13 @@
 - Run ID: LR-20260921-DVCC-004
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — Wave 0 complete (preflight, canonical discovery bound to latest main, design)
+- Current state: RUNNING — Wave 1 complete (pure workflow domain with an independent oracle)
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/review-workflow-v0.3
 - Base SHA: 4c1962b0c47321805554be2218bba996ff5de92f
-- Current head: Wave 0 checkpoint commit
-- Current wave: Wave 0 → Wave 1 (pure workflow domain)
-- Last successful checkpoint: Wave 0 checkpoint
+- Current head: Wave 1 checkpoint commit
+- Current wave: Wave 1 → Wave 2 (persistence and handoff)
+- Last successful checkpoint: Wave 1 checkpoint
 - Task Packet ID: LRP-20260921-DVCC-004
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260921-DVCC-004/TASK_PACKET_SNAPSHOT.md
@@ -39,10 +39,10 @@ one that looked silent in the stale copy: a second substantive review of the sam
 
 - [x] RW-01 branch created from fresh merged main `4c1962b`
 - [x] RW-02 canonical contract discovered at latest main `77ce41e` and recorded with line-level citations; SPEC_GAP assessed and passed
-- [ ] RW-03 Fresh Context Turn 1 / Turn 2 implemented as canonically defined
-- [ ] RW-04 Risk Tier 0 / 1 / 2 implemented as canonically defined
-- [ ] RW-05 Risk Tier independent of Review / Resource / Freshness
-- [ ] RW-06 same-head duplicate detected
+- [~] RW-03 Fresh Context Turn 1 / Turn 2 — the domain model is in place (Wave 1); the artifacts and the surface follow in Waves 2–4
+- [~] RW-04 Risk Tier 0 / 1 / 2 — values, subjects, escalation and refusal implemented (Wave 1); persistence and display follow
+- [x] RW-05 Risk Tier independent of Review / Resource / Freshness — its module imports none of them, asserted by a test
+- [x] RW-06 same-head duplicate detected — pure function over Phase 2's `compareHead`, nine oracle cases, mutation M1
 - [ ] RW-07 duplicates are shown to the Human; never silently skipped or auto-closed
 - [ ] RW-08 evidence reuse implemented only as the canonical contract allows
 - [ ] RW-09 reused evidence shows source, head and age
@@ -50,7 +50,7 @@ one that looked silent in the stale copy: a second substantive review of the sam
 - [ ] RW-11 past request / result / checkpoint artifacts are never rewritten automatically
 - [ ] RW-12 the review timeline reads per round
 - [ ] RW-13 Phase 2 Freshness stays separate from Review State
-- [ ] RW-14 UNKNOWN is never filled in by guesswork
+- [~] RW-14 UNKNOWN is never filled in by guesswork — the domain reports `UNDECIDABLE` and `UNAVAILABLE` instead of guessing; the surface follows in Wave 3
 - [ ] RW-15 JA / EN parity
 - [ ] RW-16 new workflow prompts are semantically equal in JA and EN
 - [ ] RW-17 existing Phase 1 / 2 / Localization runtime data still loads
@@ -72,12 +72,18 @@ one that looked silent in the stale copy: a second substantive review of the sam
 
 ## Current implementation state
 
-No product code changed yet. Phase 1 + Phase 2 + Localization are untouched at `4c1962b`.
+The Phase 3 domain exists as pure functions with an independent contract table behind them: the
+Fresh Context turns and stages, the Risk Tier rules, same-head duplicate detection over Phase 2's
+`compareHead`, revalidation permission by canonical reason code, and per-item evidence reuse.
+
+Nothing is persisted, rendered or emitted yet: no session field, no event type, no artifact, no UI.
+Phase 1, Phase 2 and Localization are untouched.
 
 ## Checks
 
-None required yet for Wave 0 (no product change). Toolchain: node v24.15.0, npm 11.12.1,
-rustc 1.95.0, git 2.53.0.windows.2.
+Wave 1: `npx tsc --noEmit` PASS, `npx vitest run` PASS (21 files, 653 tests), `npm run build` PASS.
+`src-tauri/` untouched, so the Rust suite was not re-run. Five mutation probes, each reverted: see
+EVIDENCE. Toolchain: node v24.15.0, npm 11.12.1, rustc 1.95.0, git 2.53.0.windows.2.
 
 ## Quality Debt
 
@@ -100,13 +106,15 @@ See DECISIONS.md (RW-001..).
 
 ## Files changed
 
-`.agent-run/LR-20260921-DVCC-004/*` only.
+New: `src/domain/{freshContext,riskTier,duplicate,revalidation,evidenceReuse}.ts`,
+`src/domain/workflowContract.test.ts`, `src/test/workflowContract.ts`. Plus
+`.agent-run/LR-20260921-DVCC-004/*`.
 
 ## Next action
 
-Wave 1: the pure workflow domain — the derived stage model with a literal contract table, Risk Tier
-with the escalation rule, same-head duplicate detection over Phase 2's `compareHead`, and the
-evidence-eligibility contract, each with an independent oracle.
+Wave 2: persistence and handoff — the two optional round fields, the four event types, the artifact
+naming for Turn 2, backward compatibility with existing runtime data, and the Required Fix /
+re-review handoff model.
 
 ## Remaining tasks
 
