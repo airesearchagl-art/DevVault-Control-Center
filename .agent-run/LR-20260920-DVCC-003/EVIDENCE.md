@@ -237,14 +237,32 @@ started, rather than every process with the same name.
 `npx tsc --noEmit` PASS, `npx vitest run` PASS (20 files, **577 tests**), `npm run build` PASS.
 `src-tauri/` is byte-unchanged, so the Rust suite was not re-run (§11).
 
-### Full verification: suspended, not skipped
+### Full verification at the repaired head (`03735f2`)
 
-The release build and the isolated-desktop UI smoke were **not started**: available memory was
-10.7–11.8 GiB while this repair was finished, below the 12 GiB gate the Task Packet sets for heavy
-verification, and no process belonging to the operator was stopped to make room. The harness already
-carries the two new parts — the future-schema `settings.json` scenario (Japanese fallback, a visible
-warning, a refused save, the file byte-identical, no `.bak`) and the clipboard guard — so the run is
-one command once the gate is open. `scripts/verify-localization-ui.ps1` parses cleanly.
+Heavy verification waited for the memory gate: available memory was 10.5–11.8 GiB when the repair
+was finished, and no process belonging to the operator was stopped to make room. It recovered to
+16.5 GiB, and the run went ahead from there.
+
+Release build: `npm run tauri build -- --no-bundle` **PASS** (SHA-256
+`77c27265e252311c4899abfbf3c5eec502347af1a64e156402e2cc320fb47eaa`).
+
+Isolated-desktop localization UI smoke: **24 / 24 PASS, 0 inconclusive** — the eighteen checks from
+Wave 5 unchanged, plus six for the repair:
+
+| Check | Result |
+|---|---|
+| a preference file from a later version means Japanese | `lang=ja` |
+| and says so | a warning at start-up |
+| the interface stays with the language that is stored after a switch is attempted | `lang=ja` |
+| the refusal is visible to the Human | a warning toast |
+| the file from the later version is byte-identical | 86 bytes, `futureField` intact |
+| and no backup of it was made | `settings.json.bak` absent |
+
+The clipboard guard reported no INCONCLUSIVE: the clipboard held text the run could put back, and
+both **Copy review prompt** actions were restored immediately. Nothing was left behind — no
+`devvault-control-center` process, and no `msedgewebview2` process belonging to this run (checked by
+command line; the operator's own were never touched). `%APPDATA%\DevVault-Control` still shows its
+pre-run timestamp (17:06:50). The temporary data folder was removed afterwards.
 
 Targeted checks at `d436711`: `npx tsc --noEmit` PASS, `npx vitest run` PASS (20 files, 577 tests),
-`npm run build` PASS. `src-tauri/` byte-unchanged since `4a1345b`.
+`npm run build` PASS. `src-tauri/` byte-unchanged since `4a1345b`, so the Rust suite was not re-run.

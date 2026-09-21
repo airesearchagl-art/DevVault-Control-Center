@@ -3,13 +3,13 @@
 - Run ID: LR-20260920-DVCC-003
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: SUSPENDED — Focused Repair RF-L10N-01..04 is written and checked; the release build and the UI smoke wait for the 12 GiB memory gate
+- Current state: COMPLETE_PENDING_FULL_VERIFY — Focused Repair RF-L10N-01..04 written, checked and verified in the running app; independent verification not yet run
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/localization-foundation-v0.2.1
 - Base SHA: 318e273a1afe66c605da897a4f7603aaa921fc83
 - Current head: the Focused Repair checkpoint on `feat/localization-foundation-v0.2.1`; Draft PR #3
-- Current wave: Focused Repair (P2-1, P2-2, P3-1, P3-2); P3-3 and the advisories deferred by the Human
-- Last successful checkpoint: Focused Repair code checkpoint (`d436711`)
+- Current wave: Focused Repair complete (P2-1, P2-2, P3-1, P3-2); P3-3 and the advisories deferred by the Human
+- Last successful checkpoint: Focused Repair verification checkpoint
 - Task Packet ID: LRP-20260920-DVCC-003
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260920-DVCC-003/TASK_PACKET_SNAPSHOT.md
@@ -36,7 +36,7 @@ Make the whole Phase 1 + Phase 2 interface available in Japanese (default) and E
 - [x] L10N-13 a locale switch does not change any domain state — UI smoke: review state, selection and all seven project / review files unchanged; only `settings.json` is written
 - [x] L10N-14 document language matches the locale — `document.documentElement.lang` asserted as `ja` / `en` / `ja` across the three starts
 - [x] L10N-15 no external translation API and no network use — dictionaries are repository files; no dependency added
-- [x] L10N-16 UI smoke touches no real user data and does not disturb the operator's clipboard — dedicated `DVCC_DATA_DIR` on a hidden desktop; `%APPDATA%\DevVault-Control` keeps its pre-run timestamp; the clipboard was read before the two copy actions and put back
+- [x] L10N-16 UI smoke touches no real user data and does not disturb the operator's clipboard — dedicated `DVCC_DATA_DIR` on a hidden desktop; `%APPDATA%\DevVault-Control` keeps its pre-run timestamp (17:06:50); the clipboard is taken only when it holds text the run can put back, restored immediately after each copy, and left alone if anything wrote to it in between (RF-L10N-04)
 - [x] L10N-17 no Phase 1 / Phase 2 regression — 549 tests (19 files) including the untouched Phase 1 / Phase 2 suites, `cargo test` 68 passed / 2 ignored, and the UI smoke ending with the queue and project list intact
 
 ## Completed
@@ -55,7 +55,7 @@ Complete, as of the final checkpoint.
 
 ## Checks
 
-Focused Repair RF-L10N-01..04: `npx tsc --noEmit` PASS, `npx vitest run` PASS (20 files, 577 tests), `npm run build` PASS (`src-tauri/` byte-unchanged, so the Rust suite was not re-run). Release build and UI smoke **not started**: available memory was 10.7–11.8 GiB during this run, below the 12 GiB gate. No process of the operator's was stopped to make room (§10).
+Focused Repair RF-L10N-01..04: `npx tsc --noEmit` PASS, `npx vitest run` PASS (20 files, 577 tests), `npm run build` PASS (`src-tauri/` byte-unchanged, so the Rust suite was not re-run). `npm run tauri build -- --no-bundle` PASS and the isolated-desktop localization UI smoke PASS (**24 / 24**, 0 inconclusive), run once available memory had recovered to 16.5 GiB. `src-tauri/` is byte-unchanged since `4a1345b`, so the Rust suite was not re-run (§11).
 
 Wave 1: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, 524 tests), `npm run build` PASS, `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (68 passed, 2 ignored).
 
@@ -102,9 +102,6 @@ New: `src/i18n/{locale,types,ja,en,index,context}.ts`, `src/i18n/i18n.test.ts`, 
 
 ## Remaining tasks
 
-- Full verification at the repaired head — `npm run tauri build -- --no-bundle` and
-  `scripts/verify-localization-ui.ps1`, including the future-schema scenario — once available
-  memory is at or above 12 GiB. The scenario is already written into the harness.
 - Independent Verification in a separate context.
 - Human Gate after independent verification: Ready / merge.
 - Phase 3 remains blocked until Localization Foundation is merged.

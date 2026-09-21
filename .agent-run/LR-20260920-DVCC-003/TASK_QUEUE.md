@@ -62,8 +62,8 @@ Legend: [ ] pending · [~] in progress · [x] done · [!] blocked
 - [x] RF-L10N-02 schema and recovery text the Human reads is localized (P2-2)
 - [x] RF-L10N-03 which choice decides is request identity, not the language value (P3-1)
 - [x] RF-L10N-04 the UI smoke only takes a clipboard it can put back (P3-2)
-- [ ] Full verification at the repaired head (release build + UI smoke)
-- [ ] Checkpoint
+- [x] Full verification at the repaired head (release build + UI smoke) — 24 / 24
+- [x] Checkpoint
 
 ## Final
 
