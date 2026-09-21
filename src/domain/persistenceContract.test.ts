@@ -4,7 +4,8 @@ import { buildReReviewHandoff, buildRequiredFixHandoff, latestResponse } from ".
 import { newRound, type ReviewSession, type RoundRecord } from "./review";
 import { parseEventLine, parseSessionFile, serializeEvent, serializeSession } from "./schema";
 import { applyReviewAction } from "./transitions";
-import { VERDICT_GATE_TABLE } from "../test/workflowContract";
+import { validateTierChoice } from "./riskTier";
+import { PERSISTED_ORDER_TABLE, VERDICT_GATE_TABLE } from "../test/workflowContract";
 
 /**
  * Phase 3 persistence: what the new fields mean, that a file written before Phase 3 still means what
@@ -350,5 +351,55 @@ describe("the two-turn protocol invariant", () => {
       "2026-01-01T14:00:00.000Z",
     );
     expect(result.ok).toBe(round.resultCapturedAt !== null);
+  });
+});
+
+describe("the order the protocol is persisted in", () => {
+  it.each(PERSISTED_ORDER_TABLE)("$label", (row) => {
+    const round: RoundRecord = {
+      ...newRound(1, HEAD_A),
+      requestSavedAt: "2026-01-01T10:00:00.000Z",
+      resultCapturedAt: row.resultCapturedAt,
+      followupSavedAt: row.followupSavedAt,
+      judgmentCapturedAt: row.judgmentCapturedAt,
+    };
+    const parsed = parseSessionFile(serializeSession(session([round])), REVIEW_ID);
+    expect(parsed.status).toBe(row.valid ? "ok" : "malformed");
+    if (parsed.status === "malformed") expect(parsed.reason.key).toBe(row.refusal);
+  });
+});
+
+describe("the Tier 2 subjects the Human declared", () => {
+  it("come back after a restart, so the canonical rule stays enforceable", () => {
+    const round: RoundRecord = {
+      ...newRound(1, HEAD_A),
+      resultCapturedAt: "2026-01-01T11:00:00.000Z",
+      riskTier: "TIER_2",
+      riskTierSubjects: ["SECURITY", "MIGRATION"],
+    };
+    const parsed = parseSessionFile(serializeSession(session([round])), REVIEW_ID);
+    expect(parsed.status).toBe("ok");
+    if (parsed.status !== "ok") return;
+    const restored = parsed.value.rounds[0];
+    expect(restored.riskTierSubjects).toEqual(["SECURITY", "MIGRATION"]);
+    // And the rule still refuses a downgrade, because the subjects survived.
+    expect(validateTierChoice({ chosen: "TIER_1", subjects: restored.riskTierSubjects }).ok).toBe(false);
+  });
+
+  it("read as empty in a round written before Phase 3", () => {
+    const fixture = readFileSync(`fixtures/v1/valid/reviews/${REVIEW_ID}/session.json`, "utf8");
+    const parsed = parseSessionFile(fixture, REVIEW_ID);
+    if (parsed.status !== "ok") throw new Error("fixture must parse");
+    expect(parsed.value.rounds[0].riskTierSubjects).toEqual([]);
+  });
+
+  it("refuse a subject that is not one of the canonical five", () => {
+    const round = { ...newRound(1, HEAD_A), riskTier: "TIER_2" as const, riskTierSubjects: ["SECURITY" as const] };
+    const broken = JSON.parse(serializeSession(session([round]))) as { rounds: Record<string, unknown>[] };
+    broken.rounds[0].riskTierSubjects = ["SECURITY", "VIBES"];
+    const parsed = parseSessionFile(JSON.stringify(broken), REVIEW_ID);
+    expect(parsed.status).toBe("malformed");
+    if (parsed.status !== "malformed") return;
+    expect(parsed.reason.key).toBe("schema.event.unknownTierSubject");
   });
 });

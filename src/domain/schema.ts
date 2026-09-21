@@ -195,6 +195,16 @@ function parseRiskTier(value: unknown, where: string): RiskTier | null {
   return value;
 }
 
+function parseTierSubjects(value: unknown, where: string): Tier2Subject[] {
+  const field = `${where}.riskTierSubjects`;
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) fail("schema.field.mustBeArray", { field });
+  for (const subject of value) {
+    if (!isTier2Subject(subject)) fail("schema.event.unknownTierSubject", { field });
+  }
+  return [...(value as Tier2Subject[])];
+}
+
 function parseRevalidation(value: unknown, where: string): RoundRevalidation | null {
   const field = `${where}.revalidation`;
   if (value === undefined || value === null) return null;
@@ -249,10 +259,16 @@ function parseRound(value: unknown, index: number): RoundRecord {
   if (!Array.isArray(archived) || !archived.every((name) => isArchivedResponseFileName("result", name, index + 1))) {
     fail("schema.round.archivedResults", { field: `${where}.archivedResults`, round: index + 1 });
   }
-  // A Final Judgment only exists as the answer to a Turn 2: one without the other is not a state
-  // this protocol can reach, so the file is refused rather than read into an impossible round.
+  // The protocol runs Turn 1 → Fresh Assessment → optional Turn 2 → optional Final Judgment. Two
+  // combinations skip a step and are not states this protocol can reach, so such a file is refused
+  // rather than read into an impossible round. A round written before Phase 3 has neither key and
+  // stays valid.
+  const captured = nullableTimestamp(value, "resultCapturedAt", where);
   const followup = optionalTimestamp(value, "followupSavedAt", where);
   const judgment = optionalTimestamp(value, "judgmentCapturedAt", where);
+  if (followup !== null && captured === null) {
+    fail("schema.round.followupWithoutAssessment", { field: `${where}.followupSavedAt` });
+  }
   if (judgment !== null && followup === null) {
     fail("schema.round.judgmentWithoutFollowup", { field: `${where}.judgmentCapturedAt` });
   }
@@ -265,13 +281,14 @@ function parseRound(value: unknown, index: number): RoundRecord {
     expectedHead: nullableHead(value, "expectedHead", where),
     reviewedHead: nullableHead(value, "reviewedHead", where),
     requestSavedAt: nullableTimestamp(value, "requestSavedAt", where),
-    resultCapturedAt: nullableTimestamp(value, "resultCapturedAt", where),
+    resultCapturedAt: captured,
     verdict,
     verdictConfirmedAt: nullableTimestamp(value, "verdictConfirmedAt", where),
     verdictNote: nullableStr(value, "verdictNote", where),
     followupSavedAt: followup,
     judgmentCapturedAt: judgment,
     riskTier: parseRiskTier(value.riskTier, where),
+    riskTierSubjects: parseTierSubjects(value.riskTierSubjects, where),
     revalidation: parseRevalidation(value.revalidation, where),
     evidenceDecisions: parseEvidenceDecisions(value.evidenceDecisions, where),
     archivedJudgments: [...(archivedJudgments as string[])],

@@ -258,6 +258,7 @@ describe("next round contract", () => {
         followupSavedAt: null,
         judgmentCapturedAt: null,
         riskTier: null,
+        riskTierSubjects: [],
         revalidation: null,
         evidenceDecisions: [],
         archivedJudgments: [],

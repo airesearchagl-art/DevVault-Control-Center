@@ -3,13 +3,13 @@
 - Run ID: LR-20260921-DVCC-004
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — Wave 2 complete (persistence, events and handoff)
+- Current state: RUNNING — Wave 2.6 complete (protocol invariants closed, before the UI)
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/review-workflow-v0.3
 - Base SHA: 4c1962b0c47321805554be2218bba996ff5de92f
-- Current head: Wave 2 checkpoint commit
-- Current wave: Wave 2 → Wave 3 (Review Workflow UI, JA and EN together)
-- Last successful checkpoint: Wave 2 checkpoint
+- Current head: Wave 2.6 checkpoint commit
+- Current wave: Wave 2.6 → Wave 3 (Review Workflow UI, JA and EN together)
+- Last successful checkpoint: Wave 2.6 checkpoint
 - Task Packet ID: LRP-20260921-DVCC-004
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260921-DVCC-004/TASK_PACKET_SNAPSHOT.md
@@ -77,11 +77,23 @@ and it is persisted: six optional round fields, two new round artifacts (`follow
 `judgment-r<N>.md`) with the allow-list extended on both sides of the boundary, five new
 language-neutral event types with a closed typed `detail`, and the two handoff models.
 
+The protocol's order is now closed at both ends: the parser refuses a round that skips a step, a
+verdict waits for the Final Judgment once a Turn 2 has gone out, a follow-up cannot be rewritten once
+it has been answered, and the Tier 2 subjects survive a restart so the canonical rule keeps applying.
+
 Nothing is rendered yet — there is no Phase 3 UI, and no prompt change — so the workflow is not
 reachable from the interface. Phase 1, Phase 2 and Localization behave exactly as before, and
 `schemaVersion` is still 1.
 
 ## Checks
+
+Wave 2.6: `npx tsc --noEmit` PASS, `npx vitest run` PASS (22 files, 687 tests), `npm run build` PASS
+— all three run in a temporary worktree at `1c682cb` plus this wave's files, because the session's
+working tree also holds changes to `src/domain/transitions.ts` and three files under `src/services/`
+written by something outside this session. Those files were not staged, not committed and not
+touched.
+
+Wave 2.5: `npx tsc --noEmit` PASS, `npx vitest run` PASS (22 files, 679 tests), `npm run build` PASS.
 
 Wave 2: `npx tsc --noEmit` PASS, `npx vitest run` PASS (22 files, 672 tests), `npm run build` PASS,
 `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (68
@@ -108,7 +120,11 @@ localization scanner's AST candidate. See QUALITY_DEBT.md.
 
 ## Known failures
 
-none
+none from this session's work. The working tree also holds changes written outside this session —
+`src/domain/transitions.ts` and `src/services/{persistence,reviewService,reviewHub}.ts` — which do
+not compile on their own (they name translation keys that do not exist yet). They are left untouched
+and unstaged for their owner, and Wave 3 must not modify those files until the ownership of those
+changes is settled.
 
 ## Decisions
 

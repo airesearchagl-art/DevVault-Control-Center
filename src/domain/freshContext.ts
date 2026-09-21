@@ -80,12 +80,20 @@ export function freshContextState(progress: FreshContextProgress): FreshContextS
 }
 
 /**
- * Whether Turn 2 may be written now. The canonical rule is that it is sent only after the Fresh
- * Assessment has been returned, and only when something needs resolving — the second half is the
- * Human's call, so this answers the first half only.
+ * Whether Turn 2 may be written now.
+ *
+ * It is sent only after the Fresh Assessment has come back, and only when something needs resolving
+ * — the second half is the Human's call, so this answers the first half. Until the Final Judgment
+ * arrives the follow-up is latest-wins and may be rewritten; once it has arrived, rewriting the
+ * question it answered would leave a judgment standing against a request that no longer exists, so
+ * the door closes. A confirmed verdict closes it too.
  */
 export function canSendTurn2(progress: FreshContextProgress): boolean {
-  return progress.assessmentCapturedAt !== null && progress.verdictConfirmedAt === null;
+  return (
+    progress.assessmentCapturedAt !== null &&
+    progress.judgmentCapturedAt === null &&
+    progress.verdictConfirmedAt === null
+  );
 }
 
 /** The single-turn fallback is never the two-turn protocol, whatever it contains. */

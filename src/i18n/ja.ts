@@ -541,6 +541,8 @@ export const ja = {
     "{field} には result-r{round}-previous-<ms>.md 形式のファイル名のみ記載できます",
   "schema.field.mustBeArray": "{field} は配列である必要があります",
   "schema.round.unknownRiskTier": "{field} は既知のRisk Tierではありません",
+  "schema.round.followupWithoutAssessment":
+    "{field} がありますが、このラウンドにはレビュー結果（Fresh Assessment）の記録がありません",
   "schema.round.judgmentWithoutFollowup":
     "{field} がありますが、対応するTurn 2の記録がありません",
   "schema.round.archivedJudgments":

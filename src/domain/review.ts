@@ -1,5 +1,5 @@
 import type { ReviewEvent } from "./events";
-import type { RiskTier } from "./riskTier";
+import type { RiskTier, Tier2Subject } from "./riskTier";
 import type { InvalidationReason } from "./revalidation";
 import type { EvidenceReason, EvidenceSource, EvidenceStatus } from "./evidenceReuse";
 
@@ -52,6 +52,12 @@ export interface RoundRecord {
   judgmentCapturedAt: string | null;
   /** The Risk Tier the Human confirmed for this round. */
   riskTier: RiskTier | null;
+  /**
+   * The Tier 2 subjects the Human declared. Persisted rather than kept in the audit trail: the
+   * canonical rule that these subjects force Tier 2 has to stay enforceable after a restart, and a
+   * checkbox the Human ticked must come back as ticked rather than be inferred from an event.
+   */
+  riskTierSubjects: Tier2Subject[];
   /** Why a second substantive review of an already-reviewed head was allowed, if it was. */
   revalidation: RoundRevalidation | null;
   /** What was decided about each piece of evidence offered for reuse in this round. */
@@ -173,6 +179,7 @@ export function newRound(round: number, expectedHead: string | null): RoundRecor
     followupSavedAt: null,
     judgmentCapturedAt: null,
     riskTier: null,
+    riskTierSubjects: [],
     revalidation: null,
     evidenceDecisions: [],
     archivedJudgments: [],

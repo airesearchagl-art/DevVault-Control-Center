@@ -114,7 +114,8 @@ export const FRESH_CONTEXT_STATE_TABLE: {
     judgmentCapturedAt: "2026-09-21T12:30:00.000Z",
     verdictConfirmedAt: null,
     expected: "JUDGMENT_RECEIVED",
-    canSendTurn2: true,
+    // Rewriting the follow-up now would leave the judgment answering a question that no longer exists.
+    canSendTurn2: false,
   },
   {
     label: "a follow-up cannot precede the assessment",
@@ -183,6 +184,61 @@ export const VERDICT_GATE_TABLE: {
     judgmentCapturedAt: null,
     allowed: true,
     refusal: null,
+  },
+];
+
+/**
+ * The order the protocol runs in, as it has to appear in a persisted round:
+ * Turn 1 → Fresh Assessment → optional Turn 2 → optional Final Judgment. A round that skips a step
+ * is not a state this protocol can reach, and the parser refuses the file rather than loading it.
+ */
+export const PERSISTED_ORDER_TABLE: {
+  label: string;
+  resultCapturedAt: string | null;
+  followupSavedAt: string | null;
+  judgmentCapturedAt: string | null;
+  valid: boolean;
+  refusal: string | null;
+}[] = [
+  {
+    label: "a round written before Phase 3: neither key present",
+    resultCapturedAt: "2026-01-01T11:00:00.000Z",
+    followupSavedAt: null,
+    judgmentCapturedAt: null,
+    valid: true,
+    refusal: null,
+  },
+  {
+    label: "the whole protocol, in order",
+    resultCapturedAt: "2026-01-01T11:00:00.000Z",
+    followupSavedAt: "2026-01-01T12:00:00.000Z",
+    judgmentCapturedAt: "2026-01-01T12:30:00.000Z",
+    valid: true,
+    refusal: null,
+  },
+  {
+    label: "a Turn 2 with no Fresh Assessment behind it",
+    resultCapturedAt: null,
+    followupSavedAt: "2026-01-01T12:00:00.000Z",
+    judgmentCapturedAt: null,
+    valid: false,
+    refusal: "schema.round.followupWithoutAssessment",
+  },
+  {
+    label: "a Final Judgment with no Turn 2 behind it",
+    resultCapturedAt: "2026-01-01T11:00:00.000Z",
+    followupSavedAt: null,
+    judgmentCapturedAt: "2026-01-01T12:30:00.000Z",
+    valid: false,
+    refusal: "schema.round.judgmentWithoutFollowup",
+  },
+  {
+    label: "a Final Judgment with nothing behind it at all",
+    resultCapturedAt: null,
+    followupSavedAt: null,
+    judgmentCapturedAt: "2026-01-01T12:30:00.000Z",
+    valid: false,
+    refusal: "schema.round.judgmentWithoutFollowup",
   },
 ];
 

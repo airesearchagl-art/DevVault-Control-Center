@@ -220,3 +220,38 @@ service, not merely as a disabled button:
 - *Capture Final Judgment* — requires `followupSavedAt !== null` and the Fresh Assessment to exist;
   the Human pastes it and it is written to `judgment-r<N>.md`.
 - *Confirm Verdict* — as the table above.
+
+---
+
+## Correction — persisted ordering and Turn 2 re-sending (Wave 2.6)
+
+Two more things the earlier text left open. Both are closed in the domain and at the boundary, not
+in the interface, and the earlier wording above is left as it was written.
+
+**The order a round is persisted in.** The protocol runs Turn 1 → Fresh Assessment → optional
+Turn 2 → optional Final Judgment, so two combinations skip a step and cannot be reached:
+
+| Round | Parser |
+|---|---|
+| `followupSavedAt` set, `resultCapturedAt` null | refused — `schema.round.followupWithoutAssessment` |
+| `judgmentCapturedAt` set, `followupSavedAt` null | refused — `schema.round.judgmentWithoutFollowup` |
+| both keys absent (written before Phase 3) | valid, unchanged |
+
+A file in either refused shape is reported unreadable and left untouched, like every other file the
+parser cannot use.
+
+**Re-sending Turn 2.** The follow-up is latest-wins while the Final Judgment has not arrived — a
+Human may rewrite the question. Once the judgment is captured, rewriting it would leave a judgment
+standing against a request that no longer exists, so the door closes:
+
+```text
+canSendTurn2 = assessmentCapturedAt !== null
+               && judgmentCapturedAt === null
+               && verdictConfirmedAt === null
+```
+
+**Risk Tier subjects.** `riskTierSubjects` is now an optional round field, not only an audit detail.
+The canonical rule — security, privacy, credential, production and migration are Tier 2 regardless —
+has to stay enforceable after a restart, and a checkbox the Human ticked has to come back ticked.
+Recovering it from an event would be recovering state from the audit trail, which is what this gate
+rejected in the first place.

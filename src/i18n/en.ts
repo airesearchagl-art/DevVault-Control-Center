@@ -537,6 +537,8 @@ export const en: Dictionary = {
     "{field} must list result-r{round}-previous-<ms>.md file names",
   "schema.field.mustBeArray": "{field} must be an array",
   "schema.round.unknownRiskTier": "{field} is not a known Risk Tier",
+  "schema.round.followupWithoutAssessment":
+    "{field} is present but the round has no captured Fresh Assessment",
   "schema.round.judgmentWithoutFollowup":
     "{field} is present but the round has no record of a Turn 2",
   "schema.round.archivedJudgments":

@@ -155,3 +155,46 @@ including a mismatched kind and a malformed payload; and seven handoff cases.
 Checks: `npx tsc --noEmit` PASS, `npx vitest run` PASS (22 files, **672 tests**), `npm run build`
 PASS, `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS
 (68 passed, 2 ignored). `schemaVersion` is unchanged at 1.
+
+## Wave 2.6 — protocol ordering closure (2026-09-21)
+
+Three invariants, all enforced where they belong rather than in the interface.
+
+**The persisted order.** The parser now refuses a round that skips a step: `followupSavedAt` without
+`resultCapturedAt` (`schema.round.followupWithoutAssessment`), and `judgmentCapturedAt` without
+`followupSavedAt` (`schema.round.judgmentWithoutFollowup`, from Wave 2.5). A round with neither key —
+every round written before Phase 3 — stays valid. The independent table `PERSISTED_ORDER_TABLE` holds
+all five shapes, including the two refusals and the old-round case.
+
+**Re-sending Turn 2.** `canSendTurn2` now also requires that no Final Judgment has been captured, so
+the follow-up is latest-wins only while it is still unanswered. The fresh-context state table was
+updated with the new expectation for the `JUDGMENT_RECEIVED` row — deliberately, as a contract
+change, with the reason written next to it.
+
+**Tier 2 subjects** are persisted on the round (`riskTierSubjects`), validated against the canonical
+five, and empty in older files. A test restores them from a round trip and shows the canonical rule
+still refusing a downgrade afterwards; another shows a subject outside the five being refused.
+
+Tests: 8 new (687 total), all passing. Checks were run in an **isolated worktree** at
+`1c682cb` plus this wave's staged diff, because the working tree of this session also contains a
+change to `src/domain/transitions.ts` that this session did not write (see below).
+
+### Foreign changes in the working tree
+
+While this wave was being written, four files were modified by something outside this session:
+
+| File | Modified at | Shape |
+|---|---|---|
+| `src/domain/transitions.ts` | 18:15:36 | Wave 3 actions (`recordFollowupSaved`, `captureJudgment`), +108 −0 |
+| `src/services/persistence.ts` | 18:17:04 | +16 |
+| `src/services/reviewService.ts` | 18:18:17 | +165 |
+| `src/services/reviewHub.ts` | 18:18:27 | +30 |
+
+They reference translation keys that do not exist yet, so the working tree as a whole does not
+compile. This session did not write them, did not stage them, did not commit them, and did not touch
+them in any way: no checkout, no restore, no stash, no reset, no copy, not even to park them
+elsewhere. They are left exactly as they are, unstaged, for their owner. The Human was asked before
+anything was committed and chose this course.
+
+Consequently the checkpoint was verified in a temporary worktree containing `1c682cb` plus only the
+files this session changed, and the commit stages those files by explicit path.

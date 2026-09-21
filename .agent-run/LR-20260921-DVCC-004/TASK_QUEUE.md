@@ -32,6 +32,15 @@
 - [x] Re-review handoff model (previous round, previous head, previous verdict, reuse, reason)
 - [x] Checkpoint
 
+## Wave 2.5 / 2.6 — protocol invariants (Human-requested, before the UI)
+
+- [x] A verdict waits for the Final Judgment once Turn 2 has been sent (domain guard)
+- [x] A Final Judgment with no Turn 2 is refused by the parser
+- [x] A Turn 2 with no Fresh Assessment is refused by the parser
+- [x] Turn 2 cannot be re-sent once the Final Judgment is in
+- [x] The Tier 2 subjects are persisted, so the canonical rule survives a restart
+- [x] Checkpoint
+
 ## Wave 3 — Review Workflow UI (JA and EN together)
 
 - [ ] Turn 1 / Turn 2 surface: where the Human is, what to copy, what was handed over, what came back, what is next
