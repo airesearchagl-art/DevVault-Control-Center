@@ -1,0 +1,60 @@
+# Task Queue — LR-20260921-DVCC-004
+
+## Wave 0 — preflight, canonical discovery, design
+
+- [x] Fresh preflight (origin/main `4c1962b`, PR #3 merged, clean tree, branch created from fresh main)
+- [x] Task Packet snapshot written and bound by digest
+- [x] Canonical review contract discovery (vault, read-only) — `CANONICAL_REVIEW_CONTRACT.md`
+- [ ] Reuse scan of other local projects for shared-contract references (delegated, read-only)
+- [x] SPEC_GAP gate — passed, with the one canonically silent point recorded
+- [ ] Data model and workflow design (stage model, duplicate key, evidence reuse, artifacts, events)
+- [ ] Checkpoint
+
+## Wave 1 — pure workflow domain
+
+- [ ] Workflow stage model (Turn 1 / Turn 2 as canonical stages) with a literal contract table
+- [ ] Risk Tier values, labels and the escalation rule; independent oracle
+- [ ] Same-head duplicate detection as a pure function, reusing Phase 2 `compareHead`
+- [ ] Evidence eligibility / reuse contract as a pure function
+- [ ] Independent oracle tests (no shared branching with the implementation)
+- [ ] Checkpoint
+
+## Wave 2 — persistence and handoff
+
+- [ ] Persistence of the new fields with backward compatibility (old fixtures load unchanged)
+- [ ] Event additions (language-neutral types)
+- [ ] Required Fix handoff model
+- [ ] Re-review handoff model (previous round, previous head, previous verdict, reuse, reason)
+- [ ] Checkpoint
+
+## Wave 3 — Review Workflow UI (JA and EN together)
+
+- [ ] Turn 1 / Turn 2 surface: where the Human is, what to copy, what was handed over, what came back, what is next
+- [ ] Duplicate warning with the canonical reason and the allowed paths
+- [ ] Evidence reuse UX (source, head, time, reason visible)
+- [ ] Required Fix / re-review handoff surface
+- [ ] Round-readable timeline
+- [ ] Checkpoint
+
+## Wave 4 — prompts, formatting, documentation
+
+- [ ] Turn 1 / Turn 2 / re-review request generation in JA and EN with equal semantic strength
+- [ ] Accessibility text in both languages
+- [ ] Stale / unknown handling in the workflow surface (no invented facts)
+- [ ] Phase 2 Freshness integrated without coupling it to Review State
+- [ ] README status reconciled to fresh facts; `docs/data-contract-v1.md` updated
+- [ ] Checkpoint
+
+## Wave 5 — verification
+
+- [ ] Full regression (frontend and Rust)
+- [ ] Synthetic workflow scenarios A–G
+- [ ] Isolated-desktop UI smoke (workflow, restart persistence, same-head suppression, re-review round trip)
+- [ ] Mutation probes for the contracts that matter
+- [ ] Checkpoint
+
+## Final
+
+- [ ] Final Convergence (freeze, full diff review, required checks, hard checks, quality debt, unverified items)
+- [ ] Independent Verification (separate context)
+- [ ] Draft PR → STOP

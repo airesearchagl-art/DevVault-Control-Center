@@ -1,0 +1,112 @@
+# Run State
+
+- Run ID: LR-20260921-DVCC-004
+- Mode: LONG_RUN (ENDURANCE not authorized)
+- Horizon: 8H
+- Current state: RUNNING — Wave 0 (preflight, canonical discovery, design)
+- Repository: airesearchagl-art/DevVault-Control-Center
+- Working branch: feat/review-workflow-v0.3
+- Base SHA: 4c1962b0c47321805554be2218bba996ff5de92f
+- Current head: Wave 0 checkpoint commit
+- Current wave: Wave 0 → Wave 1 (pure workflow domain)
+- Last successful checkpoint: Wave 0 checkpoint
+- Task Packet ID: LRP-20260921-DVCC-004
+- Task Packet revision: 1
+- Task Packet snapshot path: .agent-run/LR-20260921-DVCC-004/TASK_PACKET_SNAPSHOT.md
+- Task Packet SHA-256: 22673c39c5136e0785ed9ca1a5a4367ce154916c1c62f872635c6d303469db92 (verified at this checkpoint: match)
+
+## Objective
+
+Grow the Review Hub that can store a review session into a Review Workflow the Human can walk
+without losing the thread: preparation → fresh reviewer context → review request → evidence →
+result capture → Required Fix → re-review → final pass. ChatGPT itself is not automated; the review
+surface stays Human-operated.
+
+## Canonical contract
+
+Discovered read-only and recorded in `CANONICAL_REVIEW_CONTRACT.md`. Phase 3 implements the meanings
+found there and invents none. Sources: the DevVault AI Review Request prompt (2-turn Fresh-Context
+protocol, the 16 input items, the Stage 1–4 templates), the Review Depth Tiering note (Risk Tier
+0 / 1 / 2, the escalation rule, one substantive review per head), the GitHub Review Attestation note
+(what may not be carried across heads or PRs), plus the finding / judgment vocabulary and the
+same-head test case located by a delegated read-only scan.
+
+SPEC_GAP gate: **passed**. One point is canonically silent — an override that would license a second
+substantive review of the same head. Phase 3 does not invent one (see DECISIONS RW-003).
+
+## Acceptance Criteria
+
+- [x] RW-01 branch created from fresh merged main `4c1962b`
+- [x] RW-02 canonical contract discovered and recorded; SPEC_GAP assessed
+- [ ] RW-03 Fresh Context Turn 1 / Turn 2 implemented as canonically defined
+- [ ] RW-04 Risk Tier 0 / 1 / 2 implemented as canonically defined
+- [ ] RW-05 Risk Tier independent of Review / Resource / Freshness
+- [ ] RW-06 same-head duplicate detected
+- [ ] RW-07 duplicates are shown to the Human; never silently skipped or auto-closed
+- [ ] RW-08 evidence reuse implemented only as the canonical contract allows
+- [ ] RW-09 reused evidence shows source, head and age
+- [ ] RW-10 FIX_REQUIRED hands off to re-review without losing the round relation
+- [ ] RW-11 past request / result / checkpoint artifacts are never rewritten automatically
+- [ ] RW-12 the review timeline reads per round
+- [ ] RW-13 Phase 2 Freshness stays separate from Review State
+- [ ] RW-14 UNKNOWN is never filled in by guesswork
+- [ ] RW-15 JA / EN parity
+- [ ] RW-16 new workflow prompts are semantically equal in JA and EN
+- [ ] RW-17 existing Phase 1 / 2 / Localization runtime data still loads
+- [ ] RW-18 no ChatGPT login, send or scrape
+- [ ] RW-19 no GitHub API automation
+- [ ] RW-20 no IDE bridge brought forward from Phase 4
+- [ ] RW-21 a locale switch changes no workflow or domain data
+- [ ] RW-22 Security / Privacy / Permission / Data integrity / Irreversible-data safety PASS
+- [ ] RW-23 isolated-desktop workflow smoke PASS
+- [ ] RW-24 README and data contract reconciled to the fresh product state
+
+## Completed
+
+- Wave 0: fresh preflight; branch from `origin/main`; Task Packet revision 1 snapshot bound by
+  digest; canonical review contract discovery (vault read-only, plus a delegated read-only scan of
+  the other local projects); SPEC_GAP gate assessed and passed.
+
+## Current implementation state
+
+No product code changed yet. Phase 1 + Phase 2 + Localization are untouched at `4c1962b`.
+
+## Checks
+
+None required yet for Wave 0 (no product change). Toolchain: node v24.15.0, npm 11.12.1,
+rustc 1.95.0, git 2.53.0.windows.2.
+
+## Quality Debt
+
+Carried forward, out of scope unless Phase 3 makes one worse: QD-001 (reader threads detached after a
+timeout), QD-002 (`git status` runs filters configured in the observed repository), and the
+localization scanner's AST candidate. See QUALITY_DEBT.md.
+
+## Explicit unverified items
+
+- Everything except RW-01 and RW-02: implementation has not started.
+- No GitHub CI exists for this repository; every check is local.
+
+## Known failures
+
+none
+
+## Decisions
+
+See DECISIONS.md (RW-001..).
+
+## Files changed
+
+`.agent-run/LR-20260921-DVCC-004/*` only.
+
+## Next action
+
+Wave 0 design: decide the stage model, the duplicate key, the evidence-reuse shape, the artifact
+naming for Turn 1 / Turn 2, and the event additions — comparing the minimal options against the
+existing data contract before any code is written.
+
+## Remaining tasks
+
+- Wave 0 design, then Waves 1–5.
+- Final Convergence, Independent Verification in a separate context, Draft PR.
+- Phase 4 stays blocked until Phase 3 merges.
