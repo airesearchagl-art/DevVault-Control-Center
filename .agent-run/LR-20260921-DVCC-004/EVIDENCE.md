@@ -198,3 +198,64 @@ anything was committed and chose this course.
 
 Consequently the checkpoint was verified in a temporary worktree containing `1c682cb` plus only the
 files this session changed, and the commit stages those files by explicit path.
+
+## Wave 3a — the five actions, guarded in the domain (2026-09-21)
+
+Commit `a4b41f3`. The five Phase 3 operations are `ReviewAction`s like every other operation:
+`recordFollowupSaved`, `captureJudgment`, `setRiskTier`, `recordRevalidation` and
+`recordEvidenceDecisions`. None of them re-implements a rule that already exists.
+
+**The guards are the interface's guards.** `recordFollowupSaved` and `captureJudgment` ask
+`canSendTurn2` and `canCaptureJudgment` — the same functions a disabled button reads — through a new
+`progressOfRound`, so a refused action and a greyed-out control can never disagree. When the answer
+is no, the refusal says which precondition failed rather than a generic "not allowed".
+
+**The canonical rule decides the tier.** `setRiskTier` calls `validateTierChoice`; a tier below what
+the declared Tier 2 subjects require is refused with the required tier in the message, and nothing on
+the round moves. There is no silent correction and no implicit tier.
+
+**Archive names are checked before anything is written**, by one helper shared with the result
+capture (`archiveRefusal`), so a judgment archive name from the result family is refused.
+
+**The audit facts are data.** `risk_tier_set`, `duplicate_continued` and `evidence_reused` carry a
+typed `detail`; `note` stays Human text that nothing reads back.
+
+Tests: 22 new in `src/domain/workflowActions.test.ts` (709 total, 23 files). `npx tsc --noEmit`
+PASS, `npx vitest run` PASS, `npm run build` PASS.
+
+## Wave 3b — Turn 2 and the Final Judgment, through the service layer (2026-09-21)
+
+Commit `4b1866b`. The protocol now reaches disk.
+
+**The Turn 2 document.** `buildResolutionFollowup` emits the canonical Stage 3 Resolution Context and
+Stage 4 Final Judgment in Japanese and English, with the same facts in the same order and the same
+line count, carrying the two rules the contract attaches to the added context: name the added
+Evidence behind every changed finding, and let the Artifact win where the narrative disagrees with
+it. The background itself stays a `<!-- Humanが記入 -->` placeholder — the local root, the project
+notes and the next action are not volunteered, which a test asserts for both languages.
+
+**The invariant is asked, not restated.** `saveFollowupRequest` runs `applyReviewAction` before it
+builds or writes anything, so the Wave 2.5 / 2.6 rules hold on the service path with no second copy
+of them; `followup-r<N>.md` is written only after the domain has agreed, and `ensureSessionUnchanged`
+still runs before the write (E-3).
+
+**Both responses of a round survive.** Capturing a reviewer response is now one flow parameterised by
+kind: `judgment-r<N>.md` sits beside `result-r<N>.md`, never over it, and a replaced Final Judgment
+archives under `judgment-r<N>-previous-<ms>.md` into `archivedJudgments`, leaving `archivedResults`
+untouched.
+
+Mutation probes, each applied to the committed source, run, then reverted (all three restores
+verified byte-identical by SHA-256):
+
+| Probe | Mutation | Result |
+|---|---|---|
+| M-B1 | `saveFollowupRequest` writes the follow-up before `applyReviewAction` is asked | CAUGHT — the "writes nothing before the Fresh Assessment" test fails |
+| M-B2 | the Final Judgment is written to `result-r<N>.md` | CAUGHT — 5 tests fail, including the hub's full two-turn walk |
+| M-B3 | a replaced judgment is archived under the result names | CAUGHT — the judgment-archive test fails |
+
+Tests: 17 new (726 total, 24 files) — `src/services/workflowService.test.ts` (9), `prompt.test.ts`
+(5, including a JA/EN equal-line-count check), `reviewHub.test.ts` (3, including an E-3 conflict
+check on the follow-up path and a full Turn 1 → Turn 2 → both responses walk). `npx tsc --noEmit`
+PASS, `npx vitest run` PASS, `npx vite build` PASS. `src-tauri/` untouched, so the Rust suite was not
+re-run. The working tree was clean before and after both commits, and every file was staged by
+explicit path.

@@ -3,13 +3,13 @@
 - Run ID: LR-20260921-DVCC-004
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — Wave 2.6 complete (protocol invariants closed, before the UI)
+- Current state: RUNNING — Wave 3b complete (the protocol reaches disk; the UI is next)
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/review-workflow-v0.3
 - Base SHA: 4c1962b0c47321805554be2218bba996ff5de92f
-- Current head: Wave 2.6 checkpoint commit
-- Current wave: Wave 2.6 → Wave 3 (Review Workflow UI, JA and EN together)
-- Last successful checkpoint: Wave 2.6 checkpoint
+- Current head: `4b1866b` (Wave 3b checkpoint commit)
+- Current wave: Wave 3 — 3a (domain actions) and 3b (service layer) done; 3c is the UI, JA and EN together
+- Last successful checkpoint: Wave 3b checkpoint (`4b1866b`)
 - Task Packet ID: LRP-20260921-DVCC-004
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260921-DVCC-004/TASK_PACKET_SNAPSHOT.md
@@ -72,6 +72,12 @@ one that looked silent in the stale copy: a second substantive review of the sam
 
 ## Current implementation state
 
+The five Phase 3 operations are now `ReviewAction`s, guarded by the same functions the interface
+reads, and the two-turn protocol reaches disk: Turn 2 is generated in both languages and saved as
+`followup-r<N>.md`, and the Final Judgment is captured into `judgment-r<N>.md` beside the Fresh
+Assessment, with its own replacement archive. `ReviewHub` exposes both as `saveFollowup` and
+`captureJudgment`.
+
 The Phase 3 domain is in place as pure functions with an independent contract table behind them,
 and it is persisted: six optional round fields, two new round artifacts (`followup-r<N>.md`,
 `judgment-r<N>.md`) with the allow-list extended on both sides of the boundary, five new
@@ -81,11 +87,16 @@ The protocol's order is now closed at both ends: the parser refuses a round that
 verdict waits for the Final Judgment once a Turn 2 has gone out, a follow-up cannot be rewritten once
 it has been answered, and the Tier 2 subjects survive a restart so the canonical rule keeps applying.
 
-Nothing is rendered yet — there is no Phase 3 UI, and no prompt change — so the workflow is not
-reachable from the interface. Phase 1, Phase 2 and Localization behave exactly as before, and
-`schemaVersion` is still 1.
+Nothing is rendered yet — there is no Phase 3 UI — so the workflow is still not reachable from the
+interface. Phase 1, Phase 2 and Localization behave exactly as before, and `schemaVersion` is still
+1.
 
 ## Checks
+
+Wave 3b: `npx tsc --noEmit` PASS, `npx vitest run` PASS (24 files, 726 tests), `npx vite build` PASS.
+Three mutation probes (M-B1..M-B3), each CAUGHT and restored byte-identical. `src-tauri/` untouched.
+
+Wave 3a: `npx tsc --noEmit` PASS, `npx vitest run` PASS (23 files, 709 tests), `npm run build` PASS.
 
 Wave 2.6: `npx tsc --noEmit` PASS, `npx vitest run` PASS (22 files, 687 tests), `npm run build` PASS
 — all three run in a temporary worktree at `1c682cb` plus this wave's files, because the session's
@@ -120,7 +131,15 @@ localization scanner's AST candidate. See QUALITY_DEBT.md.
 
 ## Known failures
 
-none from this session's work. The working tree also holds changes written outside this session —
+none from this session's work.
+
+The foreign changes recorded below were present during Wave 2.6. They are no longer in the working
+tree: at the start of Wave 3 the tree was clean at `1c682cb`, and it has been clean before and after
+every Wave 3 commit. This session has been the single writer for Wave 3, as the Human directed, and
+wrote its own implementation of those files rather than adopting what it had seen. The Wave 2.6
+record is kept as written.
+
+Historical (Wave 2.6): the working tree also held changes written outside this session —
 `src/domain/transitions.ts` and `src/services/{persistence,reviewService,reviewHub}.ts` — which do
 not compile on their own (they name translation keys that do not exist yet). They are left untouched
 and unstaged for their owner, and Wave 3 must not modify those files until the ownership of those
@@ -140,13 +159,14 @@ Changed: `src/domain/{review,schema,events,transitions}.ts`, `src/services/{stor
 
 ## Next action
 
-Wave 3: the Review Workflow UI in Japanese and English at once — where the Human is in the protocol,
+Wave 3c: the Review Workflow UI in Japanese and English at once — where the Human is in the protocol,
 what to copy, what came back, the duplicate warning with its allowed paths, the evidence-reuse
-surface, the Required Fix / re-review handoff, and a timeline that reads per round.
+surface, the Required Fix / re-review handoff, and a timeline that reads per round. Every control
+asks the domain for its enabled state; a disabled button is never the only gate.
 
 ## Remaining tasks
 
-- Wave 3 (UI in both languages), Wave 4 (prompts, accessibility, Freshness integration, README and
+- Wave 3c (UI in both languages), Wave 4 (prompts, accessibility, Freshness integration, README and
   data-contract updates), Wave 5 (regression, scenarios, isolated-desktop smoke).
 - Final Convergence, Independent Verification in a separate context, Draft PR.
 - Phase 4 stays blocked until Phase 3 merges.
