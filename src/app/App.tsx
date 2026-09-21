@@ -73,6 +73,9 @@ export default function App() {
   const [dialog, setDialog] = useState<DialogState>(null);
   const [pending, setPending] = useState(0);
   const [locale, setLocaleState] = useState<Locale>(DEFAULT_LOCALE);
+  // The selector waits for the file to be read: a write must never be judged against a file this
+  // run has not seen yet.
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const t = useMemo(() => createTranslator(locale), [locale]);
   const loadStarted = useRef(false);
   const hubRef = useRef<ReviewHub | null>(null);
@@ -127,6 +130,7 @@ export default function App() {
         if (cancelled) return;
         localeStore.adopt(settings);
         setLocaleState(settings.locale);
+        setSettingsLoaded(true);
         if (settings.problem !== null) {
           dispatch({
             type: "toast",
@@ -135,7 +139,9 @@ export default function App() {
           });
         }
       },
-      () => undefined,
+      () => {
+        if (!cancelled) setSettingsLoaded(true);
+      },
     );
     return () => {
       cancelled = true;
@@ -565,7 +571,7 @@ export default function App() {
           {t("app.name")} <span className="subtitle">{t("app.subtitle")}</span>
         </h1>
         <div className="topbar-actions">
-          <LanguageSelector disabled={busy} />
+          <LanguageSelector disabled={busy || !settingsLoaded} />
           <button type="button" onClick={() => setDialog({ kind: "createProject" })} disabled={!projectsWritable} data-testid="btn-new-project">
             {t("app.actions.newProject")}
           </button>
