@@ -236,3 +236,15 @@ started, rather than every process with the same name.
 
 `npx tsc --noEmit` PASS, `npx vitest run` PASS (20 files, **577 tests**), `npm run build` PASS.
 `src-tauri/` is byte-unchanged, so the Rust suite was not re-run (§11).
+
+### Full verification: suspended, not skipped
+
+The release build and the isolated-desktop UI smoke were **not started**: available memory was
+10.7–11.8 GiB while this repair was finished, below the 12 GiB gate the Task Packet sets for heavy
+verification, and no process belonging to the operator was stopped to make room. The harness already
+carries the two new parts — the future-schema `settings.json` scenario (Japanese fallback, a visible
+warning, a refused save, the file byte-identical, no `.bak`) and the clipboard guard — so the run is
+one command once the gate is open. `scripts/verify-localization-ui.ps1` parses cleanly.
+
+Targeted checks at `d436711`: `npx tsc --noEmit` PASS, `npx vitest run` PASS (20 files, 577 tests),
+`npm run build` PASS. `src-tauri/` byte-unchanged since `4a1345b`.

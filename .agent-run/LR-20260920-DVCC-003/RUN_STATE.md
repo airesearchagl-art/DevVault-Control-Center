@@ -3,13 +3,13 @@
 - Run ID: LR-20260920-DVCC-003
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — Focused Repair RF-L10N-01..04 after the Final Independent FULL Review of PR #3
+- Current state: SUSPENDED — Focused Repair RF-L10N-01..04 is written and checked; the release build and the UI smoke wait for the 12 GiB memory gate
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/localization-foundation-v0.2.1
 - Base SHA: 318e273a1afe66c605da897a4f7603aaa921fc83
 - Current head: the Focused Repair checkpoint on `feat/localization-foundation-v0.2.1`; Draft PR #3
 - Current wave: Focused Repair (P2-1, P2-2, P3-1, P3-2); P3-3 and the advisories deferred by the Human
-- Last successful checkpoint: Focused Repair code checkpoint (`0193b1d`)
+- Last successful checkpoint: Focused Repair code checkpoint (`d436711`)
 - Task Packet ID: LRP-20260920-DVCC-003
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260920-DVCC-003/TASK_PACKET_SNAPSHOT.md
@@ -55,7 +55,7 @@ Complete, as of the final checkpoint.
 
 ## Checks
 
-Focused Repair RF-L10N-01..04: `npx tsc --noEmit` PASS, `npx vitest run` PASS (20 files, 577 tests), `npm run build` PASS (`src-tauri/` byte-unchanged, so the Rust suite was not re-run). Release build and UI smoke pending the 12 GiB memory gate.
+Focused Repair RF-L10N-01..04: `npx tsc --noEmit` PASS, `npx vitest run` PASS (20 files, 577 tests), `npm run build` PASS (`src-tauri/` byte-unchanged, so the Rust suite was not re-run). Release build and UI smoke **not started**: available memory was 10.7–11.8 GiB during this run, below the 12 GiB gate. No process of the operator's was stopped to make room (§10).
 
 Wave 1: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, 524 tests), `npm run build` PASS, `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (68 passed, 2 ignored).
 
@@ -102,7 +102,9 @@ New: `src/i18n/{locale,types,ja,en,index,context}.ts`, `src/i18n/i18n.test.ts`, 
 
 ## Remaining tasks
 
-- Full verification at the repaired head (release build and UI smoke), once available memory is at or above 12 GiB.
+- Full verification at the repaired head — `npm run tauri build -- --no-bundle` and
+  `scripts/verify-localization-ui.ps1`, including the future-schema scenario — once available
+  memory is at or above 12 GiB. The scenario is already written into the harness.
 - Independent Verification in a separate context.
 - Human Gate after independent verification: Ready / merge.
 - Phase 3 remains blocked until Localization Foundation is merged.
