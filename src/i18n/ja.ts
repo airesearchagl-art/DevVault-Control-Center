@@ -472,6 +472,39 @@ export const ja = {
   "action.archive.duplicate": "退避ファイル名は既に記録されています",
   "action.capture.replaceConfirmationRequired":
     "R{round} には保存済みの結果があります。差し替えるには明示的な確認が必要です",
+  "action.archive.judgmentMismatch":
+    "退避ファイル名が差し替え対象の最終判断と一致しません",
+  "action.followup.assessmentRequired":
+    "Turn 2を保存する前に、R{round} のレビュー結果（Fresh Assessment）を保存してください",
+  "action.followup.judgmentCaptured":
+    "R{round} は最終判断を保存済みのため、Turn 2を保存し直せません",
+  "action.followup.verdictConfirmed":
+    "R{round} は判定が確定しているため、Turn 2を保存できません",
+  "action.judgment.assessmentRequired":
+    "最終判断を保存する前に、R{round} のレビュー結果（Fresh Assessment）を保存してください",
+  "action.judgment.followupRequired":
+    "R{round} ではTurn 2をまだ送っていないため、最終判断を保存できません",
+  "action.judgment.verdictConfirmed":
+    "R{round} は判定が確定しているため、最終判断を保存できません",
+  "action.judgment.replaceConfirmationRequired":
+    "R{round} には保存済みの最終判断があります。差し替えるには明示的な確認が必要です",
+  "action.riskTier.confirmationRequired": "Risk Tierの設定には明示的な確認が必要です",
+  "action.riskTier.verdictConfirmed":
+    "R{round} は判定が確定しているため、Risk Tierを変更できません",
+  "action.riskTier.unknown": "不明なRisk Tierです",
+  "action.riskTier.belowRequired":
+    "宣言された対象のため、Risk Tierは {required} 以上である必要があります",
+  "action.revalidation.verdictConfirmed":
+    "R{round} は判定が確定しているため、再検証の理由を記録できません",
+  "action.revalidation.alreadyRecorded":
+    "R{round} には再検証の理由がすでに記録されています",
+  "action.revalidation.reasonNotApplicable":
+    "同一HEADの重複レビューには適用できない失効理由です",
+  "action.revalidation.priorReviewRequired":
+    "再検証の記録には、対象となる既存レビューが必要です",
+  "action.evidence.verdictConfirmed":
+    "R{round} は判定が確定しているため、Evidenceの判断を変更できません",
+  "action.evidence.duplicateItem": "Evidence「{id}」が重複しています",
   "action.verdict.confirmationRequired": "判定の確定には明示的な確認が必要です",
   "action.verdict.resultRequired":
     "判定を確定する前に R{round} のレビュー結果を保存してください",

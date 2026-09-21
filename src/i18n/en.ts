@@ -466,6 +466,39 @@ export const en: Dictionary = {
   "action.archive.duplicate": "Archive file name is already recorded",
   "action.capture.replaceConfirmationRequired":
     "R{round} already has a saved result; replacing it requires explicit Human confirmation",
+  "action.archive.judgmentMismatch":
+    "Archive file name does not match the replaced Final Judgment",
+  "action.followup.assessmentRequired":
+    "Capture the Fresh Assessment of R{round} before saving a Turn 2",
+  "action.followup.judgmentCaptured":
+    "R{round} already has a Final Judgment, so its Turn 2 can no longer be rewritten",
+  "action.followup.verdictConfirmed":
+    "The verdict of R{round} is confirmed, so no Turn 2 can be saved",
+  "action.judgment.assessmentRequired":
+    "Capture the Fresh Assessment of R{round} before capturing a Final Judgment",
+  "action.judgment.followupRequired":
+    "R{round} has not sent a Turn 2, so there is no Final Judgment to capture",
+  "action.judgment.verdictConfirmed":
+    "The verdict of R{round} is confirmed, so no Final Judgment can be captured",
+  "action.judgment.replaceConfirmationRequired":
+    "R{round} already has a Final Judgment; replacing it requires explicit Human confirmation",
+  "action.riskTier.confirmationRequired": "Setting the Risk Tier requires explicit Human confirmation",
+  "action.riskTier.verdictConfirmed":
+    "The verdict of R{round} is confirmed, so the Risk Tier can no longer be changed",
+  "action.riskTier.unknown": "Unknown Risk Tier",
+  "action.riskTier.belowRequired":
+    "The subjects declared for this change require Risk Tier {required} or higher",
+  "action.revalidation.verdictConfirmed":
+    "The verdict of R{round} is confirmed, so a revalidation reason can no longer be recorded",
+  "action.revalidation.alreadyRecorded":
+    "R{round} already records why it is reviewing this head again",
+  "action.revalidation.reasonNotApplicable":
+    "That invalidation reason does not apply to a duplicate review of the same HEAD",
+  "action.revalidation.priorReviewRequired":
+    "Recording a revalidation needs the existing review it is about",
+  "action.evidence.verdictConfirmed":
+    "The verdict of R{round} is confirmed, so the evidence decisions can no longer be changed",
+  "action.evidence.duplicateItem": "Evidence “{id}” appears twice",
   "action.verdict.confirmationRequired":
     "A verdict requires explicit Human confirmation",
   "action.verdict.resultRequired":

@@ -96,6 +96,36 @@ export function canSendTurn2(progress: FreshContextProgress): boolean {
   );
 }
 
+/**
+ * A round's protocol progress, read from the fields that record it. Structural on purpose: the
+ * guards in `transitions.ts` and the interface both ask this, so there is one answer.
+ */
+export function progressOfRound(round: {
+  requestSavedAt: string | null;
+  resultCapturedAt: string | null;
+  followupSavedAt: string | null;
+  judgmentCapturedAt: string | null;
+  verdictConfirmedAt: string | null;
+}): FreshContextProgress {
+  return {
+    turn1SavedAt: round.requestSavedAt,
+    assessmentCapturedAt: round.resultCapturedAt,
+    turn2SavedAt: round.followupSavedAt,
+    judgmentCapturedAt: round.judgmentCapturedAt,
+    verdictConfirmedAt: round.verdictConfirmedAt,
+  };
+}
+
+/**
+ * Whether the Final Judgment may be captured now: the Turn 2 it answers has to have gone out, and
+ * the Human must not have decided yet.
+ */
+export function canCaptureJudgment(progress: FreshContextProgress): boolean {
+  return (
+    progress.assessmentCapturedAt !== null && progress.turn2SavedAt !== null && progress.verdictConfirmedAt === null
+  );
+}
+
 /** The single-turn fallback is never the two-turn protocol, whatever it contains. */
 export function isFreshContextReview(mode: FreshContextMode): boolean {
   return mode === "TWO_TURN";
