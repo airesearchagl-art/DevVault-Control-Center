@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import type { ReviewEventType } from "../domain/events";
+import type { EvidenceReason, EvidenceSource, EvidenceStatus } from "../domain/evidenceReuse";
 import type { FreshContextState } from "../domain/freshContext";
+import type { InvalidationReason } from "../domain/revalidation";
 import type { RiskTier, Tier2Subject } from "../domain/riskTier";
 import type { Message } from "../domain/message";
 import type { Freshness } from "../domain/freshness";
@@ -133,6 +135,38 @@ export const TIER_2_SUBJECT_KEYS: Record<Tier2Subject, TranslationKey> = {
   CREDENTIAL: "state.tier2Subject.credential",
   PRODUCTION: "state.tier2Subject.production",
   MIGRATION: "state.tier2Subject.migration",
+};
+
+export const INVALIDATION_REASON_KEYS: Record<InvalidationReason, TranslationKey> = {
+  HEAD_CHANGED: "state.invalidation.headChanged",
+  BASE_CHANGED: "state.invalidation.baseChanged",
+  TARGET_BLOB_CHANGED: "state.invalidation.targetBlobChanged",
+  RELEVANT_CONTRACT_CHANGED: "state.invalidation.relevantContractChanged",
+  EXECUTION_ENVIRONMENT_CHANGED: "state.invalidation.executionEnvironmentChanged",
+};
+
+export const EVIDENCE_SOURCE_KEYS: Record<EvidenceSource, TranslationKey> = {
+  GIT_OBSERVATION: "state.evidenceSource.gitObservation",
+  HUMAN_RECORDED_HEAD: "state.evidenceSource.humanRecordedHead",
+  INDEPENDENT_REVIEW_RESULT: "state.evidenceSource.independentReviewResult",
+  PRIOR_RUN_EVIDENCE: "state.evidenceSource.priorRunEvidence",
+};
+
+export const EVIDENCE_STATUS_KEYS: Record<EvidenceStatus, TranslationKey> = {
+  REUSABLE: "state.evidenceStatus.reusable",
+  RECHECK_REQUIRED: "state.evidenceStatus.recheckRequired",
+  UNAVAILABLE: "state.evidenceStatus.unavailable",
+};
+
+export const EVIDENCE_REASON_KEYS: Record<EvidenceReason, TranslationKey> = {
+  SHA_BOUND: "state.evidenceReason.shaBound",
+  NO_BINDING: "state.evidenceReason.noBinding",
+  HEAD_NOT_COMPARABLE: "state.evidenceReason.headNotComparable",
+  BOUND_TO_ANOTHER_HEAD: "state.evidenceReason.boundToAnotherHead",
+  BASE_CHANGED: "state.evidenceReason.baseChanged",
+  TARGET_BLOB_CHANGED: "state.evidenceReason.targetBlobChanged",
+  RELEVANT_CONTRACT_CHANGED: "state.evidenceReason.relevantContractChanged",
+  EXECUTION_ENVIRONMENT_CHANGED: "state.evidenceReason.executionEnvironmentChanged",
 };
 
 export const FRESHNESS_KEYS: Record<Freshness, TranslationKey> = {

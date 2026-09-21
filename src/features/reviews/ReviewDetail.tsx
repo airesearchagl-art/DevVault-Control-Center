@@ -6,8 +6,9 @@ import { FreshnessBadge, ResourceStateBadge, ReviewStateBadge } from "../../comp
 import type { FreshnessResult } from "../../domain/freshness";
 import type { GitObservation } from "../../domain/git";
 import { MAX_REVIEW_ROUNDS } from "../../domain/limits";
+import type { PriorReview } from "../../domain/duplicate";
 import type { Project } from "../../domain/project";
-import { currentRound, latestCapturedRound, type ReviewSession } from "../../domain/review";
+import { currentRound, latestCapturedRound, type ReviewSession, type RoundEvidenceDecision } from "../../domain/review";
 import { RESOURCE_STATES, type ResourceState } from "../../domain/states";
 import { timelineByRound } from "../../domain/timeline";
 import { canApply, type ReviewAction } from "../../domain/transitions";
@@ -25,6 +26,8 @@ import {
 } from "../../i18n";
 import { useT } from "../../i18n/context";
 import type { ReviewArtifacts } from "../../services/persistence";
+import { ReviewEvidence } from "./ReviewEvidence";
+import { ReviewHandoff } from "./ReviewHandoff";
 import { ReviewWorkflow } from "./ReviewWorkflow";
 
 export type DetailDialog =
@@ -38,7 +41,8 @@ export type DetailDialog =
   | "editProject"
   // Phase 3
   | "judgment"
-  | "riskTier";
+  | "riskTier"
+  | "revalidation";
 
 interface ReviewDetailProps {
   session: ReviewSession;
@@ -57,6 +61,9 @@ interface ReviewDetailProps {
   onCopyPrompt: () => void;
   /** Saves Turn 2 for the current round and copies it, the way `onCopyPrompt` does for Turn 1. */
   onCopyFollowup: () => void;
+  /** Every round that could already have reviewed this head; the current round is excluded. */
+  priorReviews: readonly PriorReview[];
+  onRecordEvidence: (decisions: RoundEvidenceDecision[]) => void;
   onSaveNextAction: (text: string) => Promise<boolean>;
 }
 
@@ -94,6 +101,8 @@ export function ReviewDetail({
   onOpenFolder,
   onCopyPrompt,
   onCopyFollowup,
+  priorReviews,
+  onRecordEvidence,
   onSaveNextAction,
 }: ReviewDetailProps) {
   const t = useT();
@@ -418,6 +427,18 @@ export function ReviewDetail({
         onCaptureJudgment={() => onOpenDialog("judgment")}
         onSetRiskTier={() => onOpenDialog("riskTier")}
       />
+
+      <ReviewEvidence
+        session={session}
+        round={round}
+        busy={busy}
+        priorReviews={priorReviews}
+        observation={observation}
+        onRecordRevalidation={() => onOpenDialog("revalidation")}
+        onRecordEvidence={onRecordEvidence}
+      />
+
+      <ReviewHandoff session={session} round={round} />
 
       <section className="card">
         <header className="card-header">

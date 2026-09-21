@@ -3,12 +3,14 @@ import { excerpt } from "../../app/format";
 import { Dialog, Field, FormError } from "../../components/Dialog";
 import type { Message } from "../../domain/message";
 import { currentRound, type ReviewSession } from "../../domain/review";
+import { SAME_HEAD_INVALIDATION_REASONS, type InvalidationReason } from "../../domain/revalidation";
 import { RISK_TIERS, TIER_2_SUBJECTS, type RiskTier, type Tier2Subject } from "../../domain/riskTier";
 import { normalizeHead } from "../../domain/validation";
 import {
   formatParts,
   RESOURCE_HINT_KEYS,
   RESOURCE_STATE_KEYS,
+  INVALIDATION_REASON_KEYS,
   REVIEW_STATE_KEYS,
   RISK_TIER_KEYS,
   TIER_2_SUBJECT_KEYS,
@@ -473,6 +475,82 @@ export function RiskTierDialog({
           data-testid="risk-tier-submit"
         >
           {t("review.riskTier.submit")}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+
+/**
+ * Why a head that already has a substantive review is being reviewed again.
+ *
+ * The canonical list decides; the free text is kept with the record but never grants anything. Only
+ * the reasons that can apply to an unchanged head are offered — a changed head is not a same-head
+ * duplicate at all — and nothing is preselected, so the reason is always a choice.
+ */
+export function RevalidationDialog({
+  session,
+  matches,
+  onSubmit,
+  onCancel,
+}: {
+  session: ReviewSession;
+  /** The existing reviews this decision is about, already rendered for display. */
+  matches: string;
+  onSubmit: (reason: InvalidationReason, explanation: string | null) => Promise<Message | null>;
+  onCancel: () => void;
+}) {
+  const [reason, setReason] = useState<InvalidationReason | null>(null);
+  const [explanation, setExplanation] = useState("");
+  const { error, setError, saving, run } = useSubmit();
+  const t = useT();
+
+  return (
+    <Dialog title={t("review.revalidation.title", { round: session.reviewRound })} onClose={onCancel} testId="revalidation-dialog">
+      <p className="dialog-message">{t("review.revalidation.body", { reviews: matches })}</p>
+      <fieldset className="field">
+        <legend>{t("review.revalidation.reason")}</legend>
+        <div className="verdict-options">
+          {SAME_HEAD_INVALIDATION_REASONS.map((value) => (
+            <label key={value} className={`verdict-option${reason === value ? " selected" : ""}`}>
+              <input
+                type="radio"
+                name="invalidation-reason"
+                checked={reason === value}
+                onChange={() => {
+                  setReason(value);
+                  setError(null);
+                }}
+                data-testid={`revalidation-${value}`}
+              />
+              <span>{t(INVALIDATION_REASON_KEYS[value])}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <Field label={t("review.revalidation.explanation")} htmlFor="revalidation-explanation" hint={t("review.revalidation.explanationHint")}>
+        <textarea
+          id="revalidation-explanation"
+          rows={3}
+          value={explanation}
+          onChange={(e) => setExplanation(e.target.value)}
+          data-testid="revalidation-explanation"
+        />
+      </Field>
+      <FormError message={error} />
+      <div className="dialog-actions">
+        <button type="button" onClick={onCancel}>
+          {t("dialog.cancel")}
+        </button>
+        <button
+          type="button"
+          className="primary"
+          disabled={saving || reason === null}
+          onClick={() => run(() => onSubmit(reason as InvalidationReason, explanation.trim() === "" ? null : explanation))}
+          data-testid="revalidation-submit"
+        >
+          {t("review.revalidation.submit")}
         </button>
       </div>
     </Dialog>

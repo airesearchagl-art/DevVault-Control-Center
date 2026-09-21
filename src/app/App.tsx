@@ -24,6 +24,7 @@ import {
   CaptureJudgmentDialog,
   CaptureResultDialog,
   NextRoundDialog,
+  RevalidationDialog,
   RiskTierDialog,
   SuspendDialog,
   VerdictDialog,
@@ -40,12 +41,16 @@ import type { SaveOutcome } from "../services/reviewService";
 import { createLocaleStore, loadSettings } from "../services/settings";
 import { tauriStorage, toStorageError } from "../services/storage";
 import { message, type Message } from "../domain/message";
+import { detectDuplicate } from "../domain/duplicate";
+import { priorReviewsFor } from "../domain/priorReviews";
+import type { RoundEvidenceDecision } from "../domain/review";
 import {
   createTranslator,
   DEFAULT_LOCALE,
   formatParts,
   translate,
   REVIEW_STATE_KEYS,
+  INVALIDATION_REASON_KEYS,
   REVIEW_TYPE_SUGGESTION_KEYS,
   RISK_TIER_KEYS,
   VERDICT_KEYS,
@@ -195,6 +200,10 @@ export default function App() {
   const projectById = useMemo(() => new Map(state.projects.map((project) => [project.projectId, project])), [state.projects]);
   const selectedProject = selectedSession ? (projectById.get(selectedSession.projectId) ?? null) : null;
   const projectsWritable = isWritable(state.projectsHealth);
+  const loadedSessions = useMemo(
+    () => state.reviews.flatMap((review) => (review.session ? [review.session] : [])),
+    [state.reviews],
+  );
 
   useEffect(() => {
     if (!selectedSession) return;
@@ -420,6 +429,10 @@ export default function App() {
     }
   };
 
+  const recordEvidence = async (session: ReviewSession, decisions: RoundEvidenceDecision[]) => {
+    await runAction(session, { type: "recordEvidenceDecisions", decisions }, t("toast.evidenceRecorded", { count: decisions.length }));
+  };
+
   const submitCapture = async (
     session: ReviewSession,
     text: string,
@@ -449,6 +462,21 @@ export default function App() {
     if (!error) setDialog(null);
     return error;
   };
+
+  /** The duplicate finding for a session's current round, read the same way the card reads it. */
+  const duplicateOf = (session: ReviewSession) => {
+    const round = currentRound(session);
+    return detectDuplicate({
+      projectId: session.projectId,
+      targetHead: round.expectedHead ?? round.reviewedHead,
+      priorReviews: priorReviewsFor(loadedSessions, { reviewSessionId: session.reviewSessionId, round: round.round }),
+    });
+  };
+
+  const duplicateMatches = (session: ReviewSession): string =>
+    duplicateOf(session)
+      .matches.map((match) => t("detail.value.round", { round: match.round }))
+      .join(t("review.verdict.separator"));
 
   const withDialogClose = async (promise: Promise<Message | null>): Promise<Message | null> => {
     const error = await promise;
@@ -548,6 +576,13 @@ export default function App() {
         }}
         onCopyFollowup={() => {
           void copyFollowup(selectedSession);
+        }}
+        priorReviews={priorReviewsFor(loadedSessions, {
+          reviewSessionId: selectedSession.reviewSessionId,
+          round: selectedSession.reviewRound,
+        })}
+        onRecordEvidence={(decisions) => {
+          void recordEvidence(selectedSession, decisions);
         }}
         onSaveNextAction={async (text) => (await runAction(selectedSession, { type: "setNextAction", nextAction: text }, t("toast.nextActionSaved"))) === null}
       />
@@ -775,6 +810,27 @@ export default function App() {
                 dialogSession,
                 { type: "setRiskTier", riskTier, subjects, confirmedByHuman: true },
                 t("toast.riskTierSet", { tier: t(RISK_TIER_KEYS[riskTier]) }),
+              ),
+            )
+          }
+          onCancel={closeDialog}
+        />
+      )}
+      {dialog?.kind === "revalidation" && dialogSession && (
+        <RevalidationDialog
+          session={dialogSession}
+          matches={duplicateMatches(dialogSession)}
+          onSubmit={(reason, explanation) =>
+            withDialogClose(
+              runAction(
+                dialogSession,
+                {
+                  type: "recordRevalidation",
+                  reason,
+                  priorReviews: duplicateOf(dialogSession).matches.map((match) => ({ ...match })),
+                  explanation,
+                },
+                t("toast.revalidationRecorded", { reason: t(INVALIDATION_REASON_KEYS[reason]) }),
               ),
             )
           }

@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { REVIEW_EVENT_TYPES } from "../domain/events";
+import { EVIDENCE_REASONS, EVIDENCE_SOURCES, EVIDENCE_STATUSES } from "../domain/evidenceReuse";
 import { FRESH_CONTEXT_STATES } from "../domain/freshContext";
+import { INVALIDATION_REASONS } from "../domain/revalidation";
 import { FRESHNESS_STATES } from "../domain/freshness";
 import { GIT_STATUSES } from "../domain/git";
 import { RISK_TIERS, TIER_2_SUBJECTS } from "../domain/riskTier";
@@ -10,11 +12,15 @@ import { en } from "./en";
 import {
   createTranslator,
   EVENT_TYPE_KEYS,
+  EVIDENCE_REASON_KEYS,
+  EVIDENCE_SOURCE_KEYS,
+  EVIDENCE_STATUS_KEYS,
   formatParts,
   formatTimestamp,
   FRESH_CONTEXT_STATE_KEYS,
   FRESHNESS_KEYS,
   GIT_STATUS_KEYS,
+  INVALIDATION_REASON_KEYS,
   RESOURCE_HINT_KEYS,
   RESOURCE_STATE_KEYS,
   REVIEW_STATE_KEYS,
@@ -72,6 +78,8 @@ const SHARED_VALUES = new Set([
   "state.riskTier.tier2",
   "workflow.riskTier.title",
   "review.riskTier.tier",
+  // A format, not a sentence: both halves are already translated.
+  "workflow.evidence.item",
 ]);
 
 describe("locales", () => {
@@ -167,6 +175,10 @@ describe("every persisted value has a label in both languages", () => {
       [RISK_TIERS, RISK_TIER_KEYS],
       [TIER_2_SUBJECTS, TIER_2_SUBJECT_KEYS],
       [FRESH_CONTEXT_STATES, FRESH_CONTEXT_STATE_KEYS],
+      [INVALIDATION_REASONS, INVALIDATION_REASON_KEYS],
+      [EVIDENCE_SOURCES, EVIDENCE_SOURCE_KEYS],
+      [EVIDENCE_STATUSES, EVIDENCE_STATUS_KEYS],
+      [EVIDENCE_REASONS, EVIDENCE_REASON_KEYS],
     ] as const;
     for (const [values, keys] of groups) {
       for (const value of values) {
