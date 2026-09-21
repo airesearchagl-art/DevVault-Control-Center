@@ -3,13 +3,13 @@
 - Run ID: LR-20260921-DVCC-004
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — Wave 3b complete (the protocol reaches disk; the UI is next)
+- Current state: RUNNING — Wave 3 complete (the workflow is reachable in both languages)
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/review-workflow-v0.3
 - Base SHA: 4c1962b0c47321805554be2218bba996ff5de92f
-- Current head: `4b1866b` (Wave 3b checkpoint commit)
-- Current wave: Wave 3 — 3a (domain actions) and 3b (service layer) done; 3c is the UI, JA and EN together
-- Last successful checkpoint: Wave 3b checkpoint (`4b1866b`)
+- Current head: `3175a7c` (Wave 3d checkpoint commit)
+- Current wave: Wave 3 complete (3a domain actions, 3b service layer, 3c protocol UI, 3d duplicates and evidence) → Wave 4
+- Last successful checkpoint: Wave 3d checkpoint (`3175a7c`)
 - Task Packet ID: LRP-20260921-DVCC-004
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260921-DVCC-004/TASK_PACKET_SNAPSHOT.md
@@ -39,16 +39,16 @@ one that looked silent in the stale copy: a second substantive review of the sam
 
 - [x] RW-01 branch created from fresh merged main `4c1962b`
 - [x] RW-02 canonical contract discovered at latest main `77ce41e` and recorded with line-level citations; SPEC_GAP assessed and passed
-- [~] RW-03 Fresh Context Turn 1 / Turn 2 — the domain model and both artifacts are in place (Waves 1–2); the surface follows in Waves 3–4
-- [~] RW-04 Risk Tier 0 / 1 / 2 — values, subjects, escalation, refusal and persistence implemented (Waves 1–2); display follows
+- [x] RW-03 Fresh Context Turn 1 / Turn 2 — domain, both artifacts, the service path and the surface; the prompt rework is Wave 4
+- [x] RW-04 Risk Tier 0 / 1 / 2 — values, subjects, escalation, refusal, persistence and the Human's own selection surface
 - [x] RW-05 Risk Tier independent of Review / Resource / Freshness — its module imports none of them, asserted by a test
 - [x] RW-06 same-head duplicate detected — pure function over Phase 2's `compareHead`, nine oracle cases, mutation M1
-- [ ] RW-07 duplicates are shown to the Human; never silently skipped or auto-closed
-- [ ] RW-08 evidence reuse implemented only as the canonical contract allows
-- [ ] RW-09 reused evidence shows source, head and age
-- [~] RW-10 FIX_REQUIRED hands off to re-review without losing the round relation — both handoff models implemented and tested (Wave 2); the surface follows in Wave 3
+- [x] RW-07 duplicates are shown to the Human; never silently skipped or auto-closed — named, with the canonical rule and the two permission-free paths, and no override button
+- [x] RW-08 evidence reuse implemented only as the canonical contract allows — per item, bound to the head, derived Freshness excluded
+- [x] RW-09 reused evidence shows source, head and age, with the reason it is offered
+- [x] RW-10 FIX_REQUIRED hands off to re-review without losing the round relation — both models, and the card that reads them
 - [ ] RW-11 past request / result / checkpoint artifacts are never rewritten automatically
-- [ ] RW-12 the review timeline reads per round
+- [x] RW-12 the review timeline reads per round, by grouping the existing events file
 - [ ] RW-13 Phase 2 Freshness stays separate from Review State
 - [~] RW-14 UNKNOWN is never filled in by guesswork — the domain reports `UNDECIDABLE` and `UNAVAILABLE` instead of guessing; the surface follows in Wave 3
 - [ ] RW-15 JA / EN parity
@@ -72,6 +72,13 @@ one that looked silent in the stale copy: a second substantive review of the sam
 
 ## Current implementation state
 
+The workflow is reachable. A Review workflow card shows where the Human stands in the two-turn
+protocol and carries its three operations; a Duplicates and evidence card shows a same-head
+duplicate with the canonical rule and its two permission-free paths, and rates the evidence DVCC
+holds against the head under review; a Handoff card reads the two domain handoff models; and the
+events card reads per round. Every control's enabled state comes from the function that refuses the
+action, and the service path refuses the same operations with no interface involved.
+
 The five Phase 3 operations are now `ReviewAction`s, guarded by the same functions the interface
 reads, and the two-turn protocol reaches disk: Turn 2 is generated in both languages and saved as
 `followup-r<N>.md`, and the Final Judgment is captured into `judgment-r<N>.md` beside the Fresh
@@ -87,11 +94,16 @@ The protocol's order is now closed at both ends: the parser refuses a round that
 verdict waits for the Final Judgment once a Turn 2 has gone out, a follow-up cannot be rewritten once
 it has been answered, and the Tier 2 subjects survive a restart so the canonical rule keeps applying.
 
-Nothing is rendered yet — there is no Phase 3 UI — so the workflow is still not reachable from the
-interface. Phase 1, Phase 2 and Localization behave exactly as before, and `schemaVersion` is still
-1.
+Phase 1, Phase 2 and Localization behave exactly as before, and `schemaVersion` is still 1. What is
+not done yet: the prompt rework and the Freshness surface of Wave 4, and every check that needs the
+running application (Wave 5).
 
 ## Checks
+
+Wave 3d: `npx tsc --noEmit` PASS, `npx vitest run` PASS (27 files, 745 tests), `npx vite build` PASS.
+Four mutation probes (M-C1..M-C4), each CAUGHT and restored byte-identical.
+
+Wave 3c: `npx tsc --noEmit` PASS, `npx vitest run` PASS (25 files, 733 tests), `npx vite build` PASS.
 
 Wave 3b: `npx tsc --noEmit` PASS, `npx vitest run` PASS (24 files, 726 tests), `npx vite build` PASS.
 Three mutation probes (M-B1..M-B3), each CAUGHT and restored byte-identical. `src-tauri/` untouched.
@@ -159,14 +171,13 @@ Changed: `src/domain/{review,schema,events,transitions}.ts`, `src/services/{stor
 
 ## Next action
 
-Wave 3c: the Review Workflow UI in Japanese and English at once — where the Human is in the protocol,
-what to copy, what came back, the duplicate warning with its allowed paths, the evidence-reuse
-surface, the Required Fix / re-review handoff, and a timeline that reads per round. Every control
-asks the domain for its enabled state; a disabled button is never the only gate.
+Wave 4: the prompt rework against the canonical Stage 1 headings, the accessibility pass, the
+stale / unknown surface, the Freshness integration that never writes a Review State, and the README
+and data-contract updates.
 
 ## Remaining tasks
 
-- Wave 3c (UI in both languages), Wave 4 (prompts, accessibility, Freshness integration, README and
+- Wave 4 (prompts, accessibility, Freshness integration, README and
   data-contract updates), Wave 5 (regression, scenarios, isolated-desktop smoke).
 - Final Convergence, Independent Verification in a separate context, Draft PR.
 - Phase 4 stays blocked until Phase 3 merges.

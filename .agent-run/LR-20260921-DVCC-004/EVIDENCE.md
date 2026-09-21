@@ -259,3 +259,73 @@ check on the follow-up path and a full Turn 1 → Turn 2 → both responses walk
 PASS, `npx vitest run` PASS, `npx vite build` PASS. `src-tauri/` untouched, so the Rust suite was not
 re-run. The working tree was clean before and after both commits, and every file was staged by
 explicit path.
+
+## Wave 3c — the protocol, the tier and the timeline, in both languages (2026-09-21)
+
+Commit `dcb3e83`. The workflow became reachable from the interface.
+
+**A card that says where the Human stands.** Turn 1, the Fresh Assessment, Turn 2 and the Final
+Judgment each show their time or an explicit "not sent" / "not received" — never a blank — above the
+derived fresh-context state. The three operations sit with them: copy Turn 2, save the Final
+Judgment, set the Risk Tier.
+
+**The interface asks the domain.** Each control's enabled state comes from the function that would
+refuse the action (`canSendTurn2`, `canCaptureJudgment`, `canApply`), and a disabled control carries
+the reason in its title. The button is not the gate: the service path refuses the same operations
+with no interface involved, which `workflowService.test.ts` and `reviewHub.test.ts` assert directly.
+
+**The tier stays the Human's.** The dialog sends the tier and the subjects exactly as ticked. It
+derives nothing from the checkboxes and raises nothing quietly; a tier below what the declared
+subjects require comes back as the domain's refusal, rendered where every form error is rendered.
+
+**Two responses, two dialogs.** The Final Judgment dialog names the file it writes and asks only
+about replacing a judgment, because the Fresh Assessment is never overwritten.
+
+**The timeline reads per round** (RW-12) through the pure `timelineByRound`, which groups the
+existing `events.jsonl` and invents nothing.
+
+`ActionButton` and `Row` moved to `src/components` so the new cards and the detail share one shape
+rather than a copy.
+
+Tests: 733 (25 files). The parity gate now also covers the risk tiers, the Tier 2 subjects and the
+fresh-context states; `state.riskTier.*`, `workflow.riskTier.title` and `review.riskTier.tier` are
+on the shared-value list because they are canonical names, and translating them would drift from the
+vocabulary the reviewer and the Human share.
+
+## Wave 3d — duplicates, evidence reuse and the handoffs (2026-09-21)
+
+Commit `3175a7c`.
+
+**A duplicate is shown, never skipped.** The card names the existing reviews of the same head,
+states the canonical rule, and lists the two paths that need no permission: open the existing review,
+or reuse the evidence and re-check only what went stale. There is no override button. The only way
+forward is to record one of the canonical invalidation reasons, and the dialog offers only the four
+that can apply to an unchanged head — `HEAD_CHANGED` contradicts the finding rather than justifying
+it. The Human's own words are kept with the record and never grant anything. `UNDECIDABLE` is shown
+as its own state, with the sentence that not being able to tell is not the same as there being no
+duplicate.
+
+**Evidence is offered from what DVCC holds.** `offeredEvidence` derives the candidates: an earlier
+round's response (the Final Judgment when there is one, otherwise the Fresh Assessment), the head the
+Human recorded for it, and the last successful Git observation. Each carries the head it is bound to
+and when it was captured, and `assessEvidenceItem` rates it against the head this round is about.
+Derived Freshness is not among them (RW-017), the current round's own response is never offered to
+itself, and nothing is reused without a Human action.
+
+**The handoffs are read from the domain models**, not reconstructed: what a confirmed `FIX_REQUIRED`
+or `BLOCKED` hands on, and the relation a re-review has to the round before it. The previous round's
+artifacts are named, never touched (RW-11).
+
+Mutation probes, applied to the committed source, run, then reverted (all restores verified
+byte-identical):
+
+| Probe | Mutation | Result |
+|---|---|---|
+| M-C1 | a round may be its own duplicate | CAUGHT |
+| M-C2 | the current round's response is offered to itself | CAUGHT |
+| M-C3 | a review's conclusions are treated as contract-independent | CAUGHT |
+| M-C4 | the timeline drops the round boundary | CAUGHT |
+
+Tests: 745 (27 files). `npx tsc --noEmit` PASS, `npx vitest run` PASS, `npx vite build` PASS.
+`src-tauri/` untouched in both waves, so the Rust suite was not re-run. The working tree was clean
+before and after every commit, and every file was staged by explicit path.
