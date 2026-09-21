@@ -37,6 +37,12 @@ restarting the app.
   HEAD is no longer current) / `WORKTREE_DIRTY` / `UNKNOWN`, always with one sentence saying why.
   Freshness never changes a review state, and the observed facts are never written to disk: they are
   read again only when you press **Refresh Git state** (one project) or **Refresh Git (all)**.
+- **Japanese and English** — the interface is Japanese by default; the language selector in the top
+  bar switches to English and back at once, without touching any review, project or Git state. The
+  choice is remembered in `settings.json` in the data folder and restored at the next start. Both
+  languages ship together: a key that exists in one dictionary and not the other does not compile.
+  Stored values (review state, resource state, freshness, event type, schema field, file name, error
+  code) stay language-neutral, and what you typed is never translated.
 - **Open GitHub / ChatGPT / project folder** through a validated launcher.
 - **Attention-ordered queue** with filter, recovery banners and a readable history (`events.jsonl`).
 
@@ -45,6 +51,8 @@ restarting the app.
 - ChatGPT is operated by you. DVCC never logs in, sends messages, reads pages or scrapes
   conversations; it stores only the thread title / URL, the request you copy and the result you paste.
 - No paid API (OpenAI / Anthropic) is used or required. No network calls besides opening URLs in your browser.
+- Translation is not automatic: both dictionaries are files in this repository. No translation API,
+  no network call and no model is involved in showing the interface in either language.
 - The clipboard is **write-only** for DVCC (copy prompt). Results are pasted manually.
 - URLs open only if they are `https` on `github.com`, `chatgpt.com` or `chat.openai.com`, without
   credentials or a non-default port (`:443`, the https default, is accepted and dropped; checked by
@@ -87,6 +95,11 @@ Runtime data never lives in this repository.
 | Debug build (`npm run tauri dev`) | `%APPDATA%\DevVault-Control-dev\` |
 | Override (tests, smoke, experiments) | `DVCC_DATA_DIR` (absolute path) |
 
+The data folder also holds `settings.json` (`{"schemaVersion": 1, "locale": "ja" | "en"}`), written
+only when you change the language. A missing file means Japanese; a file that cannot be read or
+whose schema version is not 1 also means Japanese, is reported in the interface, and is left exactly
+as it is.
+
 The format is plain JSON / Markdown so you (or an IDE agent) can inspect it directly. Writes are
 atomic with a `.bak` of the previous valid JSON and are refused (nothing overwritten) if another
 program changed the file since DVCC loaded it; the regenerated notes `request-r<N>.md` and
@@ -121,6 +134,10 @@ npm run tauri build -- --no-bundle
 # Only the fail-closed start-up gate (held / uncreatable start-up lock; no window is expected)
 .\scripts\verify-single-instance.ps1 -Exe .\src-tauri\target\release\devvault-control-center.exe -DataDir D:\scratch\dvcc-si-data -FailClosedOnly
 
+# Both languages in the running app: Japanese by default, the switch, the restart and the review
+# request in each language (hidden isolated desktop, temporary data folder, clipboard put back)
+.\scripts\verify-localization-ui.ps1
+
 # Network-drive launcher boundary (needs a temporary mapping, e.g. net use W: \\localhost\C$ /persistent:no)
 $env:DVCC_TEST_MAPPED_DRIVE_DIR = "W:\Windows"; cd src-tauri; cargo test mapped_network_drive -- --ignored; cd ..
 ```
@@ -137,12 +154,13 @@ npm run tauri dev
 ```text
 src/
   app/          App shell, UI state reducer, formatting
-  components/   Dialog, banner / toast, state badges
+  components/   Dialog, banner / toast, state badges, language selector
   features/     projects/ and reviews/ UI
+  i18n/         Japanese and English dictionaries, translator, label keys for every stored enum
   domain/       Pure domain: states, limits, project, review rounds, transitions, schema v1, prompt,
-                queue, Git observation model, derived Freshness
+                queue, Git observation model, derived Freshness, named messages
   services/     Storage port, tracked (conflict-checked) storage, persistence + recovery, use cases,
-                ReviewHub (serialized operations), launcher, clipboard, Git observer
+                ReviewHub (serialized operations), launcher, clipboard, Git observer, settings
   test/         In-memory / delayed storage, independent transition and Freshness contracts, fixture
                 hygiene test
 src-tauri/
@@ -152,7 +170,7 @@ src-tauri/
   src/git.rs       Read-only local Git observation (bounded, no shell, no network)
   capabilities/    core:default + clipboard write only
 contract/       Shared limits (limits.json) used by TypeScript and Rust
-scripts/        Reproducible verification (single instance)
+scripts/        Reproducible verification (single instance, localization UI smoke)
 docs/           Data contract
 fixtures/v1/    Synthetic fixtures only (Project Alpha / Beta / Gamma, example-org URLs)
 .agent-run/     Long-run development campaign artifacts (task packet, state, evidence)
@@ -160,3 +178,18 @@ fixtures/v1/    Synthetic fixtures only (Project Alpha / Beta / Gamma, example-o
 
 Fixtures must stay synthetic: no real repository URLs, ChatGPT thread URLs, local user paths or
 secrets (enforced by `src/test/fixtureHygiene.test.ts`).
+
+### Where words live
+
+User-facing text belongs in `src/i18n/`, never in a component: `ja.ts` defines the key set and
+`en.ts` is typed as a complete record of it, so a missing or unknown translation is a compile error.
+Text produced outside React — validation, transition guards, service failures, file health, the
+Freshness explanations — returns a `Message` (`src/domain/message.ts`): a key plus parameters that
+the interface renders. `src/i18n/i18n.test.ts` checks parity, blanks, duplicate keys, identical
+placeholders and a label for every stored enum value; `src/i18n/noHardCodedText.test.ts` scans the
+rendering directories for text written straight into a component.
+
+Not translated, on purpose: stored enum values and schema fields, file names, error codes, the
+messages Git and the storage layer report (shown as detail inside a localized sentence), event notes
+already written to `events.jsonl`, and anything the Human typed. A saved `request-r<N>.md` keeps the
+language it was written in; only a new request follows the current language.

@@ -34,7 +34,7 @@ function withState(reviewState: ReviewState, resourceState: ResourceState = "HOT
 
 function apply(session: ReviewSession, action: ReviewAction, now = T1) {
   const result = applyReviewAction(session, action, now);
-  if (!result.ok) throw new Error(result.error);
+  if (!result.ok) throw new Error(JSON.stringify(result.error));
   return result.value;
 }
 

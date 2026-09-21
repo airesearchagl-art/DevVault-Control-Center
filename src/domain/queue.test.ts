@@ -1,3 +1,4 @@
+import { message } from "./message";
 import { describe, expect, it } from "vitest";
 import type { Project } from "./project";
 import { buildQueue, type QueueSource } from "./queue";
@@ -43,7 +44,7 @@ describe("buildQueue", () => {
       source("project-beta", "REVIEWING", "COLD"),
       source("project-alpha", "NEW", "HOT", "2026-01-01T00:00:00.000Z"),
       source("project-alpha", "NEW", "HOT", "2026-01-02T00:00:00.000Z"),
-      { reviewId: "rv-20260101-broken", session: null, problem: "invalid JSON" },
+      { reviewId: "rv-20260101-broken", session: null, problem: message("health.unreadable", { reason: "invalid JSON" }) },
     ];
     const queue = buildQueue(items, projects, { text: "", showClosed: true });
     expect(queue.map((i) => (i.session ? `${i.session.reviewState}/${i.session.resourceState}/${i.session.updatedAt.slice(8, 10)}` : "UNREADABLE"))).toEqual([

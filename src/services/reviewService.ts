@@ -1,5 +1,6 @@
 import { createProject, updateProject, type Project, type ProjectFormInput } from "../domain/project";
 import { buildReviewRequest } from "../domain/prompt";
+import { DEFAULT_LOCALE, type Locale } from "../i18n/locale";
 import {
   ARCHIVE_CANDIDATES,
   archivedResultFileName,
@@ -8,7 +9,8 @@ import {
   type ReviewFormInput,
   type ReviewSession,
 } from "../domain/review";
-import { err, ok, type FieldErrors, type Result } from "../domain/result";
+import { message, type Message } from "../domain/message";
+import { err, invalid, ok, type FieldErrors, type Result } from "../domain/result";
 import { applyReviewAction, guardAction, type ReviewAction } from "../domain/transitions";
 import { TEXT_MAX } from "../domain/project";
 import {
@@ -30,12 +32,13 @@ import { resultFileName, reviewTarget, type StorageBackend } from "./storage";
 
 export interface SaveOutcome {
   session: ReviewSession;
-  warning: string | null;
+  warning: Message | null;
 }
 
 function projectsLocked(health: FileHealth): FieldErrors | null {
   if (isWritable(health)) return null;
-  return { _form: `projects.json cannot be modified: ${describeHealthProblem(health) ?? health.status}` };
+  const problem = describeHealthProblem(health);
+  return { _form: message("service.projectsNotModifiable", { problem: problem ? problem.key : health.status }) };
 }
 
 export async function saveNewProject(
@@ -65,7 +68,7 @@ export async function saveEditedProject(
   const locked = projectsLocked(health);
   if (locked) return err(locked);
   const existing = projects.find((p) => p.projectId === projectId);
-  if (!existing) return err({ _form: `Unknown project: ${projectId}` });
+  if (!existing) return err({ _form: message("service.unknownProject", { id: projectId }) });
   const updated = updateProject(existing, input, now);
   if (!updated.ok) return updated;
   const next = projects.map((p) => (p.projectId === projectId ? updated.value : p));
@@ -120,10 +123,12 @@ export async function saveReviewRequest(
   project: Project,
   session: ReviewSession,
   now: string,
+  /** The request is written in the language the Human is working in; saved requests never change. */
+  locale: Locale = DEFAULT_LOCALE,
 ): Promise<Result<SaveOutcome & { text: string }>> {
   const guard = guardAction(session, "recordRequestSaved");
   if (guard !== null) return err(guard);
-  const text = buildReviewRequest(project, session);
+  const text = buildReviewRequest(project, session, locale);
   await ensureSessionUnchanged(backend, session.reviewSessionId);
   await writeRoundArtifact(backend, session.reviewSessionId, "request", session.reviewRound, text);
   const saved = await performReviewAction(backend, session, { type: "recordRequestSaved" }, now);
@@ -156,7 +161,7 @@ async function planArchive(
     if (existing === previousText) return ok({ recover, archivedAs: name, exists: true });
     recover.push(name);
   }
-  return err(`R${round.round} has no free archive name left for the previous result`);
+  return invalid("service.noArchiveName", { round: round.round });
 }
 
 /**
@@ -179,8 +184,8 @@ export async function captureReviewResult(
 ): Promise<Result<SaveOutcome & { archivedAs: string | null }>> {
   const guard = guardAction(session, "captureResult");
   if (guard !== null) return err(guard);
-  if (resultText.trim() === "") return err("Paste the review result before saving");
-  if (resultText.length > TEXT_MAX * 10) return err("Review result is too long");
+  if (resultText.trim() === "") return invalid("service.resultRequired");
+  if (resultText.length > TEXT_MAX * 10) return invalid("service.resultTooLong");
 
   const round = currentRound(session);
   const target = reviewTarget(session.reviewSessionId, resultFileName(round.round));

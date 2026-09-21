@@ -2,7 +2,8 @@ import { FreshnessBadge, ResourceStateBadge, ReviewStateBadge } from "../../comp
 import type { FreshnessResult } from "../../domain/freshness";
 import type { Project } from "../../domain/project";
 import type { QueueFilter, QueueItem } from "../../domain/queue";
-import { REVIEW_STATE_LABELS } from "../../domain/states";
+import { REVIEW_STATE_KEYS, translate } from "../../i18n";
+import { useT } from "../../i18n/context";
 
 interface ReviewQueueProps {
   items: QueueItem[];
@@ -34,20 +35,21 @@ export function ReviewQueue({
   onEditProject,
   onCreateReview,
 }: ReviewQueueProps) {
+  const t = useT();
   return (
     <div className="queue">
       <div className="queue-toolbar">
         <input
           type="search"
-          placeholder="Filter: project, PR (#45), type…"
+          placeholder={t("queue.filter.placeholder")}
           value={filter.text}
           onChange={(e) => onFilterChange({ text: e.target.value })}
-          aria-label="Filter reviews"
+          aria-label={t("queue.filter.ariaLabel")}
           data-testid="queue-filter"
         />
         <label className="checkbox small">
           <input type="checkbox" checked={filter.showClosed} onChange={(e) => onFilterChange({ showClosed: e.target.checked })} data-testid="queue-show-closed" />
-          Show closed
+          {t("queue.showClosed")}
         </label>
       </div>
 
@@ -69,7 +71,9 @@ export function ReviewQueue({
                     <div className="qi-top">
                       <span className="qi-project">{item.project?.displayName ?? item.session.projectId}</span>
                       <span className="qi-pr">
-                        {item.session.prNumber !== null ? `PR${item.session.prNumber}` : "—"} / R{item.session.reviewRound}
+                        {item.session.prNumber !== null
+                          ? t("queue.item.prRound", { pr: item.session.prNumber, round: item.session.reviewRound })
+                          : t("queue.item.noPr", { round: item.session.reviewRound })}
                       </span>
                     </div>
                     <div className="qi-badges">
@@ -78,20 +82,24 @@ export function ReviewQueue({
                       {freshnessByReview.get(item.reviewId) && (
                         <FreshnessBadge
                           status={freshnessByReview.get(item.reviewId)!.status}
-                          explanation={freshnessByReview.get(item.reviewId)!.explanation}
+                          explanation={translate(t, freshnessByReview.get(item.reviewId)!.explanation)}
                           testId="queue-freshness"
                         />
                       )}
-                      {item.session.suspendedFrom && <span className="muted small">from {REVIEW_STATE_LABELS[item.session.suspendedFrom]}</span>}
+                      {item.session.suspendedFrom && (
+                        <span className="muted small">
+                          {t("queue.item.suspendedFrom", { state: t(REVIEW_STATE_KEYS[item.session.suspendedFrom]) })}
+                        </span>
+                      )}
                     </div>
-                    <div className="qi-next">{item.session.nextAction || <span className="muted">No next action</span>}</div>
+                    <div className="qi-next">{item.session.nextAction || <span className="muted">{t("queue.item.noNextAction")}</span>}</div>
                   </>
                 ) : (
                   <>
                     <div className="qi-top">
                       <span className="qi-project mono">{item.reviewId}</span>
                     </div>
-                    <div className="qi-error">Unreadable — {item.problem}</div>
+                    <div className="qi-error">{t("queue.item.unreadable", { problem: item.problem ? translate(t, item.problem) : "" })}</div>
                   </>
                 )}
               </button>
@@ -100,30 +108,30 @@ export function ReviewQueue({
         })}
       </ul>
       {items.length === 0 && (
-        <p className="queue-empty muted">{totalCount === 0 ? "No reviews yet." : "No reviews match the filter."}</p>
+        <p className="queue-empty muted">{totalCount === 0 ? t("queue.empty.none") : t("queue.empty.filtered")}</p>
       )}
 
       <details className="project-list" open>
-        <summary>Projects ({projects.length})</summary>
+        <summary>{t("queue.projects.summary", { count: projects.length })}</summary>
         <ul>
           {projects.map((project) => (
             <li key={project.projectId} className="project-row" data-testid="project-row" data-project-id={project.projectId}>
               <span className="project-name" title={project.projectId}>
                 {project.displayName}
-                <span className="muted small"> · {reviewCountByProject.get(project.projectId) ?? 0} reviews</span>
+                <span className="muted small"> {t("queue.projects.reviewCount", { count: reviewCountByProject.get(project.projectId) ?? 0 })}</span>
               </span>
               <span className="project-row-actions">
                 <button type="button" className="link-button" onClick={() => onCreateReview(project.projectId)}>
-                  + Review
+                  {t("queue.projects.addReview")}
                 </button>
                 <button type="button" className="link-button" onClick={() => onEditProject(project.projectId)} disabled={!projectsEditable}>
-                  Edit
+                  {t("queue.projects.edit")}
                 </button>
               </span>
             </li>
           ))}
         </ul>
-        {projects.length === 0 && <p className="muted small">No projects registered.</p>}
+        {projects.length === 0 && <p className="muted small">{t("queue.projects.none")}</p>}
       </details>
     </div>
   );

@@ -7,7 +7,8 @@ import {
   type ReviewSession,
   type RoundRecord,
 } from "./review";
-import { err, ok, type Result } from "./result";
+import { message, type Message } from "./message";
+import { err, invalid, ok, type Result } from "./result";
 import { isResumableState, type ResourceState, type ReviewState } from "./states";
 import { isValidHead } from "./validation";
 import { TEXT_MAX } from "./project";
@@ -78,15 +79,16 @@ export const ALLOWED_FROM: Record<ReviewActionType, readonly ReviewState[]> = {
 };
 
 /** State-level guard. Returns `null` when the action type is currently allowed. */
-export function guardAction(session: ReviewSession, type: ReviewActionType): string | null {
+export function guardAction(session: ReviewSession, type: ReviewActionType): Message | null {
   if (!ALLOWED_FROM[type].includes(session.reviewState)) {
-    return `"${type}" is not allowed while the review is ${session.reviewState}`;
+    // The action type is an identifier, not a word, so it is shown as it is.
+    return message("action.notAllowed", { action: type, state: session.reviewState });
   }
   if (type === "resume" && session.reviewState !== "SUSPENDED" && session.resourceState === "HOT") {
-    return "The review is already active (not suspended and HOT)";
+    return message("action.alreadyActive");
   }
   if (type === "startNextRound" && session.reviewRound >= MAX_REVIEW_ROUNDS) {
-    return `The round limit (R${MAX_REVIEW_ROUNDS}) has been reached`;
+    return message("action.roundLimit", { max: MAX_REVIEW_ROUNDS });
   }
   return null;
 }
@@ -148,7 +150,7 @@ export function applyReviewAction(session: ReviewSession, action: ReviewAction, 
       return ok(build(session, { ...session, reviewState: "READY_FOR_REVIEW" }, "review_ready", now));
 
     case "startNextRound": {
-      if (action.expectedHead !== null && !isValidHead(action.expectedHead)) return err("Expected HEAD is not a valid SHA");
+      if (action.expectedHead !== null && !isValidHead(action.expectedHead)) return invalid("action.expectedHead.invalid");
       const round = session.reviewRound + 1;
       const next: RoundRecord = {
         round,
@@ -190,21 +192,21 @@ export function applyReviewAction(session: ReviewSession, action: ReviewAction, 
       );
 
     case "captureResult": {
-      if (action.reviewedHead !== null && !isValidHead(action.reviewedHead)) return err("Reviewed HEAD is not a valid SHA");
+      if (action.reviewedHead !== null && !isValidHead(action.reviewedHead)) return invalid("action.reviewedHead.invalid");
       const round = currentRound(session);
       const archived = action.archivedResultFiles ?? [];
       if (round.resultCapturedAt !== null && action.replaceConfirmedByHuman !== true) {
-        return err(`R${round.round} already has a saved result; replacing it requires explicit Human confirmation`);
+        return invalid("action.capture.replaceConfirmationRequired", { round: round.round });
       }
       for (const [index, name] of archived.entries()) {
-        if (!isArchivedResultFileName(name, round.round)) return err("Archive file name does not match this round");
+        if (!isArchivedResultFileName(name, round.round)) return invalid("action.archive.roundMismatch");
         // A recorded result is archived under its own capture time; an orphan result file
         // (written but never recorded, e.g. after a crash) may use any valid archive name.
         if (round.resultCapturedAt !== null && !isArchiveCandidateFor(name, round.round, round.resultCapturedAt)) {
-          return err("Archive file name does not match the replaced result");
+          return invalid("action.archive.resultMismatch");
         }
         if (round.archivedResults.includes(name) || archived.indexOf(name) !== index) {
-          return err("Archive file name is already recorded");
+          return invalid("action.archive.duplicate");
         }
       }
       const kept = archived.length === 0 ? "" : ` (previous result kept as ${archived.join(", ")})`;
@@ -227,10 +229,10 @@ export function applyReviewAction(session: ReviewSession, action: ReviewAction, 
     }
 
     case "confirmVerdict": {
-      if (action.confirmedByHuman !== true) return err("A verdict requires explicit Human confirmation");
-      if (action.verdict !== "FIX_REQUIRED" && action.verdict !== "REVIEW_PASS") return err("Unknown verdict");
+      if (action.confirmedByHuman !== true) return invalid("action.verdict.confirmationRequired");
+      if (action.verdict !== "FIX_REQUIRED" && action.verdict !== "REVIEW_PASS") return invalid("action.verdict.unknown");
       if (currentRound(session).resultCapturedAt === null) {
-        return err(`Capture the review result for round R${session.reviewRound} before confirming a verdict`);
+        return invalid("action.verdict.resultRequired", { round: session.reviewRound });
       }
       const note = trimmedOrNull(action.note);
       return ok(
@@ -249,10 +251,10 @@ export function applyReviewAction(session: ReviewSession, action: ReviewAction, 
     }
 
     case "block": {
-      if (action.confirmedByHuman !== true) return err("Blocking requires explicit Human confirmation");
+      if (action.confirmedByHuman !== true) return invalid("action.block.confirmationRequired");
       const reason = action.reason.trim();
-      if (reason === "") return err("A reason is required to block the review");
-      if (reason.length > TEXT_MAX) return err("Reason is too long");
+      if (reason === "") return invalid("action.block.reasonRequired");
+      if (reason.length > TEXT_MAX) return invalid("action.block.reasonTooLong");
       const fromReviewing = session.reviewState === "REVIEWING";
       return ok(
         build(
@@ -273,10 +275,10 @@ export function applyReviewAction(session: ReviewSession, action: ReviewAction, 
 
     case "suspend": {
       if (action.resourceState !== "WARM" && action.resourceState !== "COLD") {
-        return err("Suspend requires WARM or COLD");
+        return invalid("action.suspend.resourceState");
       }
-      if (action.checkpoint.trim() === "") return err("A checkpoint note is required to suspend");
-      if (!isResumableState(session.reviewState)) return err(`Cannot suspend from ${session.reviewState}`);
+      if (action.checkpoint.trim() === "") return invalid("action.suspend.checkpointRequired");
+      if (!isResumableState(session.reviewState)) return invalid("action.suspend.notResumable", { state: session.reviewState });
       return ok(
         build(
           session,
@@ -294,7 +296,7 @@ export function applyReviewAction(session: ReviewSession, action: ReviewAction, 
 
     case "resume": {
       const restored = session.reviewState === "SUSPENDED" ? session.suspendedFrom : session.reviewState;
-      if (restored === null) return err("Suspended review has no recorded previous state");
+      if (restored === null) return invalid("action.resume.noPreviousState");
       return ok(
         build(
           session,
@@ -306,24 +308,24 @@ export function applyReviewAction(session: ReviewSession, action: ReviewAction, 
     }
 
     case "close": {
-      if (action.confirmedByHuman !== true) return err("Closing requires explicit Human confirmation");
+      if (action.confirmedByHuman !== true) return invalid("action.close.confirmationRequired");
       return ok(build(session, { ...session, reviewState: "CLOSED", suspendedFrom: null }, "closed", now));
     }
 
     case "setResource":
-      if (action.resourceState === session.resourceState) return err(`Resource is already ${session.resourceState}`);
+      if (action.resourceState === session.resourceState) return invalid("action.resource.unchanged", { state: session.resourceState });
       return ok(build(session, { ...session, resourceState: action.resourceState }, "resource_changed", now));
 
     case "setNextAction": {
       const nextAction = action.nextAction.trim();
-      if (nextAction.length > TEXT_MAX) return err("Next action is too long");
-      if (nextAction === session.nextAction) return err("Next action is unchanged");
+      if (nextAction.length > TEXT_MAX) return invalid("validation.nextAction.tooLong");
+      if (nextAction === session.nextAction) return invalid("action.nextAction.unchanged");
       return ok(build(session, { ...session, nextAction }, "next_action_updated", now));
     }
 
     case "updateMetadata": {
       const { expectedHead, ...rest } = action.metadata;
-      if (expectedHead !== null && !isValidHead(expectedHead)) return err("Expected HEAD is not a valid SHA");
+      if (expectedHead !== null && !isValidHead(expectedHead)) return invalid("action.expectedHead.invalid");
       return ok(
         build(
           session,

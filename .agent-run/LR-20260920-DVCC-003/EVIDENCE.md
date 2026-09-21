@@ -1,0 +1,285 @@
+# Evidence — LR-20260920-DVCC-003
+
+## Wave 0 — preflight (2026-09-20)
+
+| Item | Evidence |
+|---|---|
+| Repository | `airesearchagl-art/DevVault-Control-Center` |
+| Base SHA | `origin/main` = `318e273a1afe66c605da897a4f7603aaa921fc83` — matches the Human-stated expected main; subject "Merge pull request #2 from airesearchagl-art/feat/evidence-freshness-v0.2" |
+| Merged phases | PR #1 (Review Hub v0.1) and PR #2 (Evidence / Freshness v0.2, merged 2026-09-20T12:11:09Z) |
+| Current branch before | `feat/evidence-freshness-v0.2` (Phase 2 branch, already merged) |
+| Working tree | clean — 0 tracked changes, 0 untracked files |
+| Target branch | did not exist locally or on the remote |
+| Working branch created | `feat/localization-foundation-v0.2.1` from `origin/main` @ `318e273` (L10N-01) |
+| Tool surface | node v24.15.0, npm 11.12.1, rustc 1.95.0, git 2.53.0.windows.2 |
+| Available memory | 13.64 GiB (heavy-verification gate: 12 GiB) |
+| GitHub CI | none — no Actions workflow and no status checks; every check is local |
+
+## Task Packet binding
+
+- Snapshot: `.agent-run/LR-20260920-DVCC-003/TASK_PACKET_SNAPSHOT.md`, 13 954 bytes.
+- SHA-256: `1eaf6ee66218e6fa2128db89914dfbc6b03a046e4b83dd94f176a7736e577531`.
+- Revision 1; the two previous runs' artifacts are untouched.
+
+## Branch discipline after the Phase 2 incident
+
+Phase 2 produced commits on local `main` because a `git checkout main` went unnoticed. In this run the branch is verified with `git branch --show-current` immediately before every commit, and the check is recorded with each checkpoint.
+
+## Wave 0 — UI string inventory (delegated, read-only)
+
+A separate read-only context inventoried every user-facing string under `src/` at `318e273`. Result: **about 390 distinct strings across 18 files**.
+
+| Area | Files | Approx. strings |
+|---|---|---|
+| App shell, toasts, banners, confirm dialogs | `app/App.tsx` | 65 |
+| Review detail pane | `features/reviews/ReviewDetail.tsx` | 75 |
+| Review dialogs (suspend / capture / verdict / next round) | `features/reviews/ReviewDialogs.tsx` | 40 |
+| Review create / edit form, project form | `features/reviews/ReviewForm.tsx`, `features/projects/ProjectForm.tsx` | 38 |
+| Queue pane | `features/reviews/ReviewQueue.tsx` | 16 |
+| Shared components, recovery notices, formatting | `components/*`, `app/appState.ts`, `app/format.ts` | 13 |
+| Label maps (review / resource / Git status / freshness) | `domain/states.ts`, `domain/git.ts`, `domain/freshness.ts` | 26 |
+| Freshness explanations | `domain/freshness.ts` | 13 sentences |
+| Validation and field errors | `domain/validation.ts`, `project.ts`, `review.ts` | 25 |
+| Transition guards and event notes | `domain/transitions.ts` | 27 |
+| Schema parse reasons reaching a banner | `domain/schema.ts` | 34 |
+| Service errors | `services/persistence.ts`, `reviewService.ts`, `reviewHub.ts`, `trackedStorage.ts` | 19 |
+| Review request template | `domain/prompt.ts` | 20 emitted lines |
+
+Findings that shape the design (each is answered by a decision in DECISIONS.md):
+
+1. **`prompt.ts` is already bilingual** — English headings and labels with Japanese instruction sentences and placeholders (`未記録`, `なし（初回Round）`, three JA guidance lines). Localizing it is a split of a mixed template into two coherent ones, not an addition (L3-006).
+2. **Four places where UI text becomes persisted data**: the review-type suggestion list (stored verbatim in `session.reviewType` and emitted into the request), the pre-filled checkpoint text (becomes `checkpoint.md`), the event notes written to `events.jsonl`, and the request artifact itself (L3-009..L3-011).
+3. **Raw enums are rendered as visible text** in six places (`HOT`/`WARM`/`COLD` in the badge, the resource segmented control, the review form and the suspend dialog; verdicts in a toast and in the previous-result line; event types in the history) — an extractor cannot see these, so they need explicit label lookups (L3-012).
+4. **Ten rich-text messages** carry `<strong>`, `<code>` or `<kbd>` mid-sentence plus interpolated values (unreadable-review explanations, the two `projects.json` banners, the set-aside dialog, the suspend and capture dialog bodies, the next-round body, the suspended-from line) — plain string lookup is not enough (L3-013).
+5. **Sentences assembled from fragments in JSX** (queue row "PR45 / R2", "from {state}", "· {n} reviews", the detail header, "Earlier results of R{n} kept: …", the unreadable-review heading) break in Japanese word order and must become single parameterised messages (L3-014).
+6. **`describeHealthProblem` returns a sentence fragment** that is spliced into three different grammatical contexts; it has to become a structured problem (code + parameters) the UI renders (L3-015).
+7. **Pluralisation by string surgery** in three places (`project${n===1?"":"s"}`, "reviews", "line(s)") needs a real rule for English and none for Japanese (L3-016).
+8. Punctuation that is effectively a locale setting: `—` placeholders, `…`, `·`, `→`, `∅`, typographic quotes and the `": "` joiner in the resource tooltip.
+9. Must stay literal: persisted enum values (also used as CSS class fragments and `data-state`), schema field names, file names, error codes, Tauri command names, product and tool names, the IDE suggestion list, and every `data-testid`.
+
+## Wave 1 — i18n core, persistence and the language switch (2026-09-20)
+
+- `src/i18n/`: `locale.ts` (ja / en, Japanese default, native names), `ja.ts` (the key set, covering Phase 1 and Phase 2), `en.ts` (typed as a full record of that set, so a missing or unknown key is a compile error), `types.ts`, `index.ts` (translator with `{placeholder}` substitution and a `_one` plural variant, `formatParts` for rich messages, label-key maps for every persisted enum, locale-aware timestamp), `context.ts` (React context, `useT`).
+- `src/components/LanguageSelector.tsx`: always in the top bar, options written in their own language.
+- Persistence: a new `settings` storage target in Rust (`<data root>/settings.json`) mirrored in the TypeScript port and the in-memory test double; `src/services/settings.ts` loads and saves the preference only. Missing file means Japanese; unreadable or invalid means Japanese, a warning, and the file is left exactly as it was.
+- `App.tsx` reads the preference once at start-up, provides the context, mirrors the locale into `document.documentElement.lang`, and saves on change without touching any other state.
+
+Tests (24 new): locale set and default; parity of the key sets; no blank values; no duplicate key in either source file; identical placeholders in both languages; every key actually translated except a named list of shared technical terms; a plural variant present in both dictionaries; a label key for every persisted enum value; parameter substitution; the English singular variant; `formatParts` in both word orders; locale-aware timestamps. Settings: fresh install, round trip, five kinds of unusable content, an unreadable file, and proof that no other file is read or written.
+
+Checks at this checkpoint: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, **524 tests**), `npm run build` PASS, `cargo fmt --check` PASS, `cargo clippy --all-targets` PASS (0 warnings), `cargo test` PASS (68 passed, 2 ignored).
+
+Note: `npx prettier --write` was run once by mistake on `src/app/App.tsx` (this repository does not use Prettier); the file was restored from Git and the wiring re-applied, so its diff contains only the intended 48 added lines.
+
+## Wave 1.5 — persistence hardening (2026-09-20)
+
+Asked for by the Human after the Wave 1 checkpoint, before any UI migration. Three defects in the Wave 1 persistence path, all in `src/services/settings.ts` and the language wiring in `src/app/App.tsx`.
+
+1. **Schema version was accepted without being checked.** `parseSettings` read `locale` whatever `schemaVersion` said. It now requires exactly `1`; a missing version, a version of the wrong type, `0` and any later version all make the file invalid, which means Japanese, the existing warning, and the file left exactly as it was — loading still writes nothing, so a file belonging to a later version is not destroyed by this one.
+2. **A failed save was swallowed after the interface had already changed.** The switch is now backed by a `LocaleStore` that reports what is actually stored: the interface follows the choice immediately, and if the write fails it goes back to the stored language and shows `notice.settingsSaveFailed` in that language. A failure whose choice has already been superseded by a newer one does not pull the interface back (the newer choice owns it). The restart requirement is unaffected: what the interface shows after a switch settles is what the file holds.
+3. **Overlapping writes could land out of order.** Preference writes now go through one serial queue per storage backend, inside `saveLocale`, so every caller is covered. Rapid switching ends with the last chosen language both on screen and in the file.
+
+Tests (10 new, 534 total): four more unusable-file cases (missing, mistyped, `0` and future schema version) with the file byte-identical afterwards; `parseSettings` version rules; a successful save reporting the stored language; a failed write keeping the stored language, the `WRITE_FAILED` code, and every file in the folder unchanged; an older failed write not pulling the interface back over a newer choice; four rapid switches with descending write durations landing in the order they were chosen; the same for `saveLocale` called directly; and no file but `settings.json` written across a mixed success/failure burst.
+
+Mutation probes (each reverted immediately afterwards):
+
+| Mutation | Result |
+| --- | --- |
+| `saveLocale` writes without the queue | 2 failures — writes landed `ja, en, ja, en` for choices `en, ja, en, ja` |
+| the `schemaVersion === 1` guard removed | 5 failures — all four new file cases plus the `parseSettings` rules |
+| a failed save reports the requested locale instead of the stored one | 1 failure — rollback target `ja` instead of `en` |
+
+Checks at this checkpoint: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, **534 tests**), `npm run build` PASS. `src-tauri/` is byte-unchanged in this wave; the Rust checks were re-run anyway (see RUN_STATE).
+
+Hard boundary held: no Project, Review or GitObservation code touched; the only file written on a language switch is `settings.json` (asserted by test); no dependency added; no Wave 2 UI migration started.
+
+## Wave 2 — Phase 1 UI migration (2026-09-20)
+
+Two commits: the components first, then the text that is produced outside React.
+
+**Components** (`8bd82d4`). Every rendered surface reads its words from the dictionaries: app shell, queue, project and review forms, all five dialogs, the review detail pane, and the shared badge / banner / dialog components. The label maps left the domain (`REVIEW_STATE_LABELS`, `RESOURCE_STATE_LABELS`, `RESOURCE_STATE_HINTS`, `FRESHNESS_LABELS`, `GIT_STATUS_LABELS` are gone); `data-state`, the CSS class fragments and all 74 `data-testid` attributes keep the stored enum, so nothing that identifies an element moved. Sentences that were assembled in JSX became single parameterised messages, ten rich messages go through `formatParts`, two pluralisation hacks became `_one` variants, and timestamps are formatted through the translator.
+
+**Messages from the layers that have no context** (this checkpoint). `src/domain/message.ts` introduces `Message` — a typed key plus parameters, with optional nested messages — and `translate(t, message)` renders it. Converted: 12 validation rules, 7 project and 5 review field errors, 21 transition guards and action checks, 9 service failures, the three file-health problems, the event-append warning, and the two recovery notices. `FieldErrors`, `Result`'s default error, `QueueSource.problem`, `SaveOutcome.warning` and the dialog submit callbacks all carry `Message` now; `Field` and `FormError` are the only two places that turn one into words, so neither form needed a translation call. 51 new keys in both dictionaries.
+
+Deliberately left literal (L3-023): schema parse reasons, storage error codes and messages, the action type inside a guard message, event notes and file names — all shown as detail inside a localized sentence.
+
+Still English, by wave: the Freshness explanation sentences (`src/domain/freshness.ts`, Wave 3) and the review request template (`src/domain/prompt.ts`, Wave 4).
+
+Checks at this checkpoint: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, **534 tests**), `npm run build` PASS. `src-tauri/` unchanged in this wave. A grep of `src/app`, `src/components` and `src/features` for JSX text and the usual text attributes finds no English literal left; the static gate that enforces this is Wave 4.
+
+Test changes: assertions that printed a failed `Result` now stringify it (6 files), the queue fixture builds its problem as a message, the event-append warning is asserted by key, and the two recovery-notice assertions check the key and the quarantined file name parameter instead of an English sentence.
+
+## Wave 3 — Phase 2 UI migration (2026-09-20)
+
+The Git evidence card, the Git status labels and the Freshness badges moved with their file in Wave 2; what was left is the part the domain produces.
+
+- `deriveFreshness` returns its explanation as a `Message`. All thirteen sentences are named keys; the two that carry values (`reviewStale`, `headChanged`) pass both short HEADs as parameters, so the same two SHAs read correctly in either word order.
+- A Git error that came back with a reason keeps the reason exactly as Git reported it, inside a localized frame. A malformed observation no longer invents an English sentence: `asGitObservation` leaves `errorMessage` unset and the explanation is chosen from `errorCode`, which is the part that carries the meaning.
+- The queue badge and the detail pane render the explanation through `translate`.
+
+The freshness contract test now asserts the key and the parameters — the oracle table stays independent of the wording — and additionally renders the two difference sentences in both languages to show the same two SHAs land in each.
+
+Checks: `npx tsc --noEmit` PASS, `npx vitest run` PASS (18 files, 534 tests), `npm run build` PASS. `src-tauri/` unchanged.
+
+## Wave 4 — review request, the gate against new English, documentation (2026-09-20)
+
+- **Review request per language.** `buildReviewRequest(project, session, locale)` builds one set of facts and renders them in Japanese or English; the locale travels from the language selector through `ReviewHub.saveRequest` to the file. Both versions carry the same values in the same order — asserted by a test that compares the interpolated values and the line count of the two renderings — and the Japanese version replaces the mixed English/Japanese template that existed before. A saved request is never rewritten when the language changes (L3-006).
+- **Timestamps and accessibility** moved with their components in Wave 2: the locale-aware formatter is the only one left, and every `aria-label` in the app is a translation.
+- **Static gate** (`src/i18n/noHardCodedText.test.ts`, 12 cases): every `.tsx` under `src/app`, `src/components` and `src/features` is scanned for text written straight into JSX and for `placeholder` / `title` / `aria-label` / `label` / `hint` / `confirmLabel` / `reasonLabel` / `alt`. All eleven components pass with an allowlist of fourteen things that are not language (file names and fragments, `Ctrl`, `V`, punctuation and glyphs). The test also checks itself: three shapes it must catch, three it must not.
+- **Mutation probe**: replacing the banner body with the literal `Something went wrong` fails the gate at `src/components/Banner.tsx` (1 failed / 11 passed); reverted immediately, 12 pass again.
+- **Documentation**: README gains the bilingual interface in *What it does*, the no-translation-API boundary, `settings.json` under *Data location*, `i18n/` in the repository layout and a *Where words live* section stating the rule, the gates and what is deliberately not translated. `docs/data-contract-v1.md` gains `settings.json` in the layout and a section with its schema, its fail-safe behaviour, the neutrality rule and the serialized-write guarantee.
+
+Checks: `npx tsc --noEmit` PASS, `npx vitest run` PASS (19 files, **549 tests**), `npm run build` PASS. `src-tauri/` unchanged.
+
+## Wave 5 — isolated-desktop UI verification (2026-09-20)
+
+Release build from `6d849f6` (`npm run tauri build -- --no-bundle`, SHA-256 `8582934a6265b5290addf6b83f4ed4ab5bb18c26efd6cc8d47d5b1a3a2d2c1e6`). The app ran on a hidden isolated desktop (`CreateDesktopW` + `CreateProcessW` with `lpDesktop`) against a dedicated `DVCC_DATA_DIR` seeded from `fixtures/v1/valid`, driven over the WebView2 debugging protocol. Nothing appeared on the operator's desktop and nothing outside the temporary data folder was written. Available memory was 12.17 GiB when the build started, above the 12 GiB gate.
+
+**18 checks, 18 PASS**, in three runs of the same data folder:
+
+| Part | Checks | Result |
+|---|---|---|
+| First start (fresh preference) | `document.documentElement.lang` is `ja`; the top bar reads `＋ プロジェクト`; **no `settings.json` is written** by a fresh install; the selected review's badge reads `レビュー中` while `data-state` stays `REVIEWING` | PASS (5) |
+| Switch to English | the same review reads `Reviewing` with `data-state` still `REVIEWING`; the selected review is still `rv-20260102-beta01`; `settings.json` becomes `{"schemaVersion":1,"locale":"en"}`; **all 7 project and review files are byte-identical** (SHA-256 before and after the switch) | PASS (4) |
+| Restart and the request | after a restart the interface comes up in English (`lang=en`, `+ Project`); **Copy review prompt** writes `request-r1.md` beginning `# Independent Review Request — Project Beta / R1`; switching back to Japanese and copying again writes `# 独立レビュー依頼 — Project Beta / R1`; both carry the same PR fact (`#12`); `settings.json` becomes `ja`; a third start comes up Japanese with 2 reviews and 3 projects intact | PASS (9) |
+
+The clipboard was read before the two **Copy review prompt** clicks and put back afterwards (it is the only action that writes it). No `devvault-control-center` process was left behind, and none of the 55 `msedgewebview2` processes on the machine belonged to this run (checked by command line) — none were touched. The operator's own data folder `%APPDATA%\DevVault-Control` still shows its pre-run timestamp (17:06:50). The temporary data folder was removed afterwards.
+
+AC coverage from this run: L10N-01 (Japanese default), L10N-02 (switch), L10N-03 (immediate), L10N-04 (persisted across restart), L10N-10 (no state change on switch), L10N-11 (recorded values unchanged), L10N-13 (request in the language in use), L10N-16 (Phase 1 / Phase 2 still work).
+
+## Final convergence checks (frozen head `6d849f6`)
+
+| Check | Result |
+|---|---|
+| `npx tsc --noEmit` | PASS |
+| `npx vitest run` | PASS — 19 files, 549 tests |
+| `npm run build` | PASS |
+| `npm run tauri build -- --no-bundle` | PASS — no bundle directory |
+| `cargo fmt --check` | PASS |
+| `cargo clippy --all-targets` | PASS — 0 warnings |
+| `cargo test` | PASS — 68 passed, 2 ignored |
+| Isolated-desktop localization UI smoke | PASS — 18 / 18 |
+| Windows app launch smoke / persistence round trip (project instruction checks) | PASS — part of the UI smoke above (three launches, restart, restore) |
+
+GitHub Actions CI: none in this repository; no CI result is claimed.
+
+Diff versus `origin/main` (`318e273`): 59 files, +3 648 / −576; excluding run artifacts, 52 files, +2 940 / −576. No dependency added, no capability change, no `tauri.conf.json` change. `src-tauri/` changed only in Wave 1 (the `settings` storage target).
+
+## Focused Repair after the Final Independent FULL Review of PR #3 (2026-09-21)
+
+The review found two Required Fixes and two P3 items the Human authorized fixing with them. What
+the review reported stands as it was reported: **L10N-06 was FAIL** at `4a1345b`, because a Japanese
+interface still showed English sentences such as `projects must be an array`.
+
+### RF-L10N-01 — a preference file this version must not replace (P2-1)
+
+Loading already refused a `schemaVersion` that is not 1; saving did not, so the first language
+switch rewrote the file as version 1 and the fields belonging to the later version were gone.
+
+`LocaleStore` now takes the whole `LoadedSettings` (`adopt`), and a file with any problem — later
+version, broken, or unreadable — makes the preference **read-only for the run**: `save` returns
+`refusal: "blocked"` without reaching the backend, the interface goes back to the stored language,
+and `App` shows `notice.settingsNotWritable` (a warning, not an error: there is nothing to retry).
+Every write also carries a precondition on the exact bytes the store last saw, computed **inside**
+the write queue so a burst of choices cannot judge a later write against what an earlier one saw; a
+`CONFLICT` marks the file read-only for the rest of the run as well.
+
+Tests (13 new in `settings.test.ts`): a fresh install creates version 1; a valid version 1 file is
+replaced in both directions; six unusable files (`schemaVersion` 2, 99 with unknown fields, missing,
+wrong type, 0, and content that is not JSON) each refuse the save with the file **byte-identical**
+and **no `.bak` created**; repeated attempts stay refused; a file changed underneath is refused with
+`CONFLICT`; an unreadable file is never touched; project and review files are unchanged throughout.
+
+Mutation probe: removing the read-only guard fails 7 of those tests (reverted immediately).
+
+### RF-L10N-02 — the text the Human reads on a bad file (P2-2)
+
+All 38 schema parse reasons became named messages; so did the three file-health compositions
+(`backup: …`, `backup restore failed: …`, the missing-with-unreadable-backup and
+primary-and-backup sentences) and `session.json is missing`. `ParseResult.malformed.reason` and
+`FileHealth`'s two `reason` fields are `Message` now, and a rejected thread URL carries the
+validator's own message nested inside the schema one.
+
+Left literal, inside a localized sentence: field paths (`projects[0].displayName`), file names,
+error codes, and the messages the storage layer reports.
+
+Tests (`src/i18n/recoveryText.test.ts`, 8): the three sentences the review quoted, read in both
+languages; a field path kept as it is inside a Japanese sentence; the nested thread-URL reason; the
+missing-session and unreadable-backup health sentences; and a scan of `schema.ts` and
+`persistence.ts` for any string literal holding a sentence of its own.
+
+Mutation probe: putting `projects must be an array` back into `schema.ts` as a parameter fails the
+scan (reverted immediately).
+
+### RF-L10N-03 — which choice decides (P3-1)
+
+`superseded` compared language values, so asking for the same language again made an older, failed
+request look like the newest one and the interface was pulled back to `ja` while `en` was what got
+written. It is a monotonic request number now.
+
+The review's scenario is a test: three choices issued before the first write finishes (`en` failing
+slowly, then `ja`, then `en`), after which the failed result is `superseded`, the file holds `en`,
+the store reports `en` and the interface shows `en`. Six more sequences (including a failure
+followed by the same language again) assert screen == store == file.
+
+Mutation probe: restoring the value comparison fails exactly that scenario (reverted immediately).
+
+### RF-L10N-04 — the operator's clipboard (P3-2)
+
+`scripts/verify-localization-ui.ps1` no longer restores the clipboard unconditionally at the end of
+the run. It reads the Windows clipboard sequence number around each **Copy review prompt**: it takes
+the clipboard only when it holds text it can put back, puts it back immediately after that copy,
+and leaves it alone when the number moved in between. An image or a file list is never overwritten —
+the two request checks report INCONCLUSIVE instead. Cleanup stops only the process ids this run
+started, rather than every process with the same name.
+
+### Checks after the repair
+
+`npx tsc --noEmit` PASS, `npx vitest run` PASS (20 files, **577 tests**), `npm run build` PASS.
+`src-tauri/` is byte-unchanged, so the Rust suite was not re-run (§11).
+
+### Full verification at the repaired head (`03735f2`)
+
+Heavy verification waited for the memory gate: available memory was 10.5–11.8 GiB when the repair
+was finished, and no process belonging to the operator was stopped to make room. It recovered to
+16.5 GiB, and the run went ahead from there.
+
+Release build: `npm run tauri build -- --no-bundle` **PASS** (SHA-256
+`77c27265e252311c4899abfbf3c5eec502347af1a64e156402e2cc320fb47eaa`).
+
+Isolated-desktop localization UI smoke: **24 / 24 PASS, 0 inconclusive** — the eighteen checks from
+Wave 5 unchanged, plus six for the repair:
+
+| Check | Result |
+|---|---|
+| a preference file from a later version means Japanese | `lang=ja` |
+| and says so | a warning at start-up |
+| the interface stays with the language that is stored after a switch is attempted | `lang=ja` |
+| the refusal is visible to the Human | a warning toast |
+| the file from the later version is byte-identical | 86 bytes, `futureField` intact |
+| and no backup of it was made | `settings.json.bak` absent |
+
+The clipboard guard reported no INCONCLUSIVE: the clipboard held text the run could put back, and
+both **Copy review prompt** actions were restored immediately. Nothing was left behind — no
+`devvault-control-center` process, and no `msedgewebview2` process belonging to this run (checked by
+command line; the operator's own were never touched). `%APPDATA%\DevVault-Control` still shows its
+pre-run timestamp (17:06:50). The temporary data folder was removed afterwards.
+
+Targeted checks at `d436711`: `npx tsc --noEmit` PASS, `npx vitest run` PASS (20 files, 577 tests),
+`npm run build` PASS. `src-tauri/` byte-unchanged since `4a1345b`, so the Rust suite was not re-run.
+
+
+## Focused Independent Re-review closure (2026-09-21)
+
+A separate reviewer re-reviewed only RF-L10N-01..04 at exact head `b472bdc747ecfe0f6ff019d6965025c6c8e85dcb`, with the product frozen at `d436711b60591c8c2519b1b9ef4f43cd435259e6`. The reviewer made no repository or PR mutation.
+
+- **RF-L10N-01 / P2-1: CLOSED.** Future/invalid settings were independently exercised across nine patterns; unsafe files remained byte-identical, no backup was created, no backend write was attempted, and external changes were refused by the queued exact-byte precondition.
+- **RF-L10N-02 / P2-2: CLOSED.** The three previously observed English recovery strings rendered in Japanese, the English equivalents kept their original meaning, nested validation messages localized correctly, and L10N-06 was independently reclassified **PASS**. The original FAIL at `4a1345b` remains preserved above as historical evidence.
+- **RF-L10N-03 / P3-1: CLOSED.** Request-identity ordering was independently replayed, including the former failing same-value sequence; final UI locale, store state and settings file agreed in every exercised case.
+- **RF-L10N-04 / P3-2: CLOSED.** The clipboard harness now uses sequence-number guarding, skips non-text clipboard states as INCONCLUSIVE, restores immediately when safe, and cleans up only PIDs started by the run.
+- Translation parity was independently measured at **422 JA / 422 EN**, with no missing, extra, blank, duplicate or placeholder-mismatch entries.
+- Independent local replay: TypeScript PASS, Vitest **577 / 577**, Vite build PASS, Cargo test **68 passed / 2 ignored**. GitHub CI remains absent.
+- The reviewer did **not** re-run the release/UI smoke because available memory remained below the 12 GiB heavy-verification gate; that execution is explicitly **INCONCLUSIVE**, not PASS. It independently verified the added six smoke assertions from source and reproduced the repaired product contracts through scratch probes. The implementation-run repaired smoke remains **24 / 24 PASS, 0 inconclusive**.
+- Hard Checks: Security PASS, Privacy PASS, Permission PASS, Data integrity PASS, Irreversible-data safety PASS.
+- New BLOCKER / P1 / P2 / P3 findings: **none**. Required Fixes: **none**. Final assessment: **READY CANDIDATE**.
+
+Phase 3 remains blocked until PR #3 is merged.

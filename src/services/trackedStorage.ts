@@ -1,7 +1,9 @@
 import { StorageError, type StorageBackend, type StorageInfo, type StorageTarget, type WritePrecondition } from "./storage";
 
 function keyOf(target: StorageTarget): string {
-  return target.kind === "projects" ? "projects.json" : `reviews/${target.reviewId}/${target.file}`;
+  if (target.kind === "projects") return "projects.json";
+  if (target.kind === "settings") return "settings.json";
+  return `reviews/${target.reviewId}/${target.file}`;
 }
 
 /**

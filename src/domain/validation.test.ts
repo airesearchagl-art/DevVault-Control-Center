@@ -28,7 +28,7 @@ describe("parseAllowedHttpsUrl (URL parsing, not prefix matching)", () => {
     ["https://chatgpt.com:443/c/example-thread-alpha", "https://chatgpt.com/c/example-thread-alpha"],
   ])("accepts the https default port :443 as canonical (%s)", (input, canonical) => {
     const parsed = parseAllowedHttpsUrl(input, LAUNCHER_HOSTS);
-    if (!parsed.ok) throw new Error(parsed.error);
+    if (!parsed.ok) throw new Error(JSON.stringify(parsed.error));
     expect(parsed.value.port).toBe("");
     expect(parsed.value.href).toBe(canonical);
   });

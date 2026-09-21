@@ -1,9 +1,11 @@
 import { useState, type ChangeEvent, type FormEvent } from "react";
 import { Dialog, Field, FormError } from "../../components/Dialog";
 import type { Project } from "../../domain/project";
-import { REVIEW_TYPE_SUGGESTIONS, type ReviewFormInput, type ReviewMetadataInput } from "../../domain/review";
+import type { ReviewFormInput, ReviewMetadataInput } from "../../domain/review";
 import type { FieldErrors } from "../../domain/result";
-import { RESOURCE_STATE_HINTS, RESOURCE_STATES } from "../../domain/states";
+import { RESOURCE_STATES } from "../../domain/states";
+import { RESOURCE_HINT_KEYS, RESOURCE_STATE_KEYS, REVIEW_TYPE_SUGGESTION_KEYS } from "../../i18n";
+import { useT } from "../../i18n/context";
 
 function MetadataFields<T extends ReviewMetadataInput>({
   form,
@@ -16,37 +18,38 @@ function MetadataFields<T extends ReviewMetadataInput>({
   update: (key: keyof ReviewMetadataInput) => (event: ChangeEvent<HTMLInputElement>) => void;
   roundLabel: string;
 }) {
+  const t = useT();
   return (
     <>
       <div className="field-row">
-        <Field label="Review type" htmlFor="review-reviewType" error={errors.reviewType}>
+        <Field label={t("review.form.reviewType")} htmlFor="review-reviewType" error={errors.reviewType}>
           <input id="review-reviewType" list="review-type-suggestions" value={form.reviewType} onChange={update("reviewType")} data-testid="review-reviewType" />
           <datalist id="review-type-suggestions">
-            {REVIEW_TYPE_SUGGESTIONS.map((type) => (
-              <option key={type} value={type} />
+            {REVIEW_TYPE_SUGGESTION_KEYS.map((key) => (
+              <option key={key} value={t(key)} />
             ))}
           </datalist>
         </Field>
-        <Field label="PR number" htmlFor="review-prNumber" error={errors.prNumber} hint="Optional">
+        <Field label={t("review.form.prNumber")} htmlFor="review-prNumber" error={errors.prNumber} hint={t("review.form.optional")}>
           <input id="review-prNumber" inputMode="numeric" value={form.prNumber} onChange={update("prNumber")} data-testid="review-prNumber" />
         </Field>
       </div>
       <Field
-        label={`Expected HEAD (${roundLabel})`}
+        label={t("review.form.expectedHead", { round: roundLabel })}
         htmlFor="review-expectedHead"
         error={errors.expectedHead}
-        hint="Commit SHA you expect the reviewer to review (optional, recorded by you — not fetched from Git)."
+        hint={t("review.form.expectedHeadHint")}
       >
         <input id="review-expectedHead" value={form.expectedHead} onChange={update("expectedHead")} className="mono" data-testid="review-expectedHead" />
       </Field>
-      <Field label="ChatGPT thread title" htmlFor="review-chatgptThreadTitle" error={errors.chatgptThreadTitle} hint="Optional">
+      <Field label={t("review.form.threadTitle")} htmlFor="review-chatgptThreadTitle" error={errors.chatgptThreadTitle} hint={t("review.form.optional")}>
         <input id="review-chatgptThreadTitle" value={form.chatgptThreadTitle} onChange={update("chatgptThreadTitle")} data-testid="review-chatgptThreadTitle" />
       </Field>
       <Field
-        label="ChatGPT thread URL"
+        label={t("review.form.threadUrl")}
         htmlFor="review-chatgptThreadUrl"
         error={errors.chatgptThreadUrl}
-        hint="https://chatgpt.com/... or https://chat.openai.com/... (optional)"
+        hint={t("review.form.threadUrlHint")}
       >
         <input id="review-chatgptThreadUrl" value={form.chatgptThreadUrl} onChange={update("chatgptThreadUrl")} className="mono" data-testid="review-chatgptThreadUrl" />
       </Field>
@@ -65,6 +68,7 @@ export function CreateReviewDialog({ projects, initial, onSubmit, onCancel }: Cr
   const [form, setForm] = useState<ReviewFormInput>(initial);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
+  const t = useT();
 
   const update = (key: keyof ReviewFormInput) => (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const value = event.target.value;
@@ -80,11 +84,11 @@ export function CreateReviewDialog({ projects, initial, onSubmit, onCancel }: Cr
   };
 
   return (
-    <Dialog title="Create review" onClose={onCancel} testId="review-form">
+    <Dialog title={t("review.form.createTitle")} onClose={onCancel} testId="review-form">
       <form onSubmit={submit} noValidate>
-        <Field label="Project" htmlFor="review-projectId" error={errors.projectId}>
+        <Field label={t("review.form.project")} htmlFor="review-projectId" error={errors.projectId}>
           <select id="review-projectId" value={form.projectId} onChange={update("projectId")} data-testid="review-projectId">
-            <option value="">Select a project…</option>
+            <option value="">{t("review.form.projectPlaceholder")}</option>
             {projects.map((project) => (
               <option key={project.projectId} value={project.projectId}>
                 {project.displayName} ({project.projectId})
@@ -93,14 +97,14 @@ export function CreateReviewDialog({ projects, initial, onSubmit, onCancel }: Cr
           </select>
         </Field>
         <MetadataFields form={form} errors={errors} update={update} roundLabel="R1" />
-        <Field label="Next action" htmlFor="review-nextAction" error={errors.nextAction}>
+        <Field label={t("review.form.nextAction")} htmlFor="review-nextAction" error={errors.nextAction}>
           <textarea id="review-nextAction" rows={2} value={form.nextAction} onChange={update("nextAction")} data-testid="review-nextAction" />
         </Field>
         <fieldset className="field">
-          <legend>Resource state</legend>
+          <legend>{t("review.form.resourceState")}</legend>
           <div className="segmented">
             {RESOURCE_STATES.map((resource) => (
-              <label key={resource} className={form.resourceState === resource ? "selected" : ""} title={RESOURCE_STATE_HINTS[resource]}>
+              <label key={resource} className={form.resourceState === resource ? "selected" : ""} title={t(RESOURCE_HINT_KEYS[resource])}>
                 <input
                   type="radio"
                   name="review-resourceState"
@@ -109,7 +113,7 @@ export function CreateReviewDialog({ projects, initial, onSubmit, onCancel }: Cr
                   onChange={() => setForm((current) => ({ ...current, resourceState: resource }))}
                   data-testid={`review-resource-${resource}`}
                 />
-                {resource}
+                {t(RESOURCE_STATE_KEYS[resource])}
               </label>
             ))}
           </div>
@@ -117,10 +121,10 @@ export function CreateReviewDialog({ projects, initial, onSubmit, onCancel }: Cr
         <FormError message={errors._form} />
         <div className="dialog-actions">
           <button type="button" onClick={onCancel}>
-            Cancel
+            {t("dialog.cancel")}
           </button>
           <button type="submit" className="primary" disabled={saving} data-testid="review-submit">
-            Create review
+            {t("review.form.submitCreate")}
           </button>
         </div>
       </form>
@@ -140,6 +144,7 @@ export function EditReviewDialog({ title, roundLabel, initial, onSubmit, onCance
   const [form, setForm] = useState<ReviewMetadataInput>(initial);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
+  const t = useT();
 
   const update = (key: keyof ReviewMetadataInput) => (event: ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value;
@@ -161,10 +166,10 @@ export function EditReviewDialog({ title, roundLabel, initial, onSubmit, onCance
         <FormError message={errors._form} />
         <div className="dialog-actions">
           <button type="button" onClick={onCancel}>
-            Cancel
+            {t("dialog.cancel")}
           </button>
           <button type="submit" className="primary" disabled={saving} data-testid="review-edit-submit">
-            Save review
+            {t("review.form.submitSave")}
           </button>
         </div>
       </form>

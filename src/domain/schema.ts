@@ -1,4 +1,6 @@
 import { isReviewEventType, type ReviewEvent, type StateChange } from "./events";
+import { message, type Message } from "./message";
+import type { TranslationKey, TranslationParams } from "../i18n/types";
 import type { Project } from "./project";
 import { SCHEMA_VERSION, isArchivedResultFileName, type ReviewSession, type RoundRecord } from "./review";
 import { MAX_REVIEW_ROUNDS } from "./limits";
@@ -27,15 +29,23 @@ import {
  */
 export type ParseResult<T> =
   | { status: "ok"; value: T }
-  | { status: "malformed"; reason: string }
+  | { status: "malformed"; reason: Message }
   | { status: "unsupported_version"; version: number };
 
 type Obj = Record<string, unknown>;
 
-class SchemaError extends Error {}
+/**
+ * A parse failure names the message and the field it is about; the field path itself is an
+ * identifier, so it travels as a parameter and is shown as it is in either language.
+ */
+class SchemaError extends Error {
+  constructor(readonly reason: Message) {
+    super(reason.key);
+  }
+}
 
-function fail(reason: string): never {
-  throw new SchemaError(reason);
+function fail(key: TranslationKey, params?: TranslationParams): never {
+  throw new SchemaError(message(key, params));
 }
 
 function isObject(value: unknown): value is Obj {
@@ -44,34 +54,34 @@ function isObject(value: unknown): value is Obj {
 
 function str(obj: Obj, key: string, where: string): string {
   const value = obj[key];
-  if (typeof value !== "string") fail(`${where}.${key} must be a string`);
+  if (typeof value !== "string") fail("schema.field.mustBeString", { field: `${where}.${key}` });
   return value;
 }
 
 function nullableStr(obj: Obj, key: string, where: string): string | null {
   const value = obj[key];
   if (value === null) return null;
-  if (typeof value !== "string") fail(`${where}.${key} must be a string or null`);
+  if (typeof value !== "string") fail("schema.field.mustBeStringOrNull", { field: `${where}.${key}` });
   return value;
 }
 
 function timestamp(obj: Obj, key: string, where: string): string {
   const value = obj[key];
-  if (!isIsoTimestamp(value)) fail(`${where}.${key} must be an ISO-8601 UTC timestamp`);
+  if (!isIsoTimestamp(value)) fail("schema.field.mustBeTimestamp", { field: `${where}.${key}` });
   return value;
 }
 
 function nullableTimestamp(obj: Obj, key: string, where: string): string | null {
   const value = obj[key];
   if (value === null) return null;
-  if (!isIsoTimestamp(value)) fail(`${where}.${key} must be an ISO-8601 UTC timestamp or null`);
+  if (!isIsoTimestamp(value)) fail("schema.field.mustBeTimestampOrNull", { field: `${where}.${key}` });
   return value;
 }
 
 function nullableHead(obj: Obj, key: string, where: string): string | null {
   const value = obj[key];
   if (value === null) return null;
-  if (!isValidHead(value)) fail(`${where}.${key} must be a lowercase 7–40 hex SHA or null`);
+  if (!isValidHead(value)) fail("schema.field.mustBeHeadOrNull", { field: `${where}.${key}` });
   return value;
 }
 
@@ -84,9 +94,9 @@ function parseJson(text: string): Obj {
   try {
     data = JSON.parse(text);
   } catch (error) {
-    fail(`invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+    fail("schema.invalidJson", { reason: error instanceof Error ? error.message : String(error) });
   }
-  if (!isObject(data)) fail("top-level value must be an object");
+  if (!isObject(data)) fail("schema.topLevelMustBeObject");
   return data;
 }
 
@@ -96,7 +106,7 @@ function checkVersion(data: Obj): { status: "unsupported_version"; version: numb
   if (typeof version === "number" && Number.isInteger(version) && version > SCHEMA_VERSION) {
     return { status: "unsupported_version", version };
   }
-  if (version !== SCHEMA_VERSION) fail(`schemaVersion must be ${SCHEMA_VERSION}`);
+  if (version !== SCHEMA_VERSION) fail("schema.versionMustBe", { version: SCHEMA_VERSION });
   return null;
 }
 
@@ -104,25 +114,25 @@ function guarded<T>(parse: () => ParseResult<T>): ParseResult<T> {
   try {
     return parse();
   } catch (error) {
-    if (error instanceof SchemaError) return { status: "malformed", reason: error.message };
+    if (error instanceof SchemaError) return { status: "malformed", reason: error.reason };
     throw error;
   }
 }
 
 function parseProject(value: unknown, index: number): Project {
   const where = `projects[${index}]`;
-  if (!isObject(value)) fail(`${where} must be an object`);
+  if (!isObject(value)) fail("schema.field.mustBeObject", { field: where });
   const projectId = str(value, "projectId", where);
-  if (!isValidProjectId(projectId)) fail(`${where}.projectId is not a valid project id`);
+  if (!isValidProjectId(projectId)) fail("schema.project.invalidId", { field: `${where}.projectId` });
   const displayName = str(value, "displayName", where);
-  if (displayName.trim() === "") fail(`${where}.displayName must not be empty`);
+  if (displayName.trim() === "") fail("schema.project.displayNameEmpty", { field: `${where}.displayName` });
   const repositoryUrl = nullableStr(value, "repositoryUrl", where);
   if (repositoryUrl !== null) {
     const normalized = normalizeRepositoryUrl(repositoryUrl);
-    if (!normalized.ok || normalized.value !== repositoryUrl) fail(`${where}.repositoryUrl is not a normalized GitHub repository URL`);
+    if (!normalized.ok || normalized.value !== repositoryUrl) fail("schema.project.repositoryUrlNotNormalized", { field: `${where}.repositoryUrl` });
   }
   const localRoot = nullableStr(value, "localRoot", where);
-  if (localRoot !== null && !normalizeLocalRoot(localRoot).ok) fail(`${where}.localRoot is not an absolute drive path`);
+  if (localRoot !== null && !normalizeLocalRoot(localRoot).ok) fail("schema.project.localRootNotAbsolute", { field: `${where}.localRoot` });
   return {
     projectId,
     displayName,
@@ -141,11 +151,11 @@ export function parseProjectsFile(text: string): ParseResult<Project[]> {
     const data = parseJson(text);
     const unsupported = checkVersion(data);
     if (unsupported) return unsupported;
-    if (!Array.isArray(data.projects)) fail("projects must be an array");
+    if (!Array.isArray(data.projects)) fail("schema.projects.mustBeArray");
     const projects = data.projects.map(parseProject);
     const seen = new Set<string>();
     for (const project of projects) {
-      if (seen.has(project.projectId)) fail(`duplicate projectId: ${project.projectId}`);
+      if (seen.has(project.projectId)) fail("schema.projects.duplicateId", { id: project.projectId });
       seen.add(project.projectId);
     }
     return { status: "ok", value: projects };
@@ -154,14 +164,14 @@ export function parseProjectsFile(text: string): ParseResult<Project[]> {
 
 function parseRound(value: unknown, index: number): RoundRecord {
   const where = `rounds[${index}]`;
-  if (!isObject(value)) fail(`${where} must be an object`);
-  if (value.round !== index + 1) fail(`${where}.round must be ${index + 1}`);
+  if (!isObject(value)) fail("schema.field.mustBeObject", { field: where });
+  if (value.round !== index + 1) fail("schema.round.numberMustBe", { field: `${where}.round`, expected: index + 1 });
   const verdict = value.verdict;
-  if (verdict !== null && !isVerdict(verdict)) fail(`${where}.verdict is not a known verdict`);
+  if (verdict !== null && !isVerdict(verdict)) fail("schema.round.unknownVerdict", { field: `${where}.verdict` });
   // `archivedResults` was added in the repair (F-6); files written before it omit the key.
   const archived = value.archivedResults === undefined ? [] : value.archivedResults;
   if (!Array.isArray(archived) || !archived.every((name) => isArchivedResultFileName(name, index + 1))) {
-    fail(`${where}.archivedResults must list result-r${index + 1}-previous-<ms>.md file names`);
+    fail("schema.round.archivedResults", { field: `${where}.archivedResults`, round: index + 1 });
   }
   return {
     round: index + 1,
@@ -183,37 +193,44 @@ export function parseSessionFile(text: string, expectedReviewId?: string): Parse
     if (unsupported) return unsupported;
     const where = "session";
     const reviewSessionId = str(data, "reviewSessionId", where);
-    if (!isValidReviewId(reviewSessionId)) fail("session.reviewSessionId is not a valid review id");
+    if (!isValidReviewId(reviewSessionId)) fail("schema.session.invalidReviewId");
     if (expectedReviewId !== undefined && reviewSessionId !== expectedReviewId) {
-      fail(`session.reviewSessionId (${reviewSessionId}) does not match its folder (${expectedReviewId})`);
+      fail("schema.session.idFolderMismatch", { id: reviewSessionId, folder: expectedReviewId });
     }
     const projectId = str(data, "projectId", where);
-    if (!isValidProjectId(projectId)) fail("session.projectId is not a valid project id");
+    if (!isValidProjectId(projectId)) fail("schema.session.invalidProjectId");
 
     const prNumber = data.prNumber;
-    if (prNumber !== null && !positiveInt(prNumber)) fail("session.prNumber must be a positive integer or null");
+    if (prNumber !== null && !positiveInt(prNumber)) fail("schema.session.prNumber");
     const reviewType = str(data, "reviewType", where);
-    if (reviewType.trim() === "") fail("session.reviewType must not be empty");
+    if (reviewType.trim() === "") fail("schema.session.reviewTypeEmpty");
 
-    if (!isResourceState(data.resourceState)) fail("session.resourceState is not a known resource state");
-    if (!isReviewState(data.reviewState)) fail("session.reviewState is not a known review state");
+    if (!isResourceState(data.resourceState)) fail("schema.session.unknownResourceState");
+    if (!isReviewState(data.reviewState)) fail("schema.session.unknownReviewState");
     const reviewState = data.reviewState;
     const suspendedFrom = data.suspendedFrom;
     if (reviewState === "SUSPENDED") {
-      if (!isResumableState(suspendedFrom)) fail("session.suspendedFrom must be a resumable state while SUSPENDED");
+      if (!isResumableState(suspendedFrom)) fail("schema.session.suspendedFromNotResumable");
     } else if (suspendedFrom !== null) {
-      fail("session.suspendedFrom must be null unless SUSPENDED");
+      fail("schema.session.suspendedFromMustBeNull");
     }
 
-    if (!Array.isArray(data.rounds) || data.rounds.length === 0) fail("session.rounds must be a non-empty array");
-    if (data.rounds.length > MAX_REVIEW_ROUNDS) fail(`session.rounds exceeds the round limit (${MAX_REVIEW_ROUNDS})`);
+    if (!Array.isArray(data.rounds) || data.rounds.length === 0) fail("schema.session.roundsEmpty");
+    if (data.rounds.length > MAX_REVIEW_ROUNDS) fail("schema.session.roundsExceedLimit", { max: MAX_REVIEW_ROUNDS });
     const rounds = data.rounds.map(parseRound);
-    if (data.reviewRound !== rounds.length) fail("session.reviewRound must equal the number of rounds");
+    if (data.reviewRound !== rounds.length) fail("schema.session.reviewRoundMismatch");
 
     const chatgptThreadUrl = nullableStr(data, "chatgptThreadUrl", where);
     if (chatgptThreadUrl !== null) {
       const normalized = normalizeChatgptThreadUrl(chatgptThreadUrl);
-      if (!normalized.ok) fail(`session.chatgptThreadUrl: ${normalized.error}`);
+      // The reason comes from the validator and is a message of its own.
+      if (!normalized.ok) {
+        throw new SchemaError({
+          key: "schema.session.threadUrl",
+          params: { field: "session.chatgptThreadUrl" },
+          messageParams: { reason: normalized.error },
+        });
+      }
     }
 
     return {
@@ -241,20 +258,20 @@ export function parseSessionFile(text: string, expectedReviewId?: string): Parse
 
 function parseChange<T>(value: unknown, isState: (v: unknown) => v is T): StateChange<T> | null {
   if (value === null) return null;
-  if (!isObject(value)) fail("state change must be an object or null");
-  if (value.from !== null && !isState(value.from)) fail("state change.from is not a known state");
-  if (!isState(value.to)) fail("state change.to is not a known state");
+  if (!isObject(value)) fail("schema.event.stateChangeMustBeObject");
+  if (value.from !== null && !isState(value.from)) fail("schema.event.stateChangeFromUnknown");
+  if (!isState(value.to)) fail("schema.event.stateChangeToUnknown");
   return { from: value.from as T | null, to: value.to };
 }
 
 export function parseEventLine(line: string): ReviewEvent | null {
   const result = guarded<ReviewEvent>(() => {
     const data = parseJson(line);
-    if (data.v !== 1) fail("unsupported event version");
-    if (!isReviewEventType(data.type)) fail("unknown event type");
+    if (data.v !== 1) fail("schema.event.unsupportedVersion");
+    if (!isReviewEventType(data.type)) fail("schema.event.unknownType");
     const reviewSessionId = str(data, "reviewSessionId", "event");
-    if (!isValidReviewId(reviewSessionId)) fail("invalid reviewSessionId");
-    if (!positiveInt(data.round)) fail("invalid round");
+    if (!isValidReviewId(reviewSessionId)) fail("schema.event.invalidReviewId");
+    if (!positiveInt(data.round)) fail("schema.event.invalidRound");
     return {
       status: "ok",
       value: {

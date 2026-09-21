@@ -1,3 +1,4 @@
+import type { Message } from "./message";
 import type { Project } from "./project";
 import type { ReviewSession } from "./review";
 import type { ResourceState, ReviewState } from "./states";
@@ -6,7 +7,7 @@ export interface QueueSource {
   reviewId: string;
   session: ReviewSession | null;
   /** Set when the session could not be loaded. */
-  problem: string | null;
+  problem: Message | null;
 }
 
 export interface QueueItem extends QueueSource {

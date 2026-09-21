@@ -37,6 +37,7 @@ export class MemoryStorage implements StorageBackend {
 
   static pathOf(target: StorageTarget): string {
     if (target.kind === "projects") return "projects.json";
+    if (target.kind === "settings") return "settings.json";
     if (!REVIEW_ID.test(target.reviewId) || !isAllowedReviewFile(target.file)) {
       throw new StorageError("INVALID_TARGET", `invalid target ${target.reviewId}/${target.file}`);
     }

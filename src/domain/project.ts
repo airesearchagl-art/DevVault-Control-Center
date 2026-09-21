@@ -1,3 +1,4 @@
+import { message } from "./message";
 import { err, ok, type FieldErrors, type Result } from "./result";
 import { isValidProjectId, normalizeLocalRoot, normalizeRepositoryUrl } from "./validation";
 
@@ -50,8 +51,8 @@ type ProjectFields = Omit<Project, "projectId" | "createdAt" | "updatedAt">;
 function validateFields(input: ProjectFormInput): Result<ProjectFields, FieldErrors> {
   const errors: FieldErrors = {};
   const displayName = input.displayName.trim();
-  if (displayName === "") errors.displayName = "Display name is required";
-  else if (displayName.length > DISPLAY_NAME_MAX) errors.displayName = `Display name must be at most ${DISPLAY_NAME_MAX} characters`;
+  if (displayName === "") errors.displayName = message("validation.displayName.required");
+  else if (displayName.length > DISPLAY_NAME_MAX) errors.displayName = message("validation.displayName.tooLong", { max: DISPLAY_NAME_MAX });
 
   let repositoryUrl: string | null = null;
   if (input.repositoryUrl.trim() !== "") {
@@ -68,9 +69,9 @@ function validateFields(input: ProjectFormInput): Result<ProjectFields, FieldErr
   }
 
   const developmentIde = input.developmentIde.trim();
-  if (developmentIde.length > LABEL_MAX) errors.developmentIde = `IDE label must be at most ${LABEL_MAX} characters`;
-  if (input.nextAction.length > TEXT_MAX) errors.nextAction = "Next action is too long";
-  if (input.notes.length > TEXT_MAX) errors.notes = "Notes are too long";
+  if (developmentIde.length > LABEL_MAX) errors.developmentIde = message("validation.ide.tooLong", { max: LABEL_MAX });
+  if (input.nextAction.length > TEXT_MAX) errors.nextAction = message("validation.nextAction.tooLong");
+  if (input.notes.length > TEXT_MAX) errors.notes = message("validation.notes.tooLong");
 
   if (Object.keys(errors).length > 0) return err(errors);
   return ok({
@@ -90,9 +91,9 @@ export function createProject(
 ): Result<Project, FieldErrors> {
   const projectId = input.projectId.trim();
   const idError = !isValidProjectId(projectId)
-    ? "Project ID must be 2–64 characters: lowercase letters, digits and hyphens, starting with a letter or digit"
+    ? message("validation.projectId.format")
     : existingIds.has(projectId)
-      ? "Project ID is already used"
+      ? message("validation.projectId.duplicate")
       : null;
   const fields = validateFields(input);
   if (idError !== null || !fields.ok) {

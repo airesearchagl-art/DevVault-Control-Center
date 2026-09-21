@@ -1,8 +1,12 @@
 import type { ReviewEvent } from "./events";
+import { message } from "./message";
 import { err, ok, type FieldErrors, type Result } from "./result";
 import { isResourceState, type ResourceState, type ResumableState, type ReviewState, type Verdict } from "./states";
 import { normalizeChatgptThreadUrl, normalizeHead, parsePrNumber } from "./validation";
 import { LABEL_MAX, TEXT_MAX } from "./project";
+
+/** The ChatGPT thread title is a label the Human types; longer than this is a mistake. */
+export const THREAD_TITLE_MAX = 200;
 
 export const SCHEMA_VERSION = 1;
 
@@ -71,7 +75,12 @@ export interface ReviewSession {
   updatedAt: string;
 }
 
-export const REVIEW_TYPE_SUGGESTIONS = ["PR review", "Re-review", "Design review", "Plan review"];
+/**
+ * The neutral fallback for the review type of a brand-new form. The list the Human actually sees is
+ * localized chrome (`REVIEW_TYPE_SUGGESTION_KEYS` in `src/i18n`); whatever is chosen or typed is
+ * Human content from that moment on and is stored verbatim, never translated again.
+ */
+export const DEFAULT_REVIEW_TYPE = "PR review";
 
 export interface ReviewMetadataInput {
   reviewType: string;
@@ -96,10 +105,10 @@ export interface ReviewMetadata {
   chatgptThreadUrl: string | null;
 }
 
-export function emptyReviewForm(projectId = ""): ReviewFormInput {
+export function emptyReviewForm(projectId = "", reviewType: string = DEFAULT_REVIEW_TYPE): ReviewFormInput {
   return {
     projectId,
-    reviewType: REVIEW_TYPE_SUGGESTIONS[0],
+    reviewType,
     prNumber: "",
     expectedHead: "",
     chatgptThreadTitle: "",
@@ -134,8 +143,8 @@ export function reviewToMetadataForm(session: ReviewSession): ReviewMetadataInpu
 export function validateReviewMetadata(input: ReviewMetadataInput): Result<ReviewMetadata, FieldErrors> {
   const errors: FieldErrors = {};
   const reviewType = input.reviewType.trim();
-  if (reviewType === "") errors.reviewType = "Review type is required";
-  else if (reviewType.length > LABEL_MAX) errors.reviewType = `Review type must be at most ${LABEL_MAX} characters`;
+  if (reviewType === "") errors.reviewType = message("validation.reviewType.required");
+  else if (reviewType.length > LABEL_MAX) errors.reviewType = message("validation.reviewType.tooLong", { max: LABEL_MAX });
 
   let prNumber: number | null = null;
   if (input.prNumber.trim() !== "") {
@@ -152,7 +161,7 @@ export function validateReviewMetadata(input: ReviewMetadataInput): Result<Revie
   }
 
   const title = input.chatgptThreadTitle.trim();
-  if (title.length > 200) errors.chatgptThreadTitle = "Thread title must be at most 200 characters";
+  if (title.length > THREAD_TITLE_MAX) errors.chatgptThreadTitle = message("validation.threadTitle.tooLong", { max: THREAD_TITLE_MAX });
 
   let chatgptThreadUrl: string | null = null;
   if (input.chatgptThreadUrl.trim() !== "") {
@@ -173,9 +182,9 @@ export function createReviewSession(
 ): Result<{ session: ReviewSession; event: ReviewEvent }, FieldErrors> {
   const metadata = validateReviewMetadata(input);
   const errors: FieldErrors = metadata.ok ? {} : { ...metadata.error };
-  if (!projectIds.has(input.projectId)) errors.projectId = "Select a registered project";
-  if (!isResourceState(input.resourceState)) errors.resourceState = "Select a resource state";
-  if (input.nextAction.length > TEXT_MAX) errors.nextAction = "Next action is too long";
+  if (!projectIds.has(input.projectId)) errors.projectId = message("validation.project.required");
+  if (!isResourceState(input.resourceState)) errors.resourceState = message("validation.resourceState.required");
+  if (input.nextAction.length > TEXT_MAX) errors.nextAction = message("validation.nextAction.tooLong");
   if (!metadata.ok || Object.keys(errors).length > 0) return err(errors);
 
   const { expectedHead, ...rest } = metadata.value;

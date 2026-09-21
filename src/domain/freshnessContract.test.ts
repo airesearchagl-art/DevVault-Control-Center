@@ -1,3 +1,4 @@
+import { createTranslator, translate } from "../i18n";
 import { describe, expect, it } from "vitest";
 import {
   FRESHNESS_CONTRACT,
@@ -46,7 +47,7 @@ describe("deriveFreshness follows the contract table", () => {
       reviewedHead: row.reviewedHead,
     });
     expect(result.status).toBe(row.expected as Freshness);
-    expect(result.explanation.trim().length).toBeGreaterThan(0);
+    expect(result.explanation.key.startsWith("freshness.explanation.")).toBe(true);
     // The derivation reports the Human-recorded values back unchanged (AC2-07).
     expect(result.expectedHead).toBe(row.expectedHead);
     expect(result.reviewedHead).toBe(row.reviewedHead);
@@ -67,7 +68,9 @@ describe("deriveFreshness follows the contract table", () => {
         reviewedHead: row.reviewedHead,
       });
       expect(result.status).toBe("UNKNOWN");
-      expect(result.explanation).not.toMatch(/differs/);
+      // A difference has its own two explanations; an undecidable comparison must reach neither.
+      expect(result.explanation.key).not.toBe("freshness.explanation.reviewStale");
+      expect(result.explanation.key).not.toBe("freshness.explanation.headChanged");
     }
   });
 
@@ -78,7 +81,11 @@ describe("deriveFreshness follows the contract table", () => {
       reviewedHead: "2".repeat(40),
     });
     expect(stale.status).toBe("REVIEW_STALE");
-    expect(stale.explanation).toBe("Reviewed HEAD 2222222 differs from current HEAD 1111111.");
+    expect(stale.explanation.key).toBe("freshness.explanation.reviewStale");
+    expect(stale.explanation.params).toEqual({ reviewed: "2222222", current: "1111111" });
+    // The sentence the Human reads, in both languages, from the same two short HEADs.
+    expect(translate(createTranslator("en"), stale.explanation)).toBe("Reviewed HEAD 2222222 differs from current HEAD 1111111.");
+    expect(translate(createTranslator("ja"), stale.explanation)).toContain("2222222");
 
     const changed = deriveFreshness({
       observation: observationFrom({ status: "OK", head: "1".repeat(40), dirty: false }),
@@ -86,7 +93,9 @@ describe("deriveFreshness follows the contract table", () => {
       reviewedHead: null,
     });
     expect(changed.status).toBe("HEAD_CHANGED");
-    expect(changed.explanation).toBe("Expected HEAD 3333333 differs from current HEAD 1111111.");
+    expect(changed.explanation.key).toBe("freshness.explanation.headChanged");
+    expect(changed.explanation.params).toEqual({ expected: "3333333", current: "1111111" });
+    expect(translate(createTranslator("en"), changed.explanation)).toBe("Expected HEAD 3333333 differs from current HEAD 1111111.");
   });
 
   it("names the reason a failed observation is unknown", () => {
@@ -101,10 +110,14 @@ describe("deriveFreshness follows the contract table", () => {
       reviewedHead: null,
     });
     expect(rejected.status).toBe("UNKNOWN");
-    expect(rejected.explanation).toContain("UNC / network paths are not supported");
+    expect(rejected.explanation.key).toBe("freshness.explanation.errorWithReason");
+    // The reason comes from Git and is kept exactly as it was reported.
+    expect(rejected.explanation.params?.reason).toBe("UNC / network paths are not supported");
+    expect(translate(createTranslator("en"), rejected.explanation)).toContain("UNC / network paths are not supported");
+    expect(translate(createTranslator("ja"), rejected.explanation)).toContain("UNC / network paths are not supported");
 
     const unobserved = deriveFreshness({ observation: undefined, expectedHead: null, reviewedHead: null });
-    expect(unobserved.explanation).toBe("Git state has not been observed.");
+    expect(unobserved.explanation.key).toBe("freshness.explanation.notObserved");
   });
 });
 

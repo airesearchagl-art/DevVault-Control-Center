@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 /** Mirrors `StorageTarget` in `src-tauri/src/storage.rs`. */
-export type StorageTarget = { kind: "projects" } | { kind: "review"; reviewId: string; file: string };
+export type StorageTarget = { kind: "projects" } | { kind: "settings" } | { kind: "review"; reviewId: string; file: string };
 
 /**
  * Optimistic-concurrency precondition for a write (mirrors `WritePrecondition` in Rust): the
@@ -50,6 +50,9 @@ export interface StorageBackend {
 }
 
 export const PROJECTS_TARGET: StorageTarget = { kind: "projects" };
+
+/** Interface preferences only (language); never project or review data. */
+export const SETTINGS_TARGET: StorageTarget = { kind: "settings" };
 
 export function reviewTarget(reviewId: string, file: string): StorageTarget {
   return { kind: "review", reviewId, file };

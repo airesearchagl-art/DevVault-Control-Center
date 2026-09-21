@@ -22,6 +22,8 @@ pub const DATA_DIR_ENV: &str = "DVCC_DATA_DIR";
 const RELEASE_DIR_NAME: &str = "DevVault-Control";
 const DEBUG_DIR_NAME: &str = "DevVault-Control-dev";
 const PROJECTS_FILE: &str = "projects.json";
+/// Interface preferences (Localization Foundation): language only, never project or review data.
+const SETTINGS_FILE: &str = "settings.json";
 const REVIEWS_DIR: &str = "reviews";
 const SESSION_FILE: &str = "session.json";
 const CHECKPOINT_FILE: &str = "checkpoint.md";
@@ -174,6 +176,7 @@ pub fn resolve_data_root(
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum StorageTarget {
     Projects,
+    Settings,
     Review {
         #[serde(rename = "reviewId")]
         review_id: String,
@@ -266,6 +269,7 @@ pub fn is_allowed_review_file(file: &str) -> bool {
 pub fn target_path(root: &Path, target: &StorageTarget) -> Result<PathBuf, CommandError> {
     match target {
         StorageTarget::Projects => Ok(root.join(PROJECTS_FILE)),
+        StorageTarget::Settings => Ok(root.join(SETTINGS_FILE)),
         StorageTarget::Review { review_id, file } => {
             if !is_valid_review_id(review_id) {
                 return Err(CommandError::new(

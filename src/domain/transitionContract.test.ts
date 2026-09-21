@@ -150,10 +150,10 @@ describe("suspend / resume contract (D2)", () => {
       it(`${state} → SUSPENDED (${resource}) → resume restores ${state} + HOT`, () => {
         const start = sessionIn(state, "HOT");
         const suspended = applyReviewAction(start, { type: "suspend", resourceState: resource, checkpoint: "cp" }, T1);
-        if (!suspended.ok) throw new Error(suspended.error);
+        if (!suspended.ok) throw new Error(JSON.stringify(suspended.error));
         expect(suspended.value.session).toMatchObject({ reviewState: "SUSPENDED", suspendedFrom: state, resourceState: resource });
         const resumed = applyReviewAction(suspended.value.session, { type: "resume" }, T1);
-        if (!resumed.ok) throw new Error(resumed.error);
+        if (!resumed.ok) throw new Error(JSON.stringify(resumed.error));
         expect(resumed.value.session).toMatchObject({ reviewState: state, suspendedFrom: null, resourceState: "HOT" });
         expect(resumed.value.session.rounds).toEqual(start.rounds);
       });
@@ -172,7 +172,7 @@ describe("resource independence (AC-04)", () => {
       for (const to of ORACLE_RESOURCE_STATES.filter((r) => r !== from)) {
         it(`${state}: ${from} → ${to} keeps the Review State`, () => {
           const result = applyReviewAction(sessionIn(state, from), { type: "setResource", resourceState: to }, T1);
-          if (!result.ok) throw new Error(result.error);
+          if (!result.ok) throw new Error(JSON.stringify(result.error));
           expect(result.value.session).toMatchObject({ reviewState: state, resourceState: to });
         });
       }
@@ -197,7 +197,7 @@ describe("re-capture contract (F-6)", () => {
       { type: "captureResult", reviewedHead: null, replaceConfirmedByHuman: true, archivedResultFiles: ["result-r1-previous-1767225600000.md"] },
       T1,
     );
-    if (!result.ok) throw new Error(result.error);
+    if (!result.ok) throw new Error(JSON.stringify(result.error));
     expect(currentRound(result.value.session)).toMatchObject({
       resultCapturedAt: T1,
       verdict: "FIX_REQUIRED",
@@ -227,7 +227,7 @@ describe("re-capture contract (F-6)", () => {
     const recorded = sessionIn("REVIEWING");
     const names = ["result-r1-previous-1767225600000.md", "result-r1-previous-1767225600000-1.md"];
     const result = applyReviewAction(recorded, { type: "captureResult", reviewedHead: null, replaceConfirmedByHuman: true, archivedResultFiles: names }, T1);
-    if (!result.ok) throw new Error(result.error);
+    if (!result.ok) throw new Error(JSON.stringify(result.error));
     expect(currentRound(result.value.session).archivedResults).toEqual(names);
     const duplicate = [names[0], names[0]];
     expect(applyReviewAction(recorded, { type: "captureResult", reviewedHead: null, replaceConfirmedByHuman: true, archivedResultFiles: duplicate }, T1).ok).toBe(false);
@@ -241,7 +241,7 @@ describe("next round contract", () => {
     for (const state of ["FIX_REQUIRED", "REVIEW_PASS"] as const) {
       const start = { ...sessionIn(state), rounds: [{ ...sessionIn(state).rounds[0], verdict: state, verdictConfirmedAt: T0 }] };
       const result = applyReviewAction(start, { type: "startNextRound", expectedHead: null }, T1);
-      if (!result.ok) throw new Error(result.error);
+      if (!result.ok) throw new Error(JSON.stringify(result.error));
       const next = result.value.session;
       expect(next.reviewRound).toBe(2);
       expect(next.rounds[0]).toEqual(start.rounds[0]);

@@ -7,6 +7,7 @@
  * decided ends as `UNKNOWN` with the reason shown to the Human (fail closed).
  */
 
+import { message, type Message } from "./message";
 import type { GitObservation } from "./git";
 
 export const FRESHNESS_STATES = [
@@ -52,7 +53,7 @@ export interface FreshnessInput {
 export interface FreshnessResult {
   status: Freshness;
   /** One sentence saying why, shown next to the badge. */
-  explanation: string;
+  explanation: Message;
   currentHead: string | null;
   expectedHead: string | null;
   reviewedHead: string | null;
@@ -64,23 +65,24 @@ export function shortHead(head: string | null | undefined): string {
   return head.trim().toLowerCase().slice(0, 7);
 }
 
-function unobservedExplanation(observation: GitObservation | undefined): string {
-  if (!observation) return "Git state has not been observed.";
+function unobservedExplanation(observation: GitObservation | undefined): Message {
+  if (!observation) return message("freshness.explanation.notObserved");
   switch (observation.status) {
     case "NO_LOCAL_ROOT":
-      return "No local root is recorded for this project.";
+      return message("freshness.explanation.noLocalRoot");
     case "NOT_A_GIT_REPOSITORY":
-      return "The recorded local root is not a Git repository.";
+      return message("freshness.explanation.notARepository");
     case "GIT_UNAVAILABLE":
-      return "Git could not be started, so the repository was not observed.";
+      return message("freshness.explanation.gitUnavailable");
     case "TIMEOUT":
-      return "Observing the repository timed out.";
+      return message("freshness.explanation.timeout");
     case "ERROR":
+      if (observation.errorCode === "MALFORMED_OBSERVATION") return message("git.observation.malformed");
       return observation.errorMessage?.trim()
-        ? `The repository could not be observed: ${observation.errorMessage.trim()}`
-        : "The repository could not be observed.";
+        ? message("freshness.explanation.errorWithReason", { reason: observation.errorMessage.trim() })
+        : message("freshness.explanation.error");
     default:
-      return "Git state has not been observed.";
+      return message("freshness.explanation.notObserved");
   }
 }
 
@@ -100,7 +102,7 @@ export function deriveFreshness({ observation, expectedHead, reviewedHead }: Fre
   if (observation.dirty === true) {
     return {
       status: "WORKTREE_DIRTY",
-      explanation: "Local working tree has uncommitted changes.",
+      explanation: message("freshness.explanation.worktreeDirty"),
       currentHead,
       ...recorded,
     };
@@ -108,7 +110,7 @@ export function deriveFreshness({ observation, expectedHead, reviewedHead }: Fre
   if (observation.dirty !== false) {
     return {
       status: "UNKNOWN",
-      explanation: "The working tree state is not known.",
+      explanation: message("freshness.explanation.worktreeUnknown"),
       currentHead,
       ...recorded,
     };
@@ -116,7 +118,7 @@ export function deriveFreshness({ observation, expectedHead, reviewedHead }: Fre
   if (currentHead === null) {
     return {
       status: "UNKNOWN",
-      explanation: "The current HEAD is not known.",
+      explanation: message("freshness.explanation.headUnknown"),
       currentHead,
       ...recorded,
     };
@@ -130,7 +132,10 @@ export function deriveFreshness({ observation, expectedHead, reviewedHead }: Fre
   if (reviewed === "differs") {
     return {
       status: "REVIEW_STALE",
-      explanation: `Reviewed HEAD ${shortHead(recorded.reviewedHead)} differs from current HEAD ${shortHead(currentHead)}.`,
+      explanation: message("freshness.explanation.reviewStale", {
+        reviewed: shortHead(recorded.reviewedHead),
+        current: shortHead(currentHead),
+      }),
       currentHead,
       ...recorded,
     };
@@ -138,7 +143,10 @@ export function deriveFreshness({ observation, expectedHead, reviewedHead }: Fre
   if (expected === "differs") {
     return {
       status: "HEAD_CHANGED",
-      explanation: `Expected HEAD ${shortHead(recorded.expectedHead)} differs from current HEAD ${shortHead(currentHead)}.`,
+      explanation: message("freshness.explanation.headChanged", {
+        expected: shortHead(recorded.expectedHead),
+        current: shortHead(currentHead),
+      }),
       currentHead,
       ...recorded,
     };
@@ -148,8 +156,8 @@ export function deriveFreshness({ observation, expectedHead, reviewedHead }: Fre
       status: "UNKNOWN",
       explanation:
         reviewed === "unknown"
-          ? "The recorded reviewed HEAD cannot be compared with the current HEAD."
-          : "The recorded expected HEAD cannot be compared with the current HEAD.",
+          ? message("freshness.explanation.reviewedNotComparable")
+          : message("freshness.explanation.expectedNotComparable"),
       currentHead,
       ...recorded,
     };
@@ -158,7 +166,7 @@ export function deriveFreshness({ observation, expectedHead, reviewedHead }: Fre
   if (reviewed === null && expected === null) {
     return {
       status: "UNKNOWN",
-      explanation: "No expected or reviewed HEAD is recorded for this round.",
+      explanation: message("freshness.explanation.nothingRecorded"),
       currentHead,
       ...recorded,
     };
@@ -166,16 +174,9 @@ export function deriveFreshness({ observation, expectedHead, reviewedHead }: Fre
 
   return {
     status: "ALIGNED",
-    explanation: "Recorded HEAD values match current local HEAD.",
+    explanation: message("freshness.explanation.aligned"),
     currentHead,
     ...recorded,
   };
 }
 
-export const FRESHNESS_LABELS: Record<Freshness, string> = {
-  ALIGNED: "Aligned",
-  HEAD_CHANGED: "HEAD changed",
-  REVIEW_STALE: "Review stale",
-  WORKTREE_DIRTY: "Working tree dirty",
-  UNKNOWN: "Unknown",
-};

@@ -1,4 +1,5 @@
 import type { ObservedGitState } from "../domain/git";
+import { message, type Message } from "../domain/message";
 import type { Project } from "../domain/project";
 import type { QueueFilter } from "../domain/queue";
 import type { FileHealth, LoadedData, LoadedReview, ReviewArtifacts } from "../services/persistence";
@@ -15,7 +16,7 @@ export interface Toast {
 /** One-time recovery information shown until dismissed (e.g. restored from backup). */
 export interface Notice {
   id: string;
-  message: string;
+  message: Message;
 }
 
 export interface AppState {
@@ -76,20 +77,21 @@ export type AppAction =
   | { type: "toast"; kind: ToastKind; message: string }
   | { type: "dismissToast"; id: number };
 
-export function restoredMessage(label: string, health: FileHealth): string | null {
+/** Which file was restored is a message of its own, so the sentence reads naturally in both languages. */
+export function restoredMessage(label: Message, health: FileHealth): Message | null {
   if (health.status !== "restored_from_backup") return null;
   return health.cause === "missing_primary"
-    ? `${label} was missing and was restored from its backup (the backup was kept).`
-    : `${label} could not be read and was restored from its backup. The unreadable file was kept as ${health.quarantinedAs}.`;
+    ? { key: "notice.restoredMissing", messageParams: { label } }
+    : { key: "notice.restoredCorrupt", params: { quarantined: health.quarantinedAs ?? "" }, messageParams: { label } };
 }
 
 function recoveryNotices(data: LoadedData): Notice[] {
   const notices: Notice[] = [];
-  const projects = restoredMessage("projects.json", data.projectsHealth);
+  const projects = restoredMessage(message("notice.label.projects"), data.projectsHealth);
   if (projects) notices.push({ id: "projects-restored", message: projects });
   for (const review of data.reviews) {
-    const message = restoredMessage(`Review ${review.reviewId}: session.json`, review.health);
-    if (message) notices.push({ id: `review-restored-${review.reviewId}`, message });
+    const restored = restoredMessage(message("notice.label.reviewSession", { id: review.reviewId }), review.health);
+    if (restored) notices.push({ id: `review-restored-${review.reviewId}`, message: restored });
   }
   return notices;
 }

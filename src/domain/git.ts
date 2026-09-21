@@ -32,15 +32,6 @@ export interface GitObservation {
   errorMessage?: string;
 }
 
-export const GIT_STATUS_LABELS: Record<GitStatus, string> = {
-  OK: "Observed",
-  NO_LOCAL_ROOT: "No local root recorded",
-  NOT_A_GIT_REPOSITORY: "Not a Git repository",
-  GIT_UNAVAILABLE: "Git unavailable",
-  TIMEOUT: "Timed out",
-  ERROR: "Not observed (error)",
-};
-
 export function isGitStatus(value: unknown): value is GitStatus {
   return typeof value === "string" && (GIT_STATUSES as readonly string[]).includes(value);
 }
@@ -68,7 +59,7 @@ export function asGitObservation(value: unknown, observedAt: string): GitObserva
       dirty: null,
       observedAt,
       errorCode: "MALFORMED_OBSERVATION",
-      errorMessage: "The Git observation could not be read.",
+      // The code says what happened; the sentence for it lives in the dictionaries.
     };
   }
   const errorCode = optionalString(record.errorCode);
