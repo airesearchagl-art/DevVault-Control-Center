@@ -412,7 +412,10 @@ version keeps its headings, and only a newly generated one follows the current s
 - Turn 2: `Stage 3 — Resolution Context` (the implementation narrative, including the Human's note
   on the previous verdict and their explanation of a revalidation) and `Stage 4 — Final Judgment`,
   which asks for a separate answer that leaves the Fresh Assessment untouched and names the added
-  Evidence behind every changed finding.
+  Evidence behind every changed finding. The Human enters the narrative in DVCC before the follow-up
+  is written; the text is built once from it, and exactly that text is saved as `followup-r<N>.md`
+  and copied, so the file is what DVCC supplied to be sent. No round field stores the narrative:
+  the file is the record. A blank item stays a Human-fill placeholder.
 
 ### Freshness stays a derived fact
 

@@ -1,5 +1,5 @@
 import { createProject, updateProject, type Project, type ProjectFormInput } from "../domain/project";
-import { buildResolutionFollowup, buildReviewRequest } from "../domain/prompt";
+import { buildResolutionFollowup, buildReviewRequest, type ResolutionNarrative } from "../domain/prompt";
 import { DEFAULT_LOCALE, type Locale } from "../i18n/locale";
 import {
   ARCHIVE_CANDIDATES,
@@ -140,6 +140,11 @@ export async function saveReviewRequest(
 /**
  * Generates Turn 2, saves `followup-r<N>.md`, records it, and returns the text to copy.
  *
+ * The narrative is the Human's, passed in explicitly and inserted verbatim; it is never recovered
+ * from a note, an event, the clipboard or an earlier file. The builder runs once, and the one text
+ * it returns is both what is written and what is handed back to be copied, so the stored follow-up
+ * is exactly what DVCC supplied to the Human (RF-WF-01).
+ *
  * The protocol invariant is not restated here: `applyReviewAction` is asked first, so a follow-up
  * is never written for a round whose Fresh Assessment has not come back, whose Final Judgment is
  * already in, or whose verdict the Human has confirmed (Waves 2.5 / 2.6).
@@ -150,11 +155,12 @@ export async function saveFollowupRequest(
   session: ReviewSession,
   now: string,
   locale: Locale = DEFAULT_LOCALE,
+  narrative: ResolutionNarrative = {},
 ): Promise<Result<SaveOutcome & { text: string }>> {
   const action: ReviewAction = { type: "recordFollowupSaved" };
   const precheck = applyReviewAction(session, action, now);
   if (!precheck.ok) return precheck;
-  const text = buildResolutionFollowup(project, session, locale);
+  const text = buildResolutionFollowup(project, session, locale, narrative);
   await ensureSessionUnchanged(backend, session.reviewSessionId);
   await writeRoundArtifact(backend, session.reviewSessionId, "followup", session.reviewRound, text);
   const saved = await performReviewAction(backend, session, action, now);

@@ -495,6 +495,13 @@ export const ja = {
   "review.riskTier.submit": "Risk Tierを設定",
 
   // --- final judgment dialog (Phase 3) -------------------------------------------------------------------------
+  "review.followup.title": "Turn 2 を作成（R{round}）",
+  "review.followup.body": "ここで入力したimplementation narrativeはTurn 2（Stage 3）にそのまま入り、followup-r{round}.mdとして保存されたうえでコピーされます。空欄の項目は「Humanが記入」の欄として残ります。Turn 1には入りません。",
+  "review.followup.background": "背景・目的（任意）",
+  "review.followup.decisions": "すでに決まっている方針・実装経緯（任意）",
+  "review.followup.tradeoffs": "known trade-offs / 過去の検討 / 関連する過去レビュー（任意）",
+  "review.followup.notice": "コピーした後に手で加えた変更は、DVCCが記録するfollowup-r{round}.mdには含まれません。送る内容はここで入力してください。",
+  "review.followup.submit": "Turn 2 を保存してコピー",
   "review.judgment.title": "最終判断を保存（R{round}）",
   "review.judgment.text": "Final Judgment（Turn 2の回答）",
   "review.judgment.textHint":

@@ -3,6 +3,7 @@ import { Banner, Toasts } from "../components/Banner";
 import { LanguageSelector } from "../components/LanguageSelector";
 import { ConfirmDialog } from "../components/Dialog";
 import { emptyProjectForm, projectToForm, type Project, type ProjectFormInput } from "../domain/project";
+import type { ResolutionNarrative } from "../domain/prompt";
 import { deriveFreshness, type FreshnessResult } from "../domain/freshness";
 import { observationForProject, type GitObservation } from "../domain/git";
 import { buildQueue } from "../domain/queue";
@@ -22,6 +23,7 @@ import { ProjectFormDialog } from "../features/projects/ProjectForm";
 import { ReviewDetail, type DetailDialog } from "../features/reviews/ReviewDetail";
 import {
   CaptureJudgmentDialog,
+  FollowupDialog,
   CaptureResultDialog,
   NextRoundDialog,
   RevalidationDialog,
@@ -393,14 +395,15 @@ export default function App() {
     }
   };
 
-  /** Turn 2: saved for the round, then copied, exactly as the request is. */
-  const copyFollowup = async (session: ReviewSession) => {
+  /**
+   * Turn 2: built once from the Human's narrative, saved for the round, and that same text copied
+   * (RF-WF-01). A refusal stays in the dialog; nothing is written until the Human confirms.
+   */
+  const copyFollowup = async (session: ReviewSession, narrative: ResolutionNarrative): Promise<Message | null> => {
     try {
-      const result = await track(hub.saveFollowup(session.reviewSessionId, locale));
-      if (!result.ok) {
-        notify("error", translate(t, result.error));
-        return;
-      }
+      const result = await track(hub.saveFollowup(session.reviewSessionId, locale, narrative));
+      if (!result.ok) return result.error;
+      setDialog(null);
       warnIfNeeded(result.value);
       const round = result.value.session.reviewRound;
       try {
@@ -409,8 +412,9 @@ export default function App() {
       } catch (error) {
         notify("error", t("toast.followupSavedCopyFailed", { round, error: describeError(t, error) }));
       }
+      return null;
     } catch (error) {
-      notify("error", translate(t, saveFailed(t, error)));
+      return saveFailed(t, error);
     }
   };
 
@@ -575,7 +579,7 @@ export default function App() {
           void copyPrompt(selectedSession);
         }}
         onCopyFollowup={() => {
-          void copyFollowup(selectedSession);
+          onDetailDialog("followup");
         }}
         priorReviews={priorReviewsFor(loadedSessions, {
           reviewSessionId: selectedSession.reviewSessionId,
@@ -793,6 +797,9 @@ export default function App() {
           onSubmit={(text, reviewedHead, replaceConfirmed) => submitCapture(dialogSession, text, reviewedHead, replaceConfirmed)}
           onCancel={closeDialog}
         />
+      )}
+      {dialog?.kind === "followup" && dialogSession && (
+        <FollowupDialog session={dialogSession} onSubmit={(narrative) => copyFollowup(dialogSession, narrative)} onCancel={closeDialog} />
       )}
       {dialog?.kind === "judgment" && dialogSession && (
         <CaptureJudgmentDialog

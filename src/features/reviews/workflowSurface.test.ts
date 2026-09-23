@@ -8,7 +8,7 @@ import { createReviewSession, emptyReviewForm, type ReviewSession } from "../../
 import { applyReviewAction, type ReviewAction } from "../../domain/transitions";
 import { createTranslator, EVIDENCE_STATUS_KEYS, FRESHNESS_KEYS, type Locale } from "../../i18n";
 import { I18nContext } from "../../i18n/context";
-import { RevalidationDialog, RiskTierDialog } from "./ReviewDialogs";
+import { FollowupDialog, RevalidationDialog, RiskTierDialog } from "./ReviewDialogs";
 import { ReviewDetail } from "./ReviewDetail";
 import { ReviewFreshness } from "./ReviewFreshness";
 import { ReviewWorkflow } from "./ReviewWorkflow";
@@ -411,6 +411,32 @@ describe("Phase 3 controls are labelled", () => {
       const submit = element(dialog, "risk-tier-submit");
       expect(submit).toMatch(/aria-describedby="[^"]+"/);
       expect(dialog).toContain(createTranslator(locale)("review.riskTier.submitDisabled"));
+    });
+
+    it(`the Turn 2 dialog asks for all three narrative items, says edits after copying are not recorded, and writes nothing by itself (${locale})`, () => {
+      const t = createTranslator(locale);
+      const calls: unknown[] = [];
+      const dialog = render(
+        locale,
+        createElement(FollowupDialog, {
+          session: reviewing(),
+          onSubmit: async (narrative) => {
+            calls.push(narrative);
+            return null;
+          },
+          onCancel: () => undefined,
+        }),
+      );
+      for (const key of ["background", "decisions", "tradeoffs"]) {
+        const field = element(dialog, `followup-${key}`);
+        expect(field).toMatch(/^<textarea/);
+        const id = /id="([^"]+)"/.exec(field)![1];
+        expect(dialog).toContain(`for="${id}"`);
+        expect(field).toMatch(/aria-describedby="[^"]+"/);
+      }
+      expect(decode(dialog)).toContain(t("review.followup.notice", { round: 1 }));
+      expect(element(dialog, "followup-submit")).not.toMatch(/\sdisabled=""/);
+      expect(calls).toEqual([]);
     });
 
     it(`the revalidation dialog cannot be saved until a canonical reason is chosen (${locale})`, () => {

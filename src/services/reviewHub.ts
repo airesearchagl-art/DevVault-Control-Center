@@ -1,6 +1,7 @@
 import type { Locale } from "../i18n/locale";
 import type { Project, ProjectFormInput } from "../domain/project";
 import type { ReviewFormInput, ReviewSession } from "../domain/review";
+import type { ResolutionNarrative } from "../domain/prompt";
 import { message } from "../domain/message";
 import { err, invalid, type FieldErrors, type Result } from "../domain/result";
 import type { ReviewAction } from "../domain/transitions";
@@ -190,13 +191,13 @@ export class ReviewHub {
   }
 
   /** Turn 2 of the Fresh Context protocol: the Resolution Follow-up for the current round. */
-  saveFollowup(reviewId: string, locale?: Locale): Promise<Result<SaveOutcome & { text: string }>> {
+  saveFollowup(reviewId: string, locale?: Locale, narrative: ResolutionNarrative = {}): Promise<Result<SaveOutcome & { text: string }>> {
     return this.run(async () => {
       const session = this.session(reviewId);
       if (!session) return invalid("service.reviewUnavailable", { id: reviewId });
       const project = this.projects.find((p) => p.projectId === session.projectId);
       if (!project) return invalid("service.projectMissing", { id: session.projectId });
-      const result = await saveFollowupRequest(this.storage, project, session, this.now(), locale);
+      const result = await saveFollowupRequest(this.storage, project, session, this.now(), locale, narrative);
       if (result.ok) {
         this.storeSession(result.value.session);
         this.commit();

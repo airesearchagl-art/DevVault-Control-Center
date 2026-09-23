@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { emptyProjectForm, type Project } from "../domain/project";
+import { buildReviewRequest } from "../domain/prompt";
 import { emptyReviewForm, type ReviewSession } from "../domain/review";
+import { narrativeOf } from "../features/reviews/ReviewDialogs";
 import { MemoryStorage } from "../test/memoryStorage";
 import {
   captureFinalJudgment,
@@ -110,6 +112,70 @@ describe("saving Turn 2", () => {
     unwrap(await saveFollowupRequest(storage, project, session, now(), "ja"));
     expect(file("followup-r1.md")).toContain("# 解決フォローアップ（Turn 2）");
     expect(file("followup-r1.md")).not.toBe(english);
+  });
+});
+
+describe("Turn 2 carries the Human's narrative (RF-WF-01)", () => {
+  const narrative = {
+    background: "BACKGROUND-MARKER: 背景は「移行の安全性」です。\n二行目 — second line",
+    decisions: 'DECISIONS-MARKER: keep schemaVersion 1; <tags> & "quotes" stay as typed',
+    tradeoffs: "TRADEOFF-MARKER: 速度より可読性",
+  };
+  const markers = [
+    "BACKGROUND-MARKER: 背景は「移行の安全性」です。",
+    "二行目 — second line",
+    'DECISIONS-MARKER: keep schemaVersion 1; <tags> & "quotes" stay as typed',
+    "TRADEOFF-MARKER: 速度より可読性",
+  ];
+
+  async function assessed(): Promise<ReviewSession> {
+    const session = await reviewing();
+    return unwrap(await captureReviewResult(storage, session, "the fresh assessment", HEAD, false, now())).session;
+  }
+
+  it.each(["ja", "en"] as const)("stores the Human's words verbatim, and returns exactly the stored text (%s)", async (locale) => {
+    const saved = unwrap(await saveFollowupRequest(storage, project, await assessed(), now(), locale, narrative));
+    for (const marker of markers) expect(file("followup-r1.md")).toContain(marker);
+    // The copied text and the artifact are one and the same string.
+    expect(file("followup-r1.md")).toBe(saved.text);
+    expect(saved.text.endsWith("\n")).toBe(true);
+    // Only inside Stage 3.
+    const stage4 = saved.text.slice(saved.text.indexOf("## Stage 4"));
+    for (const marker of ["BACKGROUND-MARKER", "DECISIONS-MARKER", "TRADEOFF-MARKER"]) expect(stage4).not.toContain(marker);
+  });
+
+  it.each(["ja", "en"] as const)("blank fields leave the canonical placeholder (%s)", async (locale) => {
+    const blank = narrativeOf({ background: "", decisions: "   ", tradeoffs: "TRADEOFF-MARKER" });
+    const saved = unwrap(await saveFollowupRequest(storage, project, await assessed(), now(), locale, blank));
+    const placeholder = locale === "ja" ? "<!-- Humanが記入 -->" : "<!-- filled in by the Human -->";
+    expect(saved.text.split(placeholder).length - 1).toBe(2);
+    expect(saved.text).toContain("TRADEOFF-MARKER");
+  });
+
+  it("each dialog field reaches its own narrative item", () => {
+    expect(narrativeOf({ background: "A", decisions: "B", tradeoffs: "C" })).toEqual({ background: "A", decisions: "B", tradeoffs: "C" });
+    expect(narrativeOf({ background: "", decisions: "", tradeoffs: "" })).toEqual({ background: null, decisions: null, tradeoffs: null });
+  });
+
+  it("the narrative never reaches Turn 1, before or after Turn 2", async () => {
+    const session = unwrap(await saveFollowupRequest(storage, project, await assessed(), now(), "ja", narrative)).session;
+    for (const text of [file("request-r1.md")!, buildReviewRequest(project, session, "ja"), buildReviewRequest(project, session, "en")]) {
+      for (const marker of ["BACKGROUND-MARKER", "DECISIONS-MARKER", "TRADEOFF-MARKER"]) expect(text).not.toContain(marker);
+    }
+  });
+
+  it("once the Final Judgment is in, no narrative and no language can rewrite the follow-up", async () => {
+    let session = unwrap(await saveFollowupRequest(storage, project, await assessed(), now(), "ja", narrative)).session;
+    session = unwrap(await captureFinalJudgment(storage, session, "final judgment", false, now())).session;
+    const stored = file("followup-r1.md");
+    const events = file("events.jsonl");
+    for (const locale of ["ja", "en"] as const) {
+      const refused = await saveFollowupRequest(storage, project, session, now(), locale, { background: "REWRITE-ATTEMPT" });
+      expect(refused.ok).toBe(false);
+      if (!refused.ok) expect(refused.error.key).toBe("action.followup.judgmentCaptured");
+    }
+    expect(file("followup-r1.md")).toBe(stored);
+    expect(file("events.jsonl")).toBe(events);
   });
 });
 

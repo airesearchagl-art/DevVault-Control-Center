@@ -47,7 +47,10 @@ restarting the app.
     narrative (background, decisions taken, implementation history); known risks, failing tests,
     security and destructive-operation constraints, scope exclusions, unresolved issues and Human
     Gate items are asked for from the start. Once the Fresh Assessment is captured, **Copy Turn 2**
-    writes `followup-r<N>.md` (`Stage 3 — Resolution Context`, `Stage 4 — Final Judgment`), and the
+    opens a dialog for the implementation narrative (background and purpose, decisions and
+    implementation history, trade-offs; each optional and kept exactly as typed), then writes
+    `followup-r<N>.md` (`Stage 3 — Resolution Context`, `Stage 4 — Final Judgment`) and copies that
+    same text; cancelling writes nothing, and edits made after copying are not part of the record. The
     reviewer's answer is saved as `judgment-r<N>.md` beside — never over — `result-r<N>.md`. A
     verdict waits for the Final Judgment once Turn 2 has gone out.
   - *Exact HEAD.* A Turn 1 request is an exact-head request only when the full 40-character HEAD is

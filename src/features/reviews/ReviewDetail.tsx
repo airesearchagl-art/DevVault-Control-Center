@@ -44,6 +44,7 @@ export type DetailDialog =
   | "editProject"
   // Phase 3
   | "judgment"
+  | "followup"
   | "riskTier"
   | "revalidation";
 
@@ -62,7 +63,7 @@ interface ReviewDetailProps {
   onOpenChatgpt: () => void;
   onOpenFolder: () => void;
   onCopyPrompt: () => void;
-  /** Saves Turn 2 for the current round and copies it, the way `onCopyPrompt` does for Turn 1. */
+  /** Opens the Turn 2 dialog; the follow-up is saved and copied only when the Human confirms it. */
   onCopyFollowup: () => void;
   /** Every round that could already have reviewed this head; the current round is excluded. */
   priorReviews: readonly PriorReview[];

@@ -225,6 +225,27 @@ describe("the two-turn protocol through the hub", () => {
     });
   });
 
+  it("carries the narrative into followup-r1.md, which a restart reads back unchanged (RF-WF-01)", async () => {
+    const memory = new MemoryStorage();
+    const { hub, reviewId } = await seededHub(memory);
+    unwrapOk(await hub.apply(reviewId, { type: "markReady" }));
+    unwrapOk(await hub.apply(reviewId, { type: "startReview" }));
+    unwrapOk(await hub.saveRequest(reviewId));
+    unwrapOk(await hub.captureResult(reviewId, "the fresh assessment", null, false));
+    const saved = unwrapOk(
+      await hub.saveFollowup(reviewId, "en", { background: "HUB-BACKGROUND", decisions: "HUB-DECISIONS", tradeoffs: "HUB-TRADEOFFS" }),
+    );
+    const path = `reviews/${reviewId}/followup-r1.md`;
+    expect(memory.files.get(path)).toBe(saved.text);
+
+    const restarted = new ReviewHub(memory, { now: clock, newReviewId: () => "rv-20260101-unused" });
+    await restarted.load();
+    expect(restarted.session(reviewId)!.rounds[0].followupSavedAt).toBe(saved.session.rounds[0].followupSavedAt);
+    const text = memory.files.get(path)!;
+    for (const marker of ["HUB-BACKGROUND", "HUB-DECISIONS", "HUB-TRADEOFFS"]) expect(text).toContain(marker);
+    expect(memory.files.get(`reviews/${reviewId}/request-r1.md`)).not.toContain("HUB-BACKGROUND");
+  });
+
   it("refuses Turn 2 out of order without touching the round", async () => {
     const memory = new MemoryStorage();
     const { hub, reviewId } = await seededHub(memory);

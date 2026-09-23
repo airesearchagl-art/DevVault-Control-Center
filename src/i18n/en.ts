@@ -490,6 +490,13 @@ export const en: Dictionary = {
   "review.riskTier.submit": "Set the Risk Tier",
 
   // --- final judgment dialog (Phase 3) -------------------------------------------------------------------------
+  "review.followup.title": "Write Turn 2 (R{round})",
+  "review.followup.body": "The implementation narrative you enter here goes into Turn 2 (Stage 3) exactly as written, is saved as followup-r{round}.md and is then copied. A field left blank stays as a “filled in by the Human” placeholder. None of it goes into Turn 1.",
+  "review.followup.background": "Background and purpose (optional)",
+  "review.followup.decisions": "Decisions already taken, and the implementation history (optional)",
+  "review.followup.tradeoffs": "Known trade-offs / earlier considerations / related past reviews (optional)",
+  "review.followup.notice": "Edits you make after copying are not part of followup-r{round}.md, the record DVCC keeps. Enter what you will send here.",
+  "review.followup.submit": "Save and copy Turn 2",
   "review.judgment.title": "Save the Final Judgment (R{round})",
   "review.judgment.text": "Final Judgment (the answer to Turn 2)",
   "review.judgment.textHint":

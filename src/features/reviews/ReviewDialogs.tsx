@@ -2,6 +2,7 @@ import { useId, useState } from "react";
 import { excerpt } from "../../app/format";
 import { Dialog, Field, FormError } from "../../components/Dialog";
 import { message, type Message } from "../../domain/message";
+import type { ResolutionNarrative } from "../../domain/prompt";
 import { currentRound, type ReviewSession } from "../../domain/review";
 import { SAME_HEAD_INVALIDATION_REASONS, type InvalidationReason } from "../../domain/revalidation";
 import { RISK_TIERS, TIER_2_SUBJECTS, validateTierChoice, type RiskTier, type Tier2Subject } from "../../domain/riskTier";
@@ -377,6 +378,78 @@ export function CaptureJudgmentDialog({
           data-testid="judgment-submit"
         >
           {replacing ? t("review.judgment.submitReplace") : t("review.judgment.submitSave")}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+export interface NarrativeFields {
+  background: string;
+  decisions: string;
+  tradeoffs: string;
+}
+
+/**
+ * The three fields as the narrative Turn 2 is built from, one to one. The Human's words are passed
+ * on as typed; a blank field becomes absent, which the builder turns into the canonical placeholder.
+ */
+export function narrativeOf(fields: NarrativeFields): ResolutionNarrative {
+  const keep = (value: string) => (value.trim() === "" ? null : value);
+  return { background: keep(fields.background), decisions: keep(fields.decisions), tradeoffs: keep(fields.tradeoffs) };
+}
+
+/**
+ * Turn 2's implementation narrative (canonical input items 7 and 8, and the trade-offs), entered
+ * before anything is written (RF-WF-01). Confirming saves `followup-r<N>.md` from exactly these
+ * fields and copies that same text; cancelling writes nothing.
+ */
+export function FollowupDialog({
+  session,
+  onSubmit,
+  onCancel,
+}: {
+  session: ReviewSession;
+  onSubmit: (narrative: ResolutionNarrative) => Promise<Message | null>;
+  onCancel: () => void;
+}) {
+  const [fields, setFields] = useState<NarrativeFields>({ background: "", decisions: "", tradeoffs: "" });
+  const { error, saving, run } = useSubmit();
+  const t = useT();
+  const round = session.reviewRound;
+  const noticeId = useId();
+  const set = (key: keyof NarrativeFields) => (value: string) => setFields((current) => ({ ...current, [key]: value }));
+  const areas: { key: keyof NarrativeFields; label: TranslationKey }[] = [
+    { key: "background", label: "review.followup.background" },
+    { key: "decisions", label: "review.followup.decisions" },
+    { key: "tradeoffs", label: "review.followup.tradeoffs" },
+  ];
+
+  return (
+    <Dialog title={t("review.followup.title", { round })} onClose={onCancel} testId="followup-dialog" wide>
+      <p className="dialog-message">{t("review.followup.body", { round })}</p>
+      {areas.map(({ key, label }) => (
+        <Field key={key} label={t(label)} htmlFor={`followup-${key}`}>
+          <textarea
+            id={`followup-${key}`}
+            rows={4}
+            value={fields[key]}
+            onChange={(e) => set(key)(e.target.value)}
+            aria-describedby={noticeId}
+            data-testid={`followup-${key}`}
+          />
+        </Field>
+      ))}
+      <p className="hint" id={noticeId} data-testid="followup-notice">
+        {t("review.followup.notice", { round })}
+      </p>
+      <FormError message={error} />
+      <div className="dialog-actions">
+        <button type="button" onClick={onCancel}>
+          {t("dialog.cancel")}
+        </button>
+        <button type="button" className="primary" disabled={saving} onClick={() => run(() => onSubmit(narrativeOf(fields)))} data-testid="followup-submit">
+          {t("review.followup.submit")}
         </button>
       </div>
     </Dialog>
