@@ -507,3 +507,23 @@ overwritten; malformed data left untouched. Irreversible data: nothing deleted o
 workflow; past artifacts byte-identical. Operator: `%APPDATA%\DevVault-Control` byte-identical before
 and after (4 entries, same hashes and timestamps), `DevVault-Control-dev` absent before and after, no
 DVCC process left, clipboard never touched while unreadable.
+
+## Wave 5 — clipboard re-run (2026-09-24)
+
+Head `3859d77` (clean, equal to the remote branch; product freeze `85b0d11` unchanged), release exe
+SHA-256 re-read `9EDC3DA6A7D8928D063B3BDC1EDABE3C45A57AFB1C18F1BBEEDF2651BAE18913` (the frozen build),
+14.13 GiB available, clipboard readable text. Nothing in source, tests or scripts changed.
+
+- Workflow smoke (`dvcc-wf-62f03c7e`): **97 PASS / 0 FAIL / 0 INCONCLUSIVE**. The six clipboard-writing
+  steps now ran: Turn 1 requests for A, B R1 and B R2 and the short-HEAD request (NOT EXACT, HEAD not
+  completed), and the full two-turn path of C — Turn 2 sent, verdict refused while the judgment was
+  awaited, Final Judgment captured without touching `result-r1.md`, Turn 2 refused after it, judgment
+  replacement only with confirmation and archived, verdict confirmed; request / result / follow-up /
+  judgment all present. Restart persistence covered six reviews; 10 past artifacts byte-identical.
+- Localization smoke: **24 PASS / 0 FAIL / 0 INCONCLUSIVE**.
+- Operator: `%APPDATA%\DevVault-Control` byte-identical to the first Wave 5 snapshot; no DVCC
+  process left; no guard note emitted. The clipboard's text length read 2367 before the workflow run
+  and 935 before and after the localization run; its content was not read, and the change between
+  the runs is not attributed.
+
+This supersedes the 6 INCONCLUSIVE of the earlier final run; RW-23 closes on this run.

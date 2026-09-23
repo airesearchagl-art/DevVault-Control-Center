@@ -3,12 +3,12 @@
 - Run ID: LR-20260921-DVCC-004
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — Wave 5 verification recorded; product frozen at `85b0d11` (no Required Fix); clipboard-dependent running checks INCONCLUSIVE, re-run pending
+- Current state: RUNNING — Wave 5 complete; product frozen at `85b0d11` (no Required Fix); running-app smoke 97/0/0
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/review-workflow-v0.3
 - Base SHA: 4c1962b0c47321805554be2218bba996ff5de92f
 - Current head: the Wave 5 evidence record on top of `85b0d119461186cdd997cb8834222ec736deeef2` (product freeze); see `git log`
-- Current wave: Wave 5 recorded → Final Convergence (after the clipboard re-run)
+- Current wave: Wave 5 complete → Final Convergence
 - Last successful checkpoint: Wave 5 checkpoint (`85b0d11`, product freeze)
 - Task Packet ID: LRP-20260921-DVCC-004
 - Task Packet revision: 1
@@ -59,7 +59,7 @@ one that looked silent in the stale copy: a second substantive review of the sam
 - [x] RW-20 no IDE bridge brought forward from Phase 4 — same scan
 - [x] RW-21 a locale switch changes no workflow or domain data — asserted on rendered state and a frozen session; running-app check in Wave 5
 - [x] RW-22 Security / Privacy / Permission / Data integrity / Irreversible-data safety PASS — see EVIDENCE Wave 5 hard checks
-- [~] RW-23 isolated-desktop workflow smoke — 80 PASS / 0 FAIL / 6 INCONCLUSIVE; the 6 are the clipboard-writing steps, not run because the operator's clipboard was unreadable
+- [x] RW-23 isolated-desktop workflow smoke PASS — 97 PASS / 0 FAIL / 0 INCONCLUSIVE on the frozen build (2026-09-24 re-run)
 - [x] RW-24 README and data contract reconciled to the fresh product state — with a static check that the contract names every round field, event type and stored code
 
 ## Completed
@@ -109,8 +109,8 @@ Wave 5 (start `21a3098`, freeze `85b0d11`): `npm ci`, `npm run typecheck` PASS, 
 (31 files, 855 tests), `npm run build` PASS; `cargo fmt --check` PASS, `cargo clippy --all-targets`
 PASS (0 warnings), `cargo check` PASS, `cargo test` PASS (68 passed, 2 ignored); Tauri `build
 --no-bundle` PASS (exe SHA-256 `9EDC3DA6A7D8928D063B3BDC1EDABE3C45A57AFB1C18F1BBEEDF2651BAE18913`).
-Workflow smoke 80 PASS / 0 FAIL / 6 INCONCLUSIVE; localization smoke 21 PASS / 0 FAIL / 2
-INCONCLUSIVE. Mutation MC1–MC9 all killed. No GitHub CI exists; these are local results.
+Workflow smoke 97 PASS / 0 FAIL / 0 INCONCLUSIVE and localization smoke 24 / 0 / 0 on the
+clipboard re-run (the first final run was 80/0/6 and 21/0/2 with an unreadable clipboard). Mutation MC1–MC9 all killed. No GitHub CI exists; these are local results.
 
 Wave 4: `npx tsc --noEmit` PASS, `npx vitest run` PASS (31 files, 852 tests), `npm run build` PASS,
 `git diff --check` clean. Five mutation probes (M-D1..M-D5), each CAUGHT and restored byte-identical.
@@ -156,7 +156,7 @@ localization scanner's AST candidate. See QUALITY_DEBT.md.
 - RW-11, RW-13, RW-14, RW-15, RW-17, RW-21: verified in the running app in Wave 5 (see EVIDENCE).
 - The Turn 2 narrative parameter exists in the domain; the interface does not yet offer a field for
   it, so Turn 2 still asks the Human to fill items 7/8 in the copied text.
-- RW-23: in the final smoke run the six clipboard-writing steps (Copy Turn 1 / Copy Turn 2 and what depends on them) are INCONCLUSIVE: the operator's clipboard was unreadable for more than 30 minutes and was left untouched. An earlier run of the same release build with a text clipboard executed them and passed, with an earlier revision of the script; that is not counted as the final result. A re-run needs no source change.
+- RW-23: closed by the 2026-09-24 re-run with a readable clipboard (97/0/0); the earlier 6 INCONCLUSIVE are superseded, not upgraded.
 - Screen-reader behaviour was not tested (QD-007).
 - RW-24: complete (Wave 4, `cc36a82`).
 - No GitHub CI exists for this repository; every check is local.
