@@ -8,7 +8,7 @@ import { createReviewSession, emptyReviewForm, type ReviewSession } from "../../
 import { applyReviewAction, type ReviewAction } from "../../domain/transitions";
 import { createTranslator, EVIDENCE_STATUS_KEYS, FRESHNESS_KEYS, type Locale } from "../../i18n";
 import { I18nContext } from "../../i18n/context";
-import { RiskTierDialog } from "./ReviewDialogs";
+import { RevalidationDialog, RiskTierDialog } from "./ReviewDialogs";
 import { ReviewDetail } from "./ReviewDetail";
 import { ReviewFreshness } from "./ReviewFreshness";
 import { ReviewWorkflow } from "./ReviewWorkflow";
@@ -219,6 +219,22 @@ describe("Freshness in the workflow", () => {
     expect(markup).toContain(OTHER);
   });
 
+  it("what makes Freshness move — a dirty worktree — does not move the evidence decisions", () => {
+    // R1 reviewed FULL and sent back; R2 is about the same head, so R1's evidence is offered.
+    const base = apply(reviewing(), [
+      { type: "captureResult", reviewedHead: FULL },
+      { type: "confirmVerdict", verdict: "FIX_REQUIRED", note: null, confirmedByHuman: true },
+      { type: "startNextRound", expectedHead: FULL },
+    ]);
+    const rows = (markup: string) => [...markup.matchAll(/data-evidence-status="([^"]+)"/g)].map((match) => match[1]);
+    for (const locale of LOCALES) {
+      const clean = rows(detail(locale, base, FIVE.ALIGNED.freshness, observation(FULL, false)));
+      const dirty = rows(detail(locale, base, FIVE.WORKTREE_DIRTY.freshness, observation(FULL, true)));
+      expect(clean.length).toBeGreaterThan(0);
+      expect(dirty).toEqual(clean);
+    }
+  });
+
   it("the Freshness status changes nothing else on the page, and writes nothing", () => {
     const session = deepFreeze(reviewing());
     const before = JSON.stringify(session);
@@ -395,6 +411,15 @@ describe("Phase 3 controls are labelled", () => {
       const submit = element(dialog, "risk-tier-submit");
       expect(submit).toMatch(/aria-describedby="[^"]+"/);
       expect(dialog).toContain(createTranslator(locale)("review.riskTier.submitDisabled"));
+    });
+
+    it(`the revalidation dialog cannot be saved until a canonical reason is chosen (${locale})`, () => {
+      const dialog = render(
+        locale,
+        createElement(RevalidationDialog, { session: reviewing(), matches: "R1", onSubmit: async () => null, onCancel: () => undefined }),
+      );
+      expect(element(dialog, "revalidation-submit")).toMatch(/\sdisabled=""/);
+      expect(dialog).not.toContain('data-testid="revalidation-HEAD_CHANGED"');
     });
 
     it(`a Risk Tier below what the subjects require is refused visibly before it is saved (${locale})`, () => {
