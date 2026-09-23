@@ -3,13 +3,13 @@
 - Run ID: LR-20260921-DVCC-004
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — Wave 4 complete (canonical prompts, exact-head readiness, Freshness surface, refusal reasons, docs)
+- Current state: RUNNING — Wave 5 verification recorded; product frozen at `85b0d11` (no Required Fix); clipboard-dependent running checks INCONCLUSIVE, re-run pending
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/review-workflow-v0.3
 - Base SHA: 4c1962b0c47321805554be2218bba996ff5de92f
-- Current head: the Wave 4 evidence record on top of `cc36a825d2ee6deb79f8dc485e5ef16259ae4b72` (Wave 4 product commit); see `git log`
-- Current wave: Wave 4 complete → Wave 5 (verification)
-- Last successful checkpoint: Wave 4 checkpoint (`cc36a82`)
+- Current head: the Wave 5 evidence record on top of `85b0d119461186cdd997cb8834222ec736deeef2` (product freeze); see `git log`
+- Current wave: Wave 5 recorded → Final Convergence (after the clipboard re-run)
+- Last successful checkpoint: Wave 5 checkpoint (`85b0d11`, product freeze)
 - Task Packet ID: LRP-20260921-DVCC-004
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260921-DVCC-004/TASK_PACKET_SNAPSHOT.md
@@ -47,19 +47,19 @@ one that looked silent in the stale copy: a second substantive review of the sam
 - [x] RW-08 evidence reuse implemented only as the canonical contract allows — per item, bound to the head, derived Freshness excluded
 - [x] RW-09 reused evidence shows source, head and age, with the reason it is offered
 - [x] RW-10 FIX_REQUIRED hands off to re-review without losing the round relation — both models, and the card that reads them
-- [~] RW-11 past request / result / checkpoint artifacts are never rewritten automatically — saved requests are never regenerated, handoffs name earlier files without touching them; running-app check in Wave 5
+- [x] RW-11 past request / result / checkpoint artifacts are never rewritten automatically — saved requests are never regenerated, handoffs name earlier files without touching them; running-app check in Wave 5
 - [x] RW-12 the review timeline reads per round, by grouping the existing events file
-- [~] RW-13 Phase 2 Freshness stays separate from Review State — own card, no callback but the Human's refresh, asserted by render tests and M-D4; running-app check in Wave 5
-- [~] RW-14 UNKNOWN is never filled in by guesswork — the domain reports `UNDECIDABLE` and `UNAVAILABLE` instead of guessing, and the surface shows them; Freshness UNKNOWN shows its reason and its kind (M-D3); running-app check in Wave 5
-- [~] RW-15 JA / EN parity — dictionaries, accessible structure and prompts checked in both languages; running-app check in Wave 5
+- [x] RW-13 Phase 2 Freshness stays separate from Review State — own card, no callback but the Human's refresh, asserted by render tests and M-D4; running-app check in Wave 5
+- [x] RW-14 UNKNOWN is never filled in by guesswork — the domain reports `UNDECIDABLE` and `UNAVAILABLE` instead of guessing, and the surface shows them; Freshness UNKNOWN shows its reason and its kind (M-D3); running-app check in Wave 5
+- [x] RW-15 JA / EN parity — dictionaries, accessible structure and prompts checked in both languages; running-app check in Wave 5
 - [x] RW-16 new workflow prompts are semantically equal in JA and EN — line-by-line parity of kind, recorded values, placeholders and imperative strength (M-D2)
-- [~] RW-17 existing Phase 1 / 2 / Localization runtime data still loads — asserted against the v1 fixture, with a mutation probe; the running app is verified in Wave 5
-- [ ] RW-18 no ChatGPT login, send or scrape
-- [ ] RW-19 no GitHub API automation
-- [ ] RW-20 no IDE bridge brought forward from Phase 4
-- [~] RW-21 a locale switch changes no workflow or domain data — asserted on rendered state and a frozen session; running-app check in Wave 5
-- [ ] RW-22 Security / Privacy / Permission / Data integrity / Irreversible-data safety PASS
-- [ ] RW-23 isolated-desktop workflow smoke PASS
+- [x] RW-17 existing Phase 1 / 2 / Localization runtime data still loads — asserted against the v1 fixture, with a mutation probe; the running app is verified in Wave 5
+- [x] RW-18 no ChatGPT login, send or scrape — diff scan since `4c1962b`: no fetch / socket / API code; Tauri commands unchanged
+- [x] RW-19 no GitHub API automation — same scan
+- [x] RW-20 no IDE bridge brought forward from Phase 4 — same scan
+- [x] RW-21 a locale switch changes no workflow or domain data — asserted on rendered state and a frozen session; running-app check in Wave 5
+- [x] RW-22 Security / Privacy / Permission / Data integrity / Irreversible-data safety PASS — see EVIDENCE Wave 5 hard checks
+- [~] RW-23 isolated-desktop workflow smoke — 80 PASS / 0 FAIL / 6 INCONCLUSIVE; the 6 are the clipboard-writing steps, not run because the operator's clipboard was unreadable
 - [x] RW-24 README and data contract reconciled to the fresh product state — with a static check that the contract names every round field, event type and stored code
 
 ## Completed
@@ -105,6 +105,13 @@ complete; what is not done yet is every check that needs the running application
 
 ## Checks
 
+Wave 5 (start `21a3098`, freeze `85b0d11`): `npm ci`, `npm run typecheck` PASS, `npm test` PASS
+(31 files, 855 tests), `npm run build` PASS; `cargo fmt --check` PASS, `cargo clippy --all-targets`
+PASS (0 warnings), `cargo check` PASS, `cargo test` PASS (68 passed, 2 ignored); Tauri `build
+--no-bundle` PASS (exe SHA-256 `9EDC3DA6A7D8928D063B3BDC1EDABE3C45A57AFB1C18F1BBEEDF2651BAE18913`).
+Workflow smoke 80 PASS / 0 FAIL / 6 INCONCLUSIVE; localization smoke 21 PASS / 0 FAIL / 2
+INCONCLUSIVE. Mutation MC1–MC9 all killed. No GitHub CI exists; these are local results.
+
 Wave 4: `npx tsc --noEmit` PASS, `npx vitest run` PASS (31 files, 852 tests), `npm run build` PASS,
 `git diff --check` clean. Five mutation probes (M-D1..M-D5), each CAUGHT and restored byte-identical.
 `src-tauri/` untouched, so the Rust suite was not re-run.
@@ -146,10 +153,11 @@ localization scanner's AST candidate. See QUALITY_DEBT.md.
 - Wave 5 running-app verification: nothing from Wave 3 or Wave 4 has been exercised in the running
   application yet. The Wave 4 surface is verified by rendering the components to markup in both
   languages (no browser, no WebView2, no screen reader).
-- RW-11, RW-13, RW-14, RW-15, RW-17, RW-21: asserted in tests; the running app is Wave 5.
+- RW-11, RW-13, RW-14, RW-15, RW-17, RW-21: verified in the running app in Wave 5 (see EVIDENCE).
 - The Turn 2 narrative parameter exists in the domain; the interface does not yet offer a field for
   it, so Turn 2 still asks the Human to fill items 7/8 in the copied text.
-- RW-23: the isolated-desktop running-app smoke has not run yet (Wave 5).
+- RW-23: in the final smoke run the six clipboard-writing steps (Copy Turn 1 / Copy Turn 2 and what depends on them) are INCONCLUSIVE: the operator's clipboard was unreadable for more than 30 minutes and was left untouched. An earlier run of the same release build with a text clipboard executed them and passed, with an earlier revision of the script; that is not counted as the final result. A re-run needs no source change.
+- Screen-reader behaviour was not tested (QD-007).
 - RW-24: complete (Wave 4, `cc36a82`).
 - No GitHub CI exists for this repository; every check is local.
 

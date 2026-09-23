@@ -63,11 +63,11 @@
 
 ## Wave 5 — verification
 
-- [ ] Full regression (frontend and Rust)
-- [ ] Synthetic workflow scenarios A–G
-- [ ] Isolated-desktop UI smoke (workflow, restart persistence, same-head suppression, re-review round trip)
-- [ ] Mutation probes for the contracts that matter
-- [ ] Checkpoint
+- [x] Full regression (frontend and Rust)
+- [~] Synthetic workflow scenarios A–G — all ran in the release build; the clipboard-writing steps are INCONCLUSIVE in the final run (operator clipboard unreadable)
+- [~] Isolated-desktop UI smoke — 80 PASS / 0 FAIL / 6 INCONCLUSIVE (final run); a re-run with a readable clipboard is pending
+- [x] Mutation probes for the contracts that matter (MC1–MC9, all killed)
+- [x] Checkpoint (`85b0d11`)
 
 ## Final
 

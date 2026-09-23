@@ -395,3 +395,115 @@ byte-identical by SHA-256):
 Tests: 852 (31 files). `npx tsc --noEmit` PASS, `npx vitest run` PASS, `npm run build` PASS,
 `git diff --check` clean. `src-tauri/` untouched, so the Rust suite was not re-run. Every file was
 staged by explicit path; the tree was clean before and after the commit.
+
+## Pre-Wave-5 summary reconciliation (2026-09-23)
+
+Commit `21a3098`, evidence only: the implementation-state paragraph still listed Wave 4 work as not
+done, and RW-24 was listed as unverified. Historical sections unchanged. No product code changed.
+
+## Wave 5 — full verification and running-app smoke (2026-09-23)
+
+Start head `21a3098` (clean, equal to `origin/feat/review-workflow-v0.3`; `origin/main` =
+`4c1962b0c47321805554be2218bba996ff5de92f`; Task Packet SHA-256 `22673c39…69db92` match; no foreign
+writer). Product freeze `85b0d11` — product source unchanged since `cc36a82`; Wave 5 added tests and
+scripts only.
+
+**Resource gate.** First reading 11.61 GiB available (< 12): no build and no WebView2 started, no
+process touched; the light regression ran. Re-read 12.89 GiB → 13.32 GiB before the release build and
+≥ 16 GiB before each smoke. No Human process was killed.
+
+**Regression.** `npm ci`; typecheck PASS; Vitest PASS 31 files / 855 tests; build PASS; `cargo fmt
+--check` PASS; `cargo clippy --all-targets` PASS, 0 warnings; `cargo check` PASS; `cargo test` 68
+passed, 2 ignored. Tauri `build --no-bundle` PASS, release exe SHA-256
+`9EDC3DA6A7D8928D063B3BDC1EDABE3C45A57AFB1C18F1BBEEDF2651BAE18913`. No installer, no release. No
+GitHub CI exists: these are local results.
+
+**Running-app smoke** — `scripts/verify-review-workflow-ui.ps1`, release build, hidden desktop,
+temporary `DVCC_DATA_DIR`, synthetic projects and reviews, two throw-away Git repositories under
+`%TEMP%`, spawned-PID-only cleanup, clipboard sequence guard. Final run: **80 PASS / 0 FAIL / 6
+INCONCLUSIVE**.
+
+- A direct pass: EXACT readiness, Risk Tier set by the Human, READY → REVIEWING, Fresh Assessment,
+  REVIEW_PASS by the Human, no follow-up / judgment, events and per-round timeline — PASS; the Turn 1
+  copy is INCONCLUSIVE in the final run.
+- B Required Fix / R2: FIX_REQUIRED with note, Required Fix handoff, next action, R2 with its relation
+  to R1 (previous head, previous response), R1 verdict and note intact, R1 artifacts byte-identical,
+  R2 reviewed to a pass — PASS; the two Turn 1 copies are INCONCLUSIVE.
+- C two-turn: Turn 2 and the Final Judgment refused with reasons before the assessment; the verdict
+  dialog offered after the assessment can be declined — PASS; Turn 1 and Turn 2 copies are
+  INCONCLUSIVE, so the Turn 2 → judgment → verdict part did not run in the final run.
+- D duplicate: SAME_HEAD shown and blocked, prior review named, nothing skipped or closed, no
+  override control, explanation alone refused, only the four same-head reasons offered, BASE_CHANGED
+  recorded in `round.revalidation` and in the `duplicate_continued` detail with the explanation kept;
+  UNDECIDABLE gives no permission and says why — PASS.
+- E evidence: E1 `UNAVAILABLE / RECHECK_REQUIRED (contract) / REUSABLE / RECHECK_REQUIRED (another
+  head)` and E2 environment-bound recheck, each row with status in words, source, head, time and
+  reason; a dirty worktree changes Freshness and not the decisions; the stored decisions equal the
+  event detail and the screen — PASS.
+- F Freshness: UNKNOWN before any refresh (no automatic refresh), never shown as ALIGNED; ALIGNED,
+  WORKTREE_DIRTY, HEAD_CHANGED, REVIEW_STALE each with reason, HEADs and `observedAt`; UNKNOWN with
+  the NO_LOCAL_ROOT cause; Review State, Resource State, recorded HEADs, Risk Tier and workflow
+  progress unchanged throughout; session files byte-identical — PASS.
+- G locale / restart: JA → EN → restart → JA with `document.lang`, workflow, tier, Freshness,
+  timeline, duplicate, evidence and refusal reason read in each language; state, progress and tier
+  equal before and after the restart; no file but `settings.json` changed — PASS.
+- Exact HEAD: EXACT / SHORT (with next step) / MISSING; observed full HEAD shown as a candidate only
+  and never written; a differing observed HEAD not adopted — PASS; the short-HEAD request text is
+  INCONCLUSIVE (copy).
+- v1 fixture: loads, no migration, no unreadable row, Phase 3 fields empty, loading rewrites nothing,
+  an old review can be worked and survives a restart — PASS.
+- Artifact immutability: every frozen past artifact byte-identical after new rounds, locale switches,
+  refreshes, evidence and tier operations; the malformed Phase 3 session untouched — PASS.
+- Accessibility (running DOM): refused controls `aria-disabled`, focusable, described by visible
+  text; dialog labelled by its `h2`; two fieldsets with legends; status regions; labelled evidence
+  list; Tab reaches the workflow controls, refused ones included — PASS. Screen reader not tested.
+- Negative paths: Turn 2 before assessment, judgment before Turn 2, verdict while the judgment is
+  awaited (the refused button opens nothing), tier below a declared Tier 2 subject (preview and save
+  refusal), explanation-only revalidation, UNDECIDABLE, missing binding, an external change to
+  `session.json` not overwritten, a malformed Phase 3 ordering shown unreadable and untouched — PASS.
+
+The 6 INCONCLUSIVE are the clipboard-writing steps: the operator's clipboard was unreadable
+(`Get-Clipboard` failed; no window held it open) for more than 30 minutes of read-only polling, so
+the guard did not press them. An earlier run of the same release build with a text clipboard
+(`dvcc-wf-d17df1ae`) executed all of them and they passed, including the full two-turn path, the
+judgment replacement with archive, and both request texts; that run used an earlier revision of the
+script and is recorded here as supporting evidence only, not as the final result.
+
+The localization smoke, re-run on the shared harness: 21 PASS / 0 FAIL / 2 INCONCLUSIVE (the two
+request copies, same clipboard). An earlier run on the refactored harness with a text clipboard
+passed 24/24.
+
+Script defects found and fixed during Wave 5 (none in the product): the `Git` helper recursing into
+itself (PowerShell names are case-insensitive), a PS 5.1 `.Count` on a single object, checks that did
+not expect the verdict dialog the app opens after a result, clicks sent while the app was busy
+loading a review, and helper output leaking into return values.
+
+**Turn 2 narrative UX.** The clipboard-edit method works: `followup-r<N>.md` is written with items 7/8
+as placeholders and the Human fills them in the copied text. Classified as a known limitation
+(QD-004): the narrative actually sent is not stored.
+
+**Mutation** (full Vitest per mutant, each restored byte-identical by SHA-256):
+
+| Mutant | Mutation | Result |
+|---|---|---|
+| MC1 | an explanation alone grants a same-head revalidation | KILLED |
+| MC2 | the verdict no longer waits for the Final Judgment | KILLED |
+| MC3 | Freshness shown as the Review State | KILLED — same source change as M-D4, re-run, not counted again |
+| MC4 | a short HEAD is EXACT by length (new site) | KILLED |
+| MC5 | a new round's request overwrites R1's | KILLED |
+| MC6 | the locale changes a recorded value in the prompt | KILLED |
+| MC7 | a dirty worktree changes the evidence decisions | SURVIVED the unit suite → test added → KILLED |
+| MC8 | Turn 2 may be re-sent after the Final Judgment | KILLED |
+| MC9 | the revalidation dialog saves without a canonical reason | SURVIVED the unit suite → test added → KILLED (the domain also refuses it) |
+
+Unique mutants 8 (+1 re-run), killed 8, equivalent 0, survivors 0.
+
+**Hard checks.** Security / permission: the Phase 3 diff since `4c1962b` adds no network, socket,
+GitHub or ChatGPT call; Tauri commands unchanged (`inspect_git_repository`, `open_data_dir`,
+`open_external_url`, `open_project_folder`); `src-tauri` changes only the review-file allow-list, with
+tests. Privacy: prompts carry no local root, notes or next action (tests); fixtures and smoke data are
+synthetic. Data integrity: protocol invariants refused in the running app; external change not
+overwritten; malformed data left untouched. Irreversible data: nothing deleted or renamed by the
+workflow; past artifacts byte-identical. Operator: `%APPDATA%\DevVault-Control` byte-identical before
+and after (4 entries, same hashes and timestamps), `DevVault-Control-dev` absent before and after, no
+DVCC process left, clipboard never touched while unreadable.
