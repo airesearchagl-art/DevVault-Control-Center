@@ -3,13 +3,13 @@
 - Run ID: LR-20260921-DVCC-004
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — Wave 5 complete; product frozen at `85b0d11` (no Required Fix); running-app smoke 97/0/0
+- Current state: STOPPED — RF-WF-01 repaired (`7ba7bb8`) and verified by tests and mutation; the targeted smoke's functional checks passed, but it raised safety finding SF-WF-01 (clipboard not preserved), so no new product freeze is declared
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/review-workflow-v0.3
 - Base SHA: 4c1962b0c47321805554be2218bba996ff5de92f
-- Current head: the Wave 5 evidence record on top of `85b0d119461186cdd997cb8834222ec736deeef2` (product freeze); see `git log`
-- Current wave: Wave 5 complete → Final Convergence
-- Last successful checkpoint: Wave 5 checkpoint (`85b0d11`, product freeze)
+- Current head: the RF-WF-01 evidence record on top of `e532539` (smoke update) and `7ba7bb84214d896fda90593c97d5bc73c540bf6d` (repair product head); see `git log`
+- Current wave: Focused Repair RF-WF-01 → STOP on SF-WF-01 (Human decision)
+- Last successful checkpoint: RF-WF-01 repair (`7ba7bb8`); previous product freeze `85b0d11` is superseded and no new freeze is declared yet
 - Task Packet ID: LRP-20260921-DVCC-004
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260921-DVCC-004/TASK_PACKET_SNAPSHOT.md
@@ -100,10 +100,17 @@ The protocol's order is now closed at both ends: the parser refuses a round that
 verdict waits for the Final Judgment once a Turn 2 has gone out, a follow-up cannot be rewritten once
 it has been answered, and the Tier 2 subjects survive a restart so the canonical rule keeps applying.
 
-Phase 1, Phase 2 and Localization behave exactly as before, and `schemaVersion` is still 1. Wave 4 is
-complete; what is not done yet is every check that needs the running application (Wave 5).
+Phase 1, Phase 2 and Localization behave exactly as before, and `schemaVersion` is still 1. Waves 4
+and 5 are complete. RF-WF-01: Copy Turn 2 opens a narrative dialog, and the text built from it is
+both what `followup-r<N>.md` holds and what is copied; cancelling writes nothing.
 
 ## Checks
+
+RF-WF-01 (start `0d9afd3`, repair `7ba7bb8`): typecheck PASS, Vitest PASS (31 files, 865 tests),
+build PASS, localization parity PASS (i18n suite); `src-tauri/` untouched, Rust not re-run. Release
+`build --no-bundle` PASS, exe SHA-256 `7A206E45846FB4CC829987D83FDD5AB11FF70242EC1585F266686F1CEC07EF71`.
+Mutation M-RF1, M-RF2a, M-RF2b, M-RF3 all killed. Targeted smoke 104 PASS / 1 FAIL (SF-WF-01) / 0
+INCONCLUSIVE.
 
 Wave 5 (start `21a3098`, freeze `85b0d11`): `npm ci`, `npm run typecheck` PASS, `npm test` PASS
 (31 files, 855 tests), `npm run build` PASS; `cargo fmt --check` PASS, `cargo clippy --all-targets`
@@ -150,12 +157,10 @@ localization scanner's AST candidate. See QUALITY_DEBT.md.
 
 ## Explicit unverified items
 
-- Wave 5 running-app verification: nothing from Wave 3 or Wave 4 has been exercised in the running
-  application yet. The Wave 4 surface is verified by rendering the components to markup in both
-  languages (no browser, no WebView2, no screen reader).
+- SF-WF-01 (open): the workflow smoke did not preserve the operator's clipboard in the RF-WF-01
+  run; mechanism unidentified. The smoke is not to be re-run on an operator machine until resolved.
 - RW-11, RW-13, RW-14, RW-15, RW-17, RW-21: verified in the running app in Wave 5 (see EVIDENCE).
-- The Turn 2 narrative parameter exists in the domain; the interface does not yet offer a field for
-  it, so Turn 2 still asks the Human to fill items 7/8 in the copied text.
+- RF-WF-01: independent verification pending.
 - RW-23: closed by the 2026-09-24 re-run with a readable clipboard (97/0/0); the earlier 6 INCONCLUSIVE are superseded, not upgraded.
 - Screen-reader behaviour was not tested (QD-007).
 - RW-24: complete (Wave 4, `cc36a82`).
@@ -198,12 +203,12 @@ Wave 4: new `src/domain/{headBinding,actionRefusal,freshnessCause}.ts`,
 
 ## Next action
 
-Wave 5: full regression (frontend and Rust), synthetic workflow scenarios, the isolated-desktop UI
-smoke of the workflow in both languages, restart persistence, same-head suppression and the
-re-review round trip.
+Human decision on SF-WF-01 (how the smoke's clipboard guard is to be fixed or replaced, and whether
+the RF-WF-01 smoke evidence stands). Then a new product freeze, Final Convergence, focused
+independent review, Draft PR.
 
 ## Remaining tasks
 
-- Wave 5 (regression, scenarios, isolated-desktop smoke).
+- Resolve SF-WF-01; declare the new product freeze.
 - Final Convergence, Independent Verification in a separate context, Draft PR.
 - Phase 4 stays blocked until Phase 3 merges.

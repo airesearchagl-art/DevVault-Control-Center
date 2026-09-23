@@ -69,6 +69,13 @@
 - [x] Mutation probes for the contracts that matter (MC1–MC9, all killed)
 - [x] Checkpoint (`85b0d11`)
 
+## Focused Repair RF-WF-01 (2026-09-24)
+
+- [x] Turn 2 narrative dialog; narrative passed explicitly to the builder; saved == copied
+- [x] Tests A–J, mutation M-RF1..M-RF3
+- [~] Targeted running smoke — functional checks PASS; clipboard preservation FAIL (SF-WF-01) → STOP
+- [ ] New product freeze (blocked on SF-WF-01)
+
 ## Final
 
 - [ ] Final Convergence (freeze, full diff review, required checks, hard checks, quality debt, unverified items)

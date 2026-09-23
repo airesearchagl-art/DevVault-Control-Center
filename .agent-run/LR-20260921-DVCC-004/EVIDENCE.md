@@ -527,3 +527,53 @@ SHA-256 re-read `9EDC3DA6A7D8928D063B3BDC1EDABE3C45A57AFB1C18F1BBEEDF2651BAE1891
   the runs is not attributed.
 
 This supersedes the 6 INCONCLUSIVE of the earlier final run; RW-23 closes on this run.
+
+## Focused Repair RF-WF-01 — Turn 2 narrative traceability (2026-09-24)
+
+Start `0d9afd3` (clean, equal to the remote branch). Previous product freeze `85b0d11`. Repair
+product head `7ba7bb8`; smoke update `e532539`. New product freeze: **not declared** (SF-WF-01).
+
+**Change.** `FollowupDialog` (three optional fields, notice that edits after copying are outside the
+record, cancel writes nothing) → `App.copyFollowup(session, narrative)` → `ReviewHub.saveFollowup(id,
+locale, narrative)` → `saveFollowupRequest(…, narrative)` → `buildResolutionFollowup(…, narrative)`,
+once; the returned text is written to `followup-r<N>.md` and the same string is copied. No schema
+field, no `schemaVersion` change, no migration, `src-tauri/` untouched. README and the data contract
+say so. QD-005, QD-006, QD-007 untouched.
+
+**Tests** (865 in 31 files, all PASS): narrative stored verbatim in JA and EN, returned text equal to
+the stored file, blank fields keep the placeholder, each dialog field reaches its own item, the
+narrative never reaches Turn 1, a restart reads the follow-up back with the narrative, after the Final
+Judgment neither a narrative nor a language can rewrite the follow-up or add an event, the dialog
+renders all three labelled fields with the notice and calls nothing by itself.
+
+**Mutation** (full Vitest per mutant, each restored byte-identical):
+
+| Mutant | Mutation | Result |
+|---|---|---|
+| M-RF1 | the service calls the builder with `{}` | KILLED |
+| M-RF2a | the dialog drops the trade-offs item | KILLED |
+| M-RF2b | the dialog stops rendering the decisions field | KILLED |
+| M-RF3 | English Turn 1 receives the background item | KILLED |
+
+**Targeted running smoke** (`dvcc-wf-27d6edf9`, release exe `7A206E45…EF71`, 12.96 GiB available, no
+Human process touched): **104 PASS / 1 FAIL / 0 INCONCLUSIVE**.
+
+- Cancel: no file, no `followupSavedAt`, no event, clipboard sequence unchanged — PASS.
+- JA: `followup-r1.md` holds every marker verbatim (Japanese text, a second line), the copied text
+  equals the file (991 characters each), the narrative is absent from `request-r1.md`, the file is
+  byte-identical after the Final Judgment — PASS.
+- EN: an English follow-up holds every marker verbatim (including `<tags> & "quotes"`), copied ==
+  stored (1568 each), byte-identical after the Final Judgment and refused for rewriting — PASS.
+- Everything else of the Wave 5 smoke — PASS. Operator data folder byte-identical; no DVCC process left.
+- **FAIL — the operator's clipboard was not as it was at the start** → SF-WF-01 (QUALITY_DEBT).
+  Start `kind=text length=1132 sha256=0ED53F13DBDB50C7 seq=2391`, end `kind=text length=1821
+  sha256=74FDD438E9FA6675 seq=2535`. No guard note. The end text's hash matches none of the run's
+  DVCC artifacts; the content was not read. Sequence unchanged over 60 s of idle observation after
+  the run.
+
+**Earlier clipboard observation** (Wave 5 re-run, 2026-09-24): the operator clipboard read 2367
+characters before the workflow run and 935 before and after the localization run. Attribution
+unknown, no guard warning, content intentionally not inspected; the later localization run preserved
+its starting clipboard. Not classified as a product defect.
+
+Stopped here as instructed: preservation failed a second time in the workflow smoke.
