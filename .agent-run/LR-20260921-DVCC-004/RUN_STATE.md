@@ -100,9 +100,8 @@ The protocol's order is now closed at both ends: the parser refuses a round that
 verdict waits for the Final Judgment once a Turn 2 has gone out, a follow-up cannot be rewritten once
 it has been answered, and the Tier 2 subjects survive a restart so the canonical rule keeps applying.
 
-Phase 1, Phase 2 and Localization behave exactly as before, and `schemaVersion` is still 1. What is
-not done yet: the prompt rework and the Freshness surface of Wave 4, and every check that needs the
-running application (Wave 5).
+Phase 1, Phase 2 and Localization behave exactly as before, and `schemaVersion` is still 1. Wave 4 is
+complete; what is not done yet is every check that needs the running application (Wave 5).
 
 ## Checks
 
@@ -150,7 +149,8 @@ localization scanner's AST candidate. See QUALITY_DEBT.md.
 - RW-11, RW-13, RW-14, RW-15, RW-17, RW-21: asserted in tests; the running app is Wave 5.
 - The Turn 2 narrative parameter exists in the domain; the interface does not yet offer a field for
   it, so Turn 2 still asks the Human to fill items 7/8 in the copied text.
-- RW-23, RW-24: the isolated-desktop smoke and the documentation reconciliation have not run.
+- RW-23: the isolated-desktop running-app smoke has not run yet (Wave 5).
+- RW-24: complete (Wave 4, `cc36a82`).
 - No GitHub CI exists for this repository; every check is local.
 
 ## Known failures
