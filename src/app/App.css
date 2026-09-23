@@ -84,13 +84,28 @@ button {
   white-space: nowrap;
 }
 
-button:hover:not(:disabled) {
+button:hover:not(:disabled):not([aria-disabled="true"]) {
   border-color: var(--accent);
 }
 
-button:disabled {
+button:disabled,
+button[aria-disabled="true"] {
   opacity: 0.45;
   cursor: default;
+}
+
+/* A refused operation stays focusable and says why, next to the control (Phase 3). */
+.action-with-reason {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 32em;
+}
+
+.disabled-reason {
+  font-size: 0.85em;
+  color: var(--muted, inherit);
+  white-space: normal;
 }
 
 button.primary {

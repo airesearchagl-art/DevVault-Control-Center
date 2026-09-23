@@ -10,7 +10,10 @@ expected / reviewed HEAD, ChatGPT thread, review state, resource state, previous
 action — so a ChatGPT review surface can be closed and any review resumed later, even after
 restarting the app.
 
-> Status: Phase 1 (Review Hub v0.1) merged; Phase 2 (Evidence / Freshness v0.2) under review. Not released; no installer is published.
+> Status: Phase 1 (Review Hub v0.1), Phase 2 (Evidence / Freshness v0.2) and the Localization
+> Foundation (v0.2.1) are merged. Phase 3 (Review Workflow v0.3) is under development on
+> `feat/review-workflow-v0.3`; no pull request has been opened for it yet, and it has not been
+> verified in the running app. Not released; no installer is published.
 
 ## What it does
 
@@ -37,6 +40,38 @@ restarting the app.
   HEAD is no longer current) / `WORKTREE_DIRTY` / `UNKNOWN`, always with one sentence saying why.
   Freshness never changes a review state, and the observed facts are never written to disk: they are
   read again only when you press **Refresh Git state** (one project) or **Refresh Git (all)**.
+- **Review Workflow** (Phase 3, under development — not yet verified in the running app) — the
+  canonical Fresh-Context review protocol, walked by the Human:
+  - *Turn 1 / Turn 2.* **Copy review prompt** writes Turn 1 (`Stage 1 — Review Target`: Artifact,
+    Contract and Material Facts; `Stage 2 — Fresh Assessment`). It never carries the implementation
+    narrative (background, decisions taken, implementation history); known risks, failing tests,
+    security and destructive-operation constraints, scope exclusions, unresolved issues and Human
+    Gate items are asked for from the start. Once the Fresh Assessment is captured, **Copy Turn 2**
+    writes `followup-r<N>.md` (`Stage 3 — Resolution Context`, `Stage 4 — Final Judgment`), and the
+    reviewer's answer is saved as `judgment-r<N>.md` beside — never over — `result-r<N>.md`. A
+    verdict waits for the Final Judgment once Turn 2 has gone out.
+  - *Exact HEAD.* A Turn 1 request is an exact-head request only when the full 40-character HEAD is
+    recorded; otherwise the request says in its own text that it is not one, and the workflow shows
+    why and how to record the full HEAD. A locally observed HEAD is shown as a candidate only; DVCC
+    never records it for you and never completes a short HEAD.
+  - *Risk Tier* 0 / 1 / 2, chosen by the Human per round, with the Tier 2 subjects (security,
+    privacy, credentials, production, migration) that make a lower tier refused. It is its own axis,
+    independent of Review State, Resource State and Freshness.
+  - *Same-head duplicate suppression.* A head that already has a substantive review is flagged, with
+    the canonical rule and the two paths that need no permission; a second review goes ahead only
+    once the Human records one of the canonical invalidation reasons. Nothing is skipped or closed
+    automatically, and "cannot tell" is shown as undecidable, never as "no duplicate".
+  - *Evidence reuse*, decided per item and bound to the head: reusable, needs re-checking or
+    unavailable, each with its source, head, capture time and reason. DVCC reuses nothing by itself.
+  - *Handoff.* A `FIX_REQUIRED` / `BLOCKED` verdict hands on the reviewed head, the response it was
+    confirmed against, the Human's note and the next action; a new round shows its relation to the
+    previous one. Earlier artifacts are shown by name and never rewritten.
+  - *Timeline.* The events of a review read per round.
+  - *Freshness in the workflow.* The Phase 2 Freshness is shown in the workflow with its reason, the
+    recorded and observed HEADs and when they were observed; an `UNKNOWN` says which kind of unknown
+    it is. It stays a derived fact: it never changes the Review State, never starts a round and never
+    decides whether evidence is reusable.
+  - Every refused workflow control says why, and what to do next, in both languages.
 - **Japanese and English** — the interface is Japanese by default; the language selector in the top
   bar switches to English and back at once, without touching any review, project or Git state. The
   choice is remembered in `settings.json` in the data folder and restored at the next start. Both
@@ -81,7 +116,10 @@ restarting the app.
   repository runs as part of the observation, exactly as it would for any Git command you run
   yourself. DVCC switches the file-system monitor off for its own calls and removes the `GIT_*`
   variables that could redirect Git elsewhere, but it does not otherwise change your configuration.
-- Out of scope for v0.2: GitHub API and any network Git operation, Claude Code / Codex session
+- Phase 3 adds no network access and no automation: the review surface stays Human-operated, the
+  prompts contain no local root, project notes or next action, and nothing the Human typed is
+  translated.
+- Out of scope for v0.2 / v0.3: GitHub API and any network Git operation, Claude Code / Codex session
   discovery, terminal embedding, Notion / Vault sync, SQLite, REST / MCP, authentication,
   installers and releases.
 
@@ -102,8 +140,8 @@ as it is.
 
 The format is plain JSON / Markdown so you (or an IDE agent) can inspect it directly. Writes are
 atomic with a `.bak` of the previous valid JSON and are refused (nothing overwritten) if another
-program changed the file since DVCC loaded it; the regenerated notes `request-r<N>.md` and
-`checkpoint.md` are latest-wins unless DVCC read them in this run. Unreadable files are never
+program changed the file since DVCC loaded it; the regenerated notes `request-r<N>.md`,
+`followup-r<N>.md` (until its Final Judgment is in) and `checkpoint.md` are latest-wins unless DVCC read them in this run. Unreadable files are never
 overwritten and are only renamed aside (`.corrupt-<ms>`), never deleted; a missing file with a
 valid backup is restored from the backup. Access errors (permissions, locks) are reported without offering to discard anything.
 See [docs/data-contract-v1.md](docs/data-contract-v1.md).
@@ -191,5 +229,8 @@ rendering directories for text written straight into a component.
 
 Not translated, on purpose: stored enum values and schema fields, file names, error codes, the
 messages Git and the storage layer report (shown as detail inside a localized sentence), event notes
-already written to `events.jsonl`, and anything the Human typed. A saved `request-r<N>.md` keeps the
-language it was written in; only a new request follows the current language.
+already written to `events.jsonl`, and anything the Human typed. A saved `request-r<N>.md` or
+`followup-r<N>.md` keeps the language (and the heading layout) it was written in; only a newly
+generated one follows the current language and the current prompt contract. The two prompt
+languages are checked for semantic parity — the same facts in the same order, the same recorded
+values and the same imperative strength — by `src/domain/promptContract.test.ts`.

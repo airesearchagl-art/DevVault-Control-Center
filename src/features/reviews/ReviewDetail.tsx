@@ -11,6 +11,7 @@ import type { Project } from "../../domain/project";
 import { currentRound, latestCapturedRound, type ReviewSession, type RoundEvidenceDecision } from "../../domain/review";
 import { RESOURCE_STATES, type ResourceState } from "../../domain/states";
 import { timelineByRound } from "../../domain/timeline";
+import { actionRefusal } from "../../domain/actionRefusal";
 import { canApply, type ReviewAction } from "../../domain/transitions";
 import { pullRequestUrl } from "../../domain/validation";
 import {
@@ -20,6 +21,7 @@ import {
   RESOURCE_HINT_KEYS,
   RESOURCE_STATE_KEYS,
   REVIEW_STATE_KEYS,
+  refusalText,
   translate,
   VERDICT_KEYS,
   type Translator,
@@ -27,6 +29,7 @@ import {
 import { useT } from "../../i18n/context";
 import type { ReviewArtifacts } from "../../services/persistence";
 import { ReviewEvidence } from "./ReviewEvidence";
+import { ReviewFreshness } from "./ReviewFreshness";
 import { ReviewHandoff } from "./ReviewHandoff";
 import { ReviewWorkflow } from "./ReviewWorkflow";
 
@@ -128,6 +131,10 @@ export function ReviewDetail({
   const shownResult = resultText === null ? null : showFullResult ? { text: resultText, truncated: false } : excerpt(resultText, 20);
   // The last events, grouped by the round they belong to, newest round first (RW-12).
   const recentRounds = artifacts ? timelineByRound(artifacts.events.slice(-12)).reverse() : [];
+  const verdictRefusal = actionRefusal(session, "confirmVerdict");
+  const requestRefusal = actionRefusal(session, "recordRequestSaved");
+  const requestReason =
+    requestRefusal !== null ? refusalText(t, requestRefusal) : project === null ? t("workflow.next.projectMissing") : null;
   const UNRECORDED = unrecorded(t);
   const UNOBSERVED = unobserved(t);
 
@@ -177,8 +184,8 @@ export function ReviewDetail({
                 <ActionButton
                   label={t("detail.actions.confirmVerdict")}
                   testId="action-verdict"
-                  enabled={can("confirmVerdict") && round.resultCapturedAt !== null}
-                  title={round.resultCapturedAt === null ? t("detail.actions.confirmVerdictDisabled") : undefined}
+                  enabled={!busy && verdictRefusal === null}
+                  disabledReason={verdictRefusal === null ? null : refusalText(t, verdictRefusal)}
                   onClick={() => onOpenDialog("verdict")}
                 />
                 <ActionButton label={t("detail.actions.cancelReview")} testId="action-cancel-review" enabled={can("cancelReview")} onClick={() => onAction({ type: "cancelReview" })} />
@@ -233,6 +240,7 @@ export function ReviewDetail({
           label={t("detail.actions.copyPrompt", { round: session.reviewRound })}
           testId="action-copy-prompt"
           enabled={can("recordRequestSaved") && project !== null}
+          disabledReason={requestReason}
           onClick={onCopyPrompt}
         />
       </section>
@@ -423,10 +431,14 @@ export function ReviewDetail({
         round={round}
         busy={busy}
         projectMissing={project === null}
+        observation={observation}
+        onEditReview={() => onOpenDialog("editReview")}
         onCopyFollowup={onCopyFollowup}
         onCaptureJudgment={() => onOpenDialog("judgment")}
         onSetRiskTier={() => onOpenDialog("riskTier")}
       />
+
+      <ReviewFreshness freshness={freshness} observation={observation} busy={busy} onRefreshGit={onRefreshGit} />
 
       <ReviewEvidence
         session={session}
@@ -495,7 +507,7 @@ export function ReviewDetail({
           recentRounds.map((group) => (
             <div key={group.round} className="event-round" data-testid={`detail-events-r${group.round}`}>
               <h4 className="subhead">{t("detail.events.round", { round: group.round })}</h4>
-              <ol className="event-list">
+              <ol className="event-list" aria-label={t("detail.events.roundAriaLabel", { round: group.round })}>
                 {group.events.map((event, index) => (
                   <li key={`${event.ts}-${index}`} data-event-type={event.type}>
                     <span className="mono small">{formatTimestamp(t, event.ts)}</span> <strong>{t(EVENT_TYPE_KEYS[event.type])}</strong>

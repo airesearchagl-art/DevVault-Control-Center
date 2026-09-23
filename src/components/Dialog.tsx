@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import type { Message } from "../domain/message";
 import { translate } from "../i18n";
 import { useT } from "../i18n/context";
@@ -13,6 +13,7 @@ interface DialogProps {
 
 export function Dialog({ title, onClose, children, testId, wide = false }: DialogProps) {
   const t = useT();
+  const titleId = useId();
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -23,9 +24,9 @@ export function Dialog({ title, onClose, children, testId, wide = false }: Dialo
 
   return (
     <div className="dialog-backdrop" role="presentation">
-      <div className={`dialog${wide ? " dialog-wide" : ""}`} role="dialog" aria-modal="true" aria-label={title} data-testid={testId}>
+      <div className={`dialog${wide ? " dialog-wide" : ""}`} role="dialog" aria-modal="true" aria-labelledby={titleId} data-testid={testId}>
         <header className="dialog-header">
-          <h2>{title}</h2>
+          <h2 id={titleId}>{title}</h2>
           <button type="button" className="icon-button" onClick={onClose} aria-label={t("dialog.closeAriaLabel")}>
             ×
           </button>

@@ -1,4 +1,5 @@
 import { ActionButton } from "../../components/ActionButton";
+import { actionRefusal } from "../../domain/actionRefusal";
 import { detectDuplicate, type PriorReview } from "../../domain/duplicate";
 import { offeredEvidence } from "../../domain/evidenceOffer";
 import { assessEvidence } from "../../domain/evidenceReuse";
@@ -12,6 +13,7 @@ import {
   EVIDENCE_STATUS_KEYS,
   formatTimestamp,
   INVALIDATION_REASON_KEYS,
+  refusalText,
 } from "../../i18n";
 import { useT } from "../../i18n/context";
 
@@ -67,6 +69,22 @@ export function ReviewEvidence({
     status: assessments[index].status,
     reason: assessments[index].reason,
   }));
+  const revalidationRefusal = actionRefusal(session, "recordRevalidation");
+  const revalidationReason =
+    permission === "NO_DUPLICATE"
+      ? t("workflow.revalidation.notNeeded")
+      : permission === "UNDECIDABLE"
+        ? t("workflow.revalidation.undecidable")
+        : revalidationRefusal !== null
+          ? refusalText(t, revalidationRefusal)
+          : null;
+  const evidenceRefusal = actionRefusal(session, "recordEvidenceDecisions");
+  const evidenceReason =
+    decisions.length === 0
+      ? t("workflow.evidence.nothingToRecord")
+      : evidenceRefusal !== null
+        ? refusalText(t, evidenceRefusal)
+        : null;
   const matches = duplicate.matches.map((match) => t("detail.value.round", { round: match.round })).join(t("review.verdict.separator"));
 
   return (
@@ -80,21 +98,27 @@ export function ReviewEvidence({
 
       {permission === "NO_DUPLICATE" && <p className="muted" data-testid="duplicate-none">{t("workflow.duplicate.none")}</p>}
       {permission === "UNDECIDABLE" && (
-        <p className="warning-text" data-testid="duplicate-undecidable">
-          {t("workflow.duplicate.undecidable")}
-        </p>
+        <div role="status" data-testid="duplicate-undecidable">
+          <p className="warning-text">{t("workflow.duplicate.undecidable")}</p>
+          <p className="hint">{t("workflow.revalidation.undecidable")}</p>
+        </div>
       )}
       {(permission === "DUPLICATE_BLOCKED" || permission === "REVALIDATION_ALLOWED") && (
-        <>
+        <div role="status" data-testid="duplicate-warning" data-state={permission}>
           <p className="warning-text" data-testid="duplicate-detected">
             {t("workflow.duplicate.detected", { reviews: matches })}
           </p>
           <p className="hint">{t("workflow.duplicate.rule")}</p>
-          <ul className="event-list">
+          <ul className="event-list" aria-label={t("workflow.duplicate.title")}>
             <li>{t("workflow.duplicate.pathOpen")}</li>
             <li>{t("workflow.duplicate.pathReuse")}</li>
           </ul>
-        </>
+          {permission === "DUPLICATE_BLOCKED" && (
+            <p className="hint" data-testid="duplicate-next">
+              {t("workflow.duplicate.next")}
+            </p>
+          )}
+        </div>
       )}
       {recorded !== null && (
         <p className="hint" data-testid="duplicate-recorded">
@@ -109,7 +133,7 @@ export function ReviewEvidence({
           {t("workflow.evidence.none")}
         </p>
       ) : (
-        <ol className="event-list" data-testid="evidence-items">
+        <ol className="event-list" aria-label={t("workflow.evidence.listAriaLabel")} data-testid="evidence-items">
           {decisions.map((decision) => (
             <li key={decision.id} data-evidence-status={decision.status}>
               <strong>{t(EVIDENCE_STATUS_KEYS[decision.status])}</strong>{" "}
@@ -141,12 +165,14 @@ export function ReviewEvidence({
           testId="action-record-revalidation"
           onClick={onRecordRevalidation}
           enabled={!busy && permission === "DUPLICATE_BLOCKED" && canApply(session, "recordRevalidation")}
+          disabledReason={revalidationReason}
         />
         <ActionButton
           label={t("workflow.actions.recordEvidence")}
           testId="action-record-evidence"
           onClick={() => onRecordEvidence(decisions)}
           enabled={!busy && decisions.length > 0 && canApply(session, "recordEvidenceDecisions")}
+          disabledReason={evidenceReason}
         />
       </div>
     </section>

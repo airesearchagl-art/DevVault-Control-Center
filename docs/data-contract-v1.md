@@ -7,6 +7,11 @@ this contract; synthetic examples live in `fixtures/v1/`. Shared numeric limits 
 
 Runtime data is **never** stored in this repository.
 
+Phase 3 (Review Workflow v0.3, under development) extends this contract **additively**: new
+optional round fields, new per-round files and new event types. `schemaVersion` stays `1`, nothing is
+renamed, rewritten or deleted, and every file written by Phase 1 or 2 keeps loading with the same
+meaning. See [Review workflow (Phase 3)](#review-workflow-phase-3).
+
 ## Location
 
 | Build / mode | Data root |
@@ -53,10 +58,15 @@ also stops a release build from starting (and vice versa), even though their dat
       session.json                  current state of the review (authoritative)
       session.json.bak
       checkpoint.md                 latest resume note written on Suspend
-      request-r<N>.md               latest review request of round N (one file per round)
-      result-r<N>.md                latest Human-pasted review result of round N (canonical)
+      request-r<N>.md               latest review request (Turn 1) of round N (one file per round)
+      result-r<N>.md                latest Human-pasted review result of round N (canonical);
+                                    in Phase 3 terms, the Fresh Assessment
       result-r<N>-previous-<ms>[-<n>].md
                                     an earlier result of round N that was replaced (kept)
+      followup-r<N>.md              Phase 3: Turn 2 (Resolution Follow-up) of round N, if one was sent
+      judgment-r<N>.md              Phase 3: the Final Judgment, the reviewer's answer to Turn 2
+      judgment-r<N>-previous-<ms>[-<n>].md
+                                    Phase 3: an earlier Final Judgment of round N that was replaced (kept)
       events.jsonl                  append-only history
 ```
 
@@ -88,8 +98,8 @@ is written only when the Human changes the language.
   a file belonging to a later version of DVCC survives being opened by this one.
 - The language is a display choice only. Every stored value — review state, resource state,
   freshness, event type, schema field, file name, error code — stays language-neutral, and text the
-  Human typed is never translated. A saved `request-r<N>.md` keeps the language it was written in;
-  changing the language never rewrites an artifact.
+  Human typed is never translated. A saved `request-r<N>.md` or `followup-r<N>.md` keeps the language
+  it was written in; changing the language never rewrites an artifact.
 - Writes of this file are serialized, so switching the language repeatedly cannot leave a different
   language on disk than the one on screen. A write that fails takes the interface back to the
   language that is still stored and says so.
@@ -172,6 +182,17 @@ is written only when the Human changes the language.
 | `rounds[].resultCapturedAt` | capture time of the canonical latest `result-r<N>.md` |
 | `rounds[].verdict` | `null` / `FIX_REQUIRED` / `REVIEW_PASS` / `BLOCKED`, set only by explicit Human confirmation |
 | `rounds[].archivedResults` | earlier results of the round kept when a result was replaced, oldest first (`result-r<N>-previous-<ms>.md`, `<ms>` = capture time of the replaced result; `-<n>` (1–999) is appended when that name is already taken, e.g. by an archive an interrupted capture left unrecorded). Missing in files written before this field existed → `[]`. |
+| `rounds[].followupSavedAt` | Phase 3, optional. `null` or ISO-8601 UTC: when Turn 2 (`followup-r<N>.md`) was written. Absent → `null` ("no Turn 2 happened"). |
+| `rounds[].judgmentCapturedAt` | Phase 3, optional. `null` or ISO-8601 UTC: capture time of the canonical latest `judgment-r<N>.md`. Absent → `null`. |
+| `rounds[].archivedJudgments` | Phase 3, optional. Earlier Final Judgments of the round kept when one was replaced, oldest first (`judgment-r<N>-previous-<ms>[-<n>].md`, same naming rule as `archivedResults`). Absent → `[]`. |
+| `rounds[].riskTier` | Phase 3, optional. `null` / `TIER_0` / `TIER_1` / `TIER_2`, set only by the Human. Absent → `null`. Independent of Review State, Resource State and Freshness. |
+| `rounds[].riskTierSubjects` | Phase 3, optional. The Tier 2 subjects the Human declared: any of `SECURITY`, `PRIVACY`, `CREDENTIAL`, `PRODUCTION`, `MIGRATION`. Absent → `[]`. Persisted so the rule "these subjects require Tier 2" still applies after a restart. |
+| `rounds[].revalidation` | Phase 3, optional. `null`, or `{ "reason", "priorReviews": [{ "reviewId", "round" }], "explanation" }`: why a second substantive review of an already-reviewed head was allowed. `reason` is one of `HEAD_CHANGED`, `BASE_CHANGED`, `TARGET_BLOB_CHANGED`, `RELEVANT_CONTRACT_CHANGED`, `EXECUTION_ENVIRONMENT_CHANGED` (for a same-head duplicate only the last four are accepted by the workflow); `explanation` is the Human's text, `null` when none, never parsed. Absent → `null`. |
+| `rounds[].evidenceDecisions` | Phase 3, optional. `[{ "id", "source", "boundHead", "capturedAt", "status", "reason" }]`: what the Human recorded about each piece of evidence offered for reuse. `source`: `GIT_OBSERVATION` / `HUMAN_RECORDED_HEAD` / `INDEPENDENT_REVIEW_RESULT` / `PRIOR_RUN_EVIDENCE`; `status`: `REUSABLE` / `RECHECK_REQUIRED` / `UNAVAILABLE`; `reason`: `SHA_BOUND` / `NO_BINDING` / `HEAD_NOT_COMPARABLE` / `BOUND_TO_ANOTHER_HEAD` / `BASE_CHANGED` / `TARGET_BLOB_CHANGED` / `RELEVANT_CONTRACT_CHANGED` / `EXECUTION_ENVIRONMENT_CHANGED`; `boundHead` and `capturedAt` may be `null`. Absent → `[]`. |
+
+A round written by this version always serializes its Phase 3 fields (at their empty values when
+nothing happened), so "written before Phase 3" and "written by Phase 3 with nothing to say" read back
+as the same round.
 
 ### Review State transitions
 
@@ -192,6 +213,14 @@ The independent, Human-approved form of this table used by the tests is
 | Resume | SUSPENDED, or any non-CLOSED state whose resource is not HOT | `suspendedFrom` (if suspended) | resource → HOT |
 | Close | any except CLOSED | CLOSED | Human confirmation |
 | Set resource | any | unchanged | resource only |
+| Copy Turn 2 *(Phase 3)* | REVIEWING | unchanged | Fresh Assessment captured, no Final Judgment yet, verdict not confirmed → writes `followup-r<N>.md`, sets `followupSavedAt` |
+| Capture Final Judgment *(Phase 3)* | REVIEWING | unchanged | Turn 2 sent, verdict not confirmed → `judgment-r<N>.md`; replacing needs Human confirmation and archives the previous text first |
+| Set Risk Tier *(Phase 3)* | NEW, READY_FOR_REVIEW, REVIEWING, BLOCKED | unchanged | Human confirmation; refused if the declared Tier 2 subjects require a higher tier, or once the round's verdict is confirmed |
+| Record invalidation reason *(Phase 3)* | NEW, READY_FOR_REVIEW, REVIEWING, BLOCKED | unchanged | one per round, before the verdict; needs at least one prior review and a reason valid for a same-head duplicate |
+| Record evidence decisions *(Phase 3)* | NEW, READY_FOR_REVIEW, REVIEWING, BLOCKED | unchanged | before the verdict; each item id at most once |
+
+Phase 3 also tightens **Confirm verdict**: once a round has sent a Turn 2, the verdict is refused
+until its Final Judgment is captured (`action.verdict.judgmentRequired`).
 
 ## events.jsonl
 
@@ -204,6 +233,22 @@ One JSON object per line, appended after `session.json` is written:
 Types: `review_created`, `review_ready`, `review_started`, `review_cancelled`, `request_saved`,
 `result_captured`, `verdict_confirmed`, `blocked`, `suspended`, `resumed`, `closed`,
 `resource_changed`, `next_action_updated`, `metadata_updated`.
+
+Phase 3 adds `followup_saved`, `judgment_captured`, `risk_tier_set`, `duplicate_continued` and
+`evidence_reused`. An older build does not know these types and skips such lines with its visible
+"skipped lines" count, as it does for any unreadable line.
+
+Phase 3 events may carry an optional, **closed, typed** `detail`, one shape per type; `detail.kind`
+must equal `type`, and any other shape makes the line unreadable (skipped, never rewritten):
+
+| `type` | `detail` |
+|---|---|
+| `duplicate_continued` | `{ "kind", "invalidationReason", "priorReviews": [{ "reviewId", "round" }] }` |
+| `evidence_reused` | `{ "kind", "items": [ … ] }`, each item shaped like a `rounds[].evidenceDecisions` entry |
+| `risk_tier_set` | `{ "kind", "riskTier", "subjects": [ … ] }`, the subjects being Tier 2 subjects |
+
+`note` stays Human-readable text that nothing reads back; a fact the workflow acts on is stored in
+`detail` and in the round record, never recovered from a sentence.
 
 `session.json` is authoritative. If appending an event fails, the state change is kept and a
 warning is shown. Broken or unknown lines are skipped with a warning; the file is never rewritten.
@@ -224,7 +269,8 @@ warning is shown. Broken or unknown lines are skipped with a warning; the file i
   | `projects.json`, `session.json` | always (loaded at start; a new review requires an absent `session.json`) |
   | `result-r<N>.md` | always: absent for a first capture, otherwise exactly the text that was just archived |
   | `result-r<N>-previous-<ms>[-<n>].md` | always: absent, or exactly the replaced text when an earlier attempt already wrote it |
-  | `request-r<N>.md`, `checkpoint.md` | only when DVCC read or wrote that file in this run; otherwise the latest save replaces it (both are regenerated notes, not history) |
+  | `request-r<N>.md`, `followup-r<N>.md`, `checkpoint.md` | only when DVCC read or wrote that file in this run; otherwise the latest save replaces it (regenerated notes, not history). A `followup-r<N>.md` is never written again once its Final Judgment is captured |
+  | `judgment-r<N>.md`, `judgment-r<N>-previous-<ms>[-<n>].md` | Phase 3: the same rules as `result-r<N>.md` and its archives |
   | `events.jsonl` | append only |
 
 - A save that writes other files before `session.json` (Suspend → `checkpoint.md`, Copy review
@@ -323,6 +369,58 @@ difference — it yields `UNKNOWN`.
 Freshness is informational: it is a third axis next to Review State and Resource State, and a refresh
 never changes a review state, a resource state or a recorded HEAD. `REVIEW_PASS` + `REVIEW_STALE` and
 `FIX_REQUIRED` + `ALIGNED` are both normal combinations.
+
+## Review workflow (Phase 3)
+
+Status: under development on `feat/review-workflow-v0.3`; not yet verified in the running app.
+
+### Protocol invariants
+
+The canonical Fresh-Context protocol runs Turn 1 → Fresh Assessment → (optional) Turn 2 → (optional)
+Final Judgment → Human verdict. It is enforced in two places:
+
+| Invariant | Enforced by |
+|---|---|
+| A Turn 2 requires the Fresh Assessment: `followupSavedAt` needs `resultCapturedAt` | the domain guard (`action.followup.assessmentRequired`) and the schema parser (`schema.round.followupWithoutAssessment`) |
+| A Final Judgment requires a Turn 2: `judgmentCapturedAt` needs `followupSavedAt` | the domain guard (`action.judgment.followupRequired`) and the schema parser (`schema.round.judgmentWithoutFollowup`) |
+| A verdict after a Turn 2 requires the Final Judgment | the domain guard (`action.verdict.judgmentRequired`) |
+| A Turn 2 cannot be rewritten once its Final Judgment is captured, or once the verdict is confirmed | the domain guard (`action.followup.judgmentCaptured`, `action.followup.verdictConfirmed`) |
+| The Final Judgment never replaces the Fresh Assessment | separate files: `result-r<N>.md` and `judgment-r<N>.md` |
+| An old v1 round remains valid | every Phase 3 key is optional; a round without them means "no Turn 2, no tier, no duplicate continued, no evidence carried over" |
+
+A file that claims a later step without the earlier one is refused by the parser and left untouched,
+exactly like any other unreadable `session.json`.
+
+### Prompt documents
+
+`request-r<N>.md` (Turn 1) and `followup-r<N>.md` (Turn 2) are written in the interface language at
+the moment they are generated and are never regenerated afterwards: a request written by an earlier
+version keeps its headings, and only a newly generated one follows the current structure.
+
+- Turn 1: `Stage 1 — Review Target` with `Artifact`, `Contract` and `Material Facts`, then
+  `Stage 2 — Fresh Assessment`. It never contains the implementation narrative (background and
+  purpose, decisions already taken, implementation history, design reasons, self-assessment), nor
+  the local root, project notes or next action. It always asks for the Material Facts (known risks,
+  limitations, failing tests, security and destructive-operation constraints, scope exclusions,
+  unresolved issues, Human Gate items). A re-review states the previous round, its reviewed HEAD,
+  its Human-confirmed verdict, its response file, the evidence decisions and the recorded
+  invalidation reason code, as recorded.
+- Exact HEAD: a request is an exact-head request only when the round's `expectedHead` is the full
+  40-character SHA. Otherwise it still generates, but states in its own text that it is not an
+  exact-head review. A 7–39-character value remains valid in the schema; nothing completes it, and a
+  locally observed HEAD is never written into `expectedHead`.
+- Turn 2: `Stage 3 — Resolution Context` (the implementation narrative, including the Human's note
+  on the previous verdict and their explanation of a revalidation) and `Stage 4 — Final Judgment`,
+  which asks for a separate answer that leaves the Fresh Assessment untouched and names the added
+  Evidence behind every changed finding.
+
+### Freshness stays a derived fact
+
+The workflow shows Phase 2 Freshness with its reason, the recorded and observed HEADs and the
+observation time, but Freshness is never written anywhere and never decides anything: it does not
+change a Review State (`REVIEW_STALE` does not mean `FIX_REQUIRED`), does not start a round
+(`HEAD_CHANGED`), does not make evidence reusable (`ALIGNED`), and `UNKNOWN` is never read as
+`ALIGNED`. The stored `evidenceDecisions` are the workflow's own record of reuse.
 
 ## Launcher boundary
 

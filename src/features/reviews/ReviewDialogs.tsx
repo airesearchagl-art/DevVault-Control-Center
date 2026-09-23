@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { excerpt } from "../../app/format";
 import { Dialog, Field, FormError } from "../../components/Dialog";
-import type { Message } from "../../domain/message";
+import { message, type Message } from "../../domain/message";
 import { currentRound, type ReviewSession } from "../../domain/review";
 import { SAME_HEAD_INVALIDATION_REASONS, type InvalidationReason } from "../../domain/revalidation";
-import { RISK_TIERS, TIER_2_SUBJECTS, type RiskTier, type Tier2Subject } from "../../domain/riskTier";
+import { RISK_TIERS, TIER_2_SUBJECTS, validateTierChoice, type RiskTier, type Tier2Subject } from "../../domain/riskTier";
 import { normalizeHead } from "../../domain/validation";
 import {
   formatParts,
@@ -14,6 +14,7 @@ import {
   REVIEW_STATE_KEYS,
   RISK_TIER_KEYS,
   TIER_2_SUBJECT_KEYS,
+  translate,
   VERDICT_KEYS,
   type TranslationKey,
 } from "../../i18n";
@@ -410,6 +411,17 @@ export function RiskTierDialog({
   const { error, setError, saving, run } = useSubmit();
   const t = useT();
 
+  const submitHintId = useId();
+  // The same rule the domain applies on save, read ahead so the refusal is visible before it happens.
+  const preview = tier === null ? null : validateTierChoice({ chosen: tier, subjects });
+  const refusal =
+    preview === null || preview.ok
+      ? null
+      : preview.refusal === "NOT_A_TIER"
+        ? message("action.riskTier.unknown")
+        : message("action.riskTier.belowRequired", { required: preview.required });
+  const submitDisabled = saving || tier === null || !acknowledged;
+
   const toggle = (subject: Tier2Subject) => {
     setError(null);
     setSubjects((current) => (current.includes(subject) ? current.filter((s) => s !== subject) : [...current, subject]));
@@ -458,11 +470,21 @@ export function RiskTierDialog({
         ))}
       </fieldset>
       <p className="hint">{t("review.riskTier.rule")}</p>
+      {refusal !== null && (
+        <p className="warning-text" role="status" data-testid="risk-tier-refusal-preview">
+          {t("review.riskTier.preview")} {translate(t, refusal)}
+        </p>
+      )}
       <label className="checkbox">
         <input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} data-testid="risk-tier-ack" />
         {t("review.riskTier.acknowledgement")}
       </label>
       <FormError message={error} />
+      {submitDisabled && !saving && (
+        <p className="hint" id={submitHintId} data-testid="risk-tier-submit-reason">
+          {t("review.riskTier.submitDisabled")}
+        </p>
+      )}
       <div className="dialog-actions">
         <button type="button" onClick={onCancel}>
           {t("dialog.cancel")}
@@ -470,7 +492,8 @@ export function RiskTierDialog({
         <button
           type="button"
           className="primary"
-          disabled={saving || tier === null || !acknowledged}
+          disabled={submitDisabled}
+          aria-describedby={submitDisabled && !saving ? submitHintId : undefined}
           onClick={() => run(() => onSubmit(tier as RiskTier, subjects))}
           data-testid="risk-tier-submit"
         >

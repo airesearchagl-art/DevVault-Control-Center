@@ -7,6 +7,8 @@ import type { RiskTier, Tier2Subject } from "../domain/riskTier";
 import type { Message } from "../domain/message";
 import type { Freshness } from "../domain/freshness";
 import type { GitStatus } from "../domain/git";
+import type { UnknownCause } from "../domain/freshnessCause";
+import type { HeadBinding, ObservedHeadRelation } from "../domain/headBinding";
 import type { ResourceState, ReviewState, Verdict } from "../domain/states";
 import { en } from "./en";
 import { ja } from "./ja";
@@ -176,6 +178,54 @@ export const FRESHNESS_KEYS: Record<Freshness, TranslationKey> = {
   WORKTREE_DIRTY: "freshness.worktreeDirty",
   UNKNOWN: "freshness.unknown",
 };
+
+export const UNKNOWN_CAUSE_KEYS: Record<UnknownCause, TranslationKey> = {
+  NOT_OBSERVED: "workflow.freshness.cause.notObserved",
+  GIT_UNAVAILABLE: "workflow.freshness.cause.gitUnavailable",
+  NO_LOCAL_ROOT: "workflow.freshness.cause.noLocalRoot",
+  HEAD_NOT_COMPARABLE: "workflow.freshness.cause.headNotComparable",
+  OBSERVATION_FAILED: "workflow.freshness.cause.observationFailed",
+  NOTHING_RECORDED: "workflow.freshness.cause.nothingRecorded",
+};
+
+export const HEAD_BINDING_KEYS: Record<HeadBinding, TranslationKey> = {
+  EXACT: "workflow.head.binding.exact",
+  SHORT: "workflow.head.binding.short",
+  MISSING: "workflow.head.binding.missing",
+};
+
+export const OBSERVED_HEAD_KEYS: Record<ObservedHeadRelation, TranslationKey> = {
+  MATCHES: "workflow.head.observed.matches",
+  DIFFERS: "workflow.head.observed.differs",
+  UNDECIDABLE: "workflow.head.observed.undecidable",
+  UNAVAILABLE: "workflow.head.observed.unavailable",
+};
+
+/**
+ * What the Human can do about a refusal, keyed by the refusal the domain returned. A disabled
+ * control shows the domain's own reason first and then this next step, so it never just goes grey.
+ */
+export const NEXT_STEP_OF_REFUSAL: Partial<Record<TranslationKey, TranslationKey>> = {
+  "action.notAllowed": "workflow.next.notInState",
+  "action.followup.assessmentRequired": "workflow.next.captureAssessment",
+  "action.followup.judgmentCaptured": "workflow.next.confirmVerdict",
+  "action.followup.verdictConfirmed": "workflow.next.roundDecided",
+  "action.judgment.assessmentRequired": "workflow.next.captureAssessment",
+  "action.judgment.followupRequired": "workflow.next.sendFollowup",
+  "action.judgment.verdictConfirmed": "workflow.next.roundDecided",
+  "action.verdict.resultRequired": "workflow.next.captureAssessment",
+  "action.verdict.judgmentRequired": "workflow.next.captureJudgment",
+  "action.riskTier.verdictConfirmed": "workflow.next.roundDecided",
+  "action.revalidation.verdictConfirmed": "workflow.next.roundDecided",
+  "action.evidence.verdictConfirmed": "workflow.next.roundDecided",
+};
+
+/** A refusal as the Human reads it: the domain's reason, then what to do next when there is one. */
+export function refusalText(t: Translator, refusal: Message): string {
+  const next = NEXT_STEP_OF_REFUSAL[refusal.key];
+  const reason = translate(t, refusal);
+  return next === undefined ? reason : `${reason} ${t(next)}`;
+}
 
 export const GIT_STATUS_KEYS: Record<GitStatus, TranslationKey> = {
   OK: "git.status.ok",
