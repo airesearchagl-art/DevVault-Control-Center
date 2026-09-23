@@ -43,12 +43,12 @@
 
 ## Wave 3 — Review Workflow UI (JA and EN together)
 
-- [ ] Turn 1 / Turn 2 surface: where the Human is, what to copy, what was handed over, what came back, what is next
-- [ ] Duplicate warning with the canonical reason and the allowed paths
-- [ ] Evidence reuse UX (source, head, time, reason visible)
-- [ ] Required Fix / re-review handoff surface
-- [ ] Round-readable timeline
-- [ ] Checkpoint
+- [x] Turn 1 / Turn 2 surface: where the Human is, what to copy, what was handed over, what came back, what is next (3c)
+- [x] Duplicate warning with the canonical reason and the allowed paths (3d)
+- [x] Evidence reuse UX (source, head, time, reason visible) (3d)
+- [x] Required Fix / re-review handoff surface (3d)
+- [x] Round-readable timeline (3c)
+- [x] Checkpoint (`3175a7c`, recorded in `ef9c3d7`)
 
 ## Wave 4 — prompts, formatting, documentation
 

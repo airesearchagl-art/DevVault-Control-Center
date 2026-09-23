@@ -7,7 +7,7 @@
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/review-workflow-v0.3
 - Base SHA: 4c1962b0c47321805554be2218bba996ff5de92f
-- Current head: `3175a7c` (Wave 3d checkpoint commit)
+- Current head: `ef9c3d756b4a697ad75347a5605bf6c7911291c2` (Wave 3c/3d evidence record; last product commit `3175a7c`)
 - Current wave: Wave 3 complete (3a domain actions, 3b service layer, 3c protocol UI, 3d duplicates and evidence) → Wave 4
 - Last successful checkpoint: Wave 3d checkpoint (`3175a7c`)
 - Task Packet ID: LRP-20260921-DVCC-004
@@ -50,7 +50,7 @@ one that looked silent in the stale copy: a second substantive review of the sam
 - [ ] RW-11 past request / result / checkpoint artifacts are never rewritten automatically
 - [x] RW-12 the review timeline reads per round, by grouping the existing events file
 - [ ] RW-13 Phase 2 Freshness stays separate from Review State
-- [~] RW-14 UNKNOWN is never filled in by guesswork — the domain reports `UNDECIDABLE` and `UNAVAILABLE` instead of guessing; the surface follows in Wave 3
+- [~] RW-14 UNKNOWN is never filled in by guesswork — the domain reports `UNDECIDABLE` and `UNAVAILABLE` instead of guessing, and the Wave 3 surface shows them; the Freshness UNKNOWN surface follows in Wave 4
 - [ ] RW-15 JA / EN parity
 - [ ] RW-16 new workflow prompts are semantically equal in JA and EN
 - [~] RW-17 existing Phase 1 / 2 / Localization runtime data still loads — asserted against the v1 fixture, with a mutation probe; the running app is verified in Wave 5
@@ -134,10 +134,14 @@ localization scanner's AST candidate. See QUALITY_DEBT.md.
 
 ## Explicit unverified items
 
-- RW-03, RW-04, RW-14: the domain and its persistence are in place and tested; the surface that shows
-  them to the Human is Wave 3, so the criteria are not closed yet.
-- RW-07 to RW-13, RW-15 to RW-17, RW-21: not reachable from the interface until Wave 3–4, and not
-  verified in the running app until Wave 5.
+- Wave 3 is complete: the workflow surface, Risk Tier, the duplicate warning, evidence reuse, the
+  Required Fix / re-review handoff cards and the per-round timeline are reachable in JA and EN
+  (27 files, 745 tests PASS; mutation M-B1..M-B3 and M-C1..M-C4 CAUGHT; no foreign writer since
+  Wave 3 began). None of it has been exercised in the running app yet — that is Wave 5.
+- RW-14: the surface for UNKNOWN / stale Freshness is Wave 4.
+- RW-11, RW-13, RW-15, RW-16, RW-21: Wave 4 work (prompt rework, Freshness surface, parity), then
+  Wave 5 running-app verification.
+- RW-17: asserted against the v1 fixture; the running app is verified in Wave 5.
 - RW-23, RW-24: the isolated-desktop smoke and the documentation reconciliation have not run.
 - No GitHub CI exists for this repository; every check is local.
 
