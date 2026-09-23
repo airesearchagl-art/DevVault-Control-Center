@@ -52,12 +52,14 @@
 
 ## Wave 4 — prompts, formatting, documentation
 
-- [ ] Turn 1 / Turn 2 / re-review request generation in JA and EN with equal semantic strength
-- [ ] Accessibility text in both languages
-- [ ] Stale / unknown handling in the workflow surface (no invented facts)
-- [ ] Phase 2 Freshness integrated without coupling it to Review State
-- [ ] README status reconciled to fresh facts; `docs/data-contract-v1.md` updated
-- [ ] Checkpoint
+- [x] Turn 1 / Turn 2 / re-review request generation in JA and EN with equal semantic strength
+- [x] Exact-head readiness (full / short / missing HEAD, observation as candidate only)
+- [x] Accessibility text in both languages
+- [x] Stale / unknown handling in the workflow surface (no invented facts)
+- [x] Phase 2 Freshness integrated without coupling it to Review State
+- [x] README status reconciled to fresh facts; `docs/data-contract-v1.md` updated
+- [x] Mutation probes M-D1..M-D5
+- [x] Checkpoint (`cc36a82`)
 
 ## Wave 5 — verification
 

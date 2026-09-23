@@ -3,13 +3,13 @@
 - Run ID: LR-20260921-DVCC-004
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — Wave 3 complete (the workflow is reachable in both languages)
+- Current state: RUNNING — Wave 4 complete (canonical prompts, exact-head readiness, Freshness surface, refusal reasons, docs)
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/review-workflow-v0.3
 - Base SHA: 4c1962b0c47321805554be2218bba996ff5de92f
-- Current head: `ef9c3d756b4a697ad75347a5605bf6c7911291c2` (Wave 3c/3d evidence record; last product commit `3175a7c`)
-- Current wave: Wave 3 complete (3a domain actions, 3b service layer, 3c protocol UI, 3d duplicates and evidence) → Wave 4
-- Last successful checkpoint: Wave 3d checkpoint (`3175a7c`)
+- Current head: the Wave 4 evidence record on top of `cc36a825d2ee6deb79f8dc485e5ef16259ae4b72` (Wave 4 product commit); see `git log`
+- Current wave: Wave 4 complete → Wave 5 (verification)
+- Last successful checkpoint: Wave 4 checkpoint (`cc36a82`)
 - Task Packet ID: LRP-20260921-DVCC-004
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260921-DVCC-004/TASK_PACKET_SNAPSHOT.md
@@ -47,20 +47,20 @@ one that looked silent in the stale copy: a second substantive review of the sam
 - [x] RW-08 evidence reuse implemented only as the canonical contract allows — per item, bound to the head, derived Freshness excluded
 - [x] RW-09 reused evidence shows source, head and age, with the reason it is offered
 - [x] RW-10 FIX_REQUIRED hands off to re-review without losing the round relation — both models, and the card that reads them
-- [ ] RW-11 past request / result / checkpoint artifacts are never rewritten automatically
+- [~] RW-11 past request / result / checkpoint artifacts are never rewritten automatically — saved requests are never regenerated, handoffs name earlier files without touching them; running-app check in Wave 5
 - [x] RW-12 the review timeline reads per round, by grouping the existing events file
-- [ ] RW-13 Phase 2 Freshness stays separate from Review State
-- [~] RW-14 UNKNOWN is never filled in by guesswork — the domain reports `UNDECIDABLE` and `UNAVAILABLE` instead of guessing, and the Wave 3 surface shows them; the Freshness UNKNOWN surface follows in Wave 4
-- [ ] RW-15 JA / EN parity
-- [ ] RW-16 new workflow prompts are semantically equal in JA and EN
+- [~] RW-13 Phase 2 Freshness stays separate from Review State — own card, no callback but the Human's refresh, asserted by render tests and M-D4; running-app check in Wave 5
+- [~] RW-14 UNKNOWN is never filled in by guesswork — the domain reports `UNDECIDABLE` and `UNAVAILABLE` instead of guessing, and the surface shows them; Freshness UNKNOWN shows its reason and its kind (M-D3); running-app check in Wave 5
+- [~] RW-15 JA / EN parity — dictionaries, accessible structure and prompts checked in both languages; running-app check in Wave 5
+- [x] RW-16 new workflow prompts are semantically equal in JA and EN — line-by-line parity of kind, recorded values, placeholders and imperative strength (M-D2)
 - [~] RW-17 existing Phase 1 / 2 / Localization runtime data still loads — asserted against the v1 fixture, with a mutation probe; the running app is verified in Wave 5
 - [ ] RW-18 no ChatGPT login, send or scrape
 - [ ] RW-19 no GitHub API automation
 - [ ] RW-20 no IDE bridge brought forward from Phase 4
-- [ ] RW-21 a locale switch changes no workflow or domain data
+- [~] RW-21 a locale switch changes no workflow or domain data — asserted on rendered state and a frozen session; running-app check in Wave 5
 - [ ] RW-22 Security / Privacy / Permission / Data integrity / Irreversible-data safety PASS
 - [ ] RW-23 isolated-desktop workflow smoke PASS
-- [ ] RW-24 README and data contract reconciled to the fresh product state
+- [x] RW-24 README and data contract reconciled to the fresh product state — with a static check that the contract names every round field, event type and stored code
 
 ## Completed
 
@@ -71,6 +71,12 @@ one that looked silent in the stale copy: a second substantive review of the sam
   data model and workflow design decided (RW-004..RW-012).
 
 ## Current implementation state
+
+Wave 4: Turn 1 now follows the canonical Stage 1 / Stage 2 headings and Turn 2 the Stage 3 / Stage 4
+ones, with the anchoring boundary tested in both languages; a request says whether it is bound to an
+exact 40-character HEAD; Freshness is shown in the workflow with its reason and the kind of UNKNOWN,
+and changes nothing else; every refused workflow control shows the domain's refusal and the next step;
+README and the data contract describe Phase 3 as it is.
 
 The workflow is reachable. A Review workflow card shows where the Human stands in the two-turn
 protocol and carries its three operations; a Duplicates and evidence card shows a same-head
@@ -99,6 +105,10 @@ not done yet: the prompt rework and the Freshness surface of Wave 4, and every c
 running application (Wave 5).
 
 ## Checks
+
+Wave 4: `npx tsc --noEmit` PASS, `npx vitest run` PASS (31 files, 852 tests), `npm run build` PASS,
+`git diff --check` clean. Five mutation probes (M-D1..M-D5), each CAUGHT and restored byte-identical.
+`src-tauri/` untouched, so the Rust suite was not re-run.
 
 Wave 3d: `npx tsc --noEmit` PASS, `npx vitest run` PASS (27 files, 745 tests), `npx vite build` PASS.
 Four mutation probes (M-C1..M-C4), each CAUGHT and restored byte-identical.
@@ -134,14 +144,12 @@ localization scanner's AST candidate. See QUALITY_DEBT.md.
 
 ## Explicit unverified items
 
-- Wave 3 is complete: the workflow surface, Risk Tier, the duplicate warning, evidence reuse, the
-  Required Fix / re-review handoff cards and the per-round timeline are reachable in JA and EN
-  (27 files, 745 tests PASS; mutation M-B1..M-B3 and M-C1..M-C4 CAUGHT; no foreign writer since
-  Wave 3 began). None of it has been exercised in the running app yet — that is Wave 5.
-- RW-14: the surface for UNKNOWN / stale Freshness is Wave 4.
-- RW-11, RW-13, RW-15, RW-16, RW-21: Wave 4 work (prompt rework, Freshness surface, parity), then
-  Wave 5 running-app verification.
-- RW-17: asserted against the v1 fixture; the running app is verified in Wave 5.
+- Wave 5 running-app verification: nothing from Wave 3 or Wave 4 has been exercised in the running
+  application yet. The Wave 4 surface is verified by rendering the components to markup in both
+  languages (no browser, no WebView2, no screen reader).
+- RW-11, RW-13, RW-14, RW-15, RW-17, RW-21: asserted in tests; the running app is Wave 5.
+- The Turn 2 narrative parameter exists in the domain; the interface does not yet offer a field for
+  it, so Turn 2 still asks the Human to fill items 7/8 in the copied text.
 - RW-23, RW-24: the isolated-desktop smoke and the documentation reconciliation have not run.
 - No GitHub CI exists for this repository; every check is local.
 
@@ -173,15 +181,21 @@ Changed: `src/domain/{review,schema,events,transitions}.ts`, `src/services/{stor
 `src/test/memoryStorage.ts`, `src/i18n/{index,ja,en}.ts`, `src-tauri/src/storage.rs`,
 `src/domain/transitionContract.test.ts`. Plus `.agent-run/LR-20260921-DVCC-004/*`.
 
+Wave 4: new `src/domain/{headBinding,actionRefusal,freshnessCause}.ts`,
+`src/features/reviews/ReviewFreshness.tsx`, tests `src/domain/{promptContract,headBinding}.test.ts`,
+`src/features/reviews/workflowSurface.test.ts`, `src/test/docsContract.test.ts`; changed
+`src/domain/prompt{,.test}.ts`, `src/features/reviews/{ReviewDetail,ReviewDialogs,ReviewEvidence,ReviewWorkflow}.tsx`,
+`src/components/{ActionButton,Dialog}.tsx`, `src/app/App.css`, `src/i18n/{ja,en,index}.ts`,
+`README.md`, `docs/data-contract-v1.md`.
+
 ## Next action
 
-Wave 4: the prompt rework against the canonical Stage 1 headings, the accessibility pass, the
-stale / unknown surface, the Freshness integration that never writes a Review State, and the README
-and data-contract updates.
+Wave 5: full regression (frontend and Rust), synthetic workflow scenarios, the isolated-desktop UI
+smoke of the workflow in both languages, restart persistence, same-head suppression and the
+re-review round trip.
 
 ## Remaining tasks
 
-- Wave 4 (prompts, accessibility, Freshness integration, README and
-  data-contract updates), Wave 5 (regression, scenarios, isolated-desktop smoke).
+- Wave 5 (regression, scenarios, isolated-desktop smoke).
 - Final Convergence, Independent Verification in a separate context, Draft PR.
 - Phase 4 stays blocked until Phase 3 merges.

@@ -329,3 +329,69 @@ byte-identical):
 Tests: 745 (27 files). `npx tsc --noEmit` PASS, `npx vitest run` PASS, `npx vite build` PASS.
 `src-tauri/` untouched in both waves, so the Rust suite was not re-run. The working tree was clean
 before and after every commit, and every file was staged by explicit path.
+
+## Wave 3 summary reconciliation (2026-09-23)
+
+Commit `22167c5`, evidence only. `RUN_STATE.md` still named `3175a7c` as the current head and listed
+Wave 3 items as future work; `TASK_QUEUE.md` had Wave 3 unchecked. Both current summaries now say
+Wave 3 is complete at `ef9c3d7` (745 tests / 27 files, M-B1..3 and M-C1..4 CAUGHT, no foreign
+writer). The Wave 3a–3d sections above were not changed. No product code changed.
+
+## Wave 4 — prompts, readiness, Freshness, accessibility, documentation (2026-09-23)
+
+Commit `cc36a82`. Start head `22167c5` (clean, single writer, no foreign change seen).
+
+**Turn 1** is the canonical `Stage 1 — Review Target` (`Artifact` / `Contract` / `Material Facts`)
+then `Stage 2 — Fresh Assessment` (RW-029). The Contract states the Risk Tier and its Tier 2 subjects;
+Material Facts always ask for known risks and limitations, failing tests, security and
+destructive-operation constraints, scope exclusions, unresolved issues and Human Gate items. A
+re-review adds the previous round, its reviewed HEAD, its Human-confirmed verdict, its response file,
+the evidence decisions with the re-check subset, and the invalidation reason code (RW-030). Items 7/8,
+the verdict note and the revalidation explanation never reach Turn 1.
+
+**Turn 2** is `Stage 3 — Resolution Context` then `Stage 4 — Final Judgment`: the narrative (verbatim
+when supplied, placeholders otherwise, plus the Human's words about the previous round), and five
+Final Judgment requirements — leave the Fresh Assessment untouched, restate in the same format, name
+the added Evidence behind every change, confirm what still stands, state the Reviewed HEAD.
+
+**Exact-head readiness** (RW-031): `EXACT` only for a full 40-character recorded HEAD; `SHORT` and
+`MISSING` still generate but say `NOT EXACT` in the request. The observed HEAD is shown as a
+candidate (`MATCHES` / `DIFFERS` / `UNDECIDABLE` / `UNAVAILABLE`) and never written.
+
+**Freshness** (RW-034): its own card in the workflow, with the reason, expected / reviewed / observed
+HEAD, `observedAt` and, for `UNKNOWN`, one of six causes; a Human-only **Refresh Git state**. A render
+test passes all five statuses with the same session and observation and finds every other state on
+the page unchanged, no callback invoked and the frozen session untouched.
+
+**Refusals and accessibility** (RW-033, RW-035): Turn 2, Final Judgment, Confirm verdict, Set Risk
+Tier, Copy review prompt, the invalidation reason and the evidence record show the domain's refusal
+plus the next step, stay focusable (`aria-disabled`) and are described by that text; the duplicate
+warning and the undecidable case are status regions with a next step; the Risk Tier dialog previews a
+below-required choice before saving; dialogs are labelled by their visible title; button groups,
+evidence and timeline lists carry labels; statuses are words, not only colours. JA and EN expose the
+same accessible structure (asserted).
+
+**Documentation**: README status (Phase 1 / 2 / Localization merged, Phase 3 under development with
+no PR, not released, no installer) and Phase 3 features, marked as not yet verified in the running
+app; `docs/data-contract-v1.md` gains the seven round fields, the three files, the five event types
+with their typed `detail`, the protocol invariants and the prompt / Freshness rules, `schemaVersion`
+1 unchanged. `src/test/docsContract.test.ts` ties both to the code.
+
+**Localization**: 42 keys added in both dictionaries, 4 superseded keys removed; parity, blanks,
+duplicates, placeholders and the hard-coded-text scan pass; the two new labels that were identical in
+both languages were translated.
+
+Mutation probes, applied to the working source, run, then restored (all restores verified
+byte-identical by SHA-256):
+
+| Probe | Mutation | Result |
+|---|---|---|
+| M-D1 | item 7 (背景・目的) added to Turn 1 | CAUGHT (anchoring test and JA/EN parity) |
+| M-D2 | the JA Turn 2 "restate the final judgment" requirement removed | CAUGHT (parity and Stage 4 tests) |
+| M-D3 | UNKNOWN rendered as ALIGNED | CAUGHT (Freshness surface tests, JA and EN) |
+| M-D4 | REVIEW_STALE shown as a FIX_REQUIRED Review State | CAUGHT (separation test) |
+| M-D5 | a short HEAD accepted as an exact binding | CAUGHT (readiness and prompt tests) |
+
+Tests: 852 (31 files). `npx tsc --noEmit` PASS, `npx vitest run` PASS, `npm run build` PASS,
+`git diff --check` clean. `src-tauri/` untouched, so the Rust suite was not re-run. Every file was
+staged by explicit path; the tree was clean before and after the commit.
