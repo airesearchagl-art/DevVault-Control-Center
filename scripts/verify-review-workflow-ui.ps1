@@ -87,6 +87,19 @@ function Wait-NoDialog {
   Start-Sleep -Milliseconds 300   # the save that closed it has been written by now
   return $closed
 }
+function Cancel-Dialog { Invoke-Cdp 'document.querySelector("[role=dialog] .dialog-actions button").click(); true' | Out-Null; Wait-NoDialog | Out-Null }
+function Same-Text([string] $a, [string] $b) {
+  # The clipboard may carry CRLF; the file is LF. Only line endings and the final newline are normalised.
+  if ($null -eq $a -or $null -eq $b) { return $false }
+  return (($a -replace "`r`n", "`n").TrimEnd("`n") -eq ($b -replace "`r`n", "`n").TrimEnd("`n"))
+}
+function Write-Turn2([string] $background, [string] $decisions, [string] $tradeoffs) {
+  Click "action-copy-followup"
+  if (-not (Wait-Exists "followup-dialog" 5)) { throw "the Turn 2 dialog did not open" }
+  SetVal "followup-background" $background
+  SetVal "followup-decisions" $decisions
+  SetVal "followup-tradeoffs" $tradeoffs
+}
 function Close-Dialog { Invoke-Cdp 'document.querySelector("[role=dialog] .icon-button").click(); true' | Out-Null; Wait-NoDialog | Out-Null }
 
 function Select-Review([string] $id) {
@@ -176,7 +189,7 @@ function New-Repo([string] $dir) {
 
 $T0 = "2026-09-20T10:00:00.000Z"
 function Head([string] $pair) { return ($pair * 20) }
-$HA = Head "a1"; $HB = Head "b1"; $HB2 = Head "b2"; $HC = Head "c1"; $HD = Head "d1"; $HX = Head "e1"
+$HR = Head "f7"; $HA = Head "a1"; $HB = Head "b1"; $HB2 = Head "b2"; $HC = Head "c1"; $HD = Head "d1"; $HX = Head "e1"
 
 function Project([string] $id, [string] $name, $localRoot) {
   return [ordered]@{
@@ -219,7 +232,7 @@ Write-Json (Join-Path $dataDir "projects.json") ([ordered]@{
   projects = @(
     (Project "project-a" "Smoke A" $null), (Project "project-b" "Smoke B" $null), (Project "project-c" "Smoke C" $null),
     (Project "project-d" "Smoke D" $null), (Project "project-e1" "Smoke E1" $repoE), (Project "project-e2" "Smoke E2" $repoE),
-    (Project "project-f" "Smoke F" $repoF), (Project "project-x" "Smoke X" $repoE), (Project "project-m" "Smoke M" $null)
+    (Project "project-f" "Smoke F" $repoF), (Project "project-x" "Smoke X" $repoE), (Project "project-m" "Smoke M" $null), (Project "project-r" "Smoke R" $null)
   )
 })
 Seed-Session "rv-20260923-scna01" "project-a" "NEW" @((Round 1 $HA))
@@ -234,6 +247,7 @@ Seed-Session "rv-20260923-scne02" "project-e2" "READY_FOR_REVIEW" @((Round 1 $HE
 $f1 = Round 1 $HF2; $f1["requestSavedAt"] = $T0; $f1["riskTier"] = "TIER_1"; $f1["riskTierSubjects"] = @()
 Seed-Session "rv-20260923-scnf01" "project-f" "REVIEWING" @($f1)
 Seed-Session "rv-20260923-scnf02" "project-f" "REVIEWING" @((Round 1 $HF2 $HF2 $T0))
+Seed-Session "rv-20260923-scnr01" "project-r" "REVIEWING" @((Round 1 $HR))
 Seed-Session "rv-20260923-scnx01" "project-x" "NEW" @((Round 1 $HEshort))
 Seed-Session "rv-20260923-scnx02" "project-x" "NEW" @((Round 1 $null))
 # A round that claims a Turn 2 without a Fresh Assessment: the parser must refuse it and leave it alone.
@@ -241,7 +255,8 @@ $bad = Round 1 $null; $bad["followupSavedAt"] = $T0
 Seed-Session "rv-20260923-scnm01" "project-m" "REVIEWING" @($bad)
 $malformedHash = Hash (RevFile "rv-20260923-scnm01" "session.json")
 
-Write-Output ("clipboard at start: " + (Get-ClipboardKind))
+$clipboardAtStart = Get-ClipboardFingerprint
+Write-Output ("clipboard at start: " + $clipboardAtStart)
 [DvccDesktop]::Create($desktopName)
 
 $frozen = [ordered]@{}   # past artifacts that nothing after this point may change
@@ -368,11 +383,26 @@ try {
     $r = Reason "action-capture-judgment"
     Check "C: judgment still refused until Turn 2 has gone out" ($r.ariaDisabled -eq "true" -and $r.text) $r.text
 
-    if (Invoke-GuardedCopy "action-copy-followup" "C: Turn 2 copy") {
+    # RF-WF-01: cancelling the Turn 2 dialog writes nothing and copies nothing.
+    $sequenceBefore = [DvccDesktop]::GetClipboardSequenceNumber()
+    $eventsBefore = @(Read-Events $id).Count
+    Write-Turn2 "CANCELLED-MARKER" "CANCELLED-MARKER" "CANCELLED-MARKER"
+    Cancel-Dialog
+    $s = Read-Session $id
+    Check "C (RF-WF-01): cancelling the Turn 2 dialog writes and copies nothing" ((-not (Test-Path (RevFile $id "followup-r1.md"))) -and $null -eq $s.rounds[0].followupSavedAt -and @(Read-Events $id).Count -eq $eventsBefore -and [DvccDesktop]::GetClipboardSequenceNumber() -eq $sequenceBefore -and (State "workflow-fresh-state") -eq "ASSESSMENT_RECEIVED") "no file, no followupSavedAt, no event, clipboard untouched"
+
+    Write-Turn2 "JA-BACKGROUND-7f3a 背景: 移行の安全性を優先する" "JA-DECISIONS-7f3a 方針: schemaVersion は 1 のまま`n二行目の経緯" "JA-TRADEOFFS-7f3a 速度より可読性"
+    if (Invoke-GuardedCopy "followup-submit" "C: Turn 2 copy") {
       Check "C: Turn 2 sent" (Wait-State "workflow-fresh-state" "TURN_2_SENT") (State "workflow-fresh-state")
       $followup = Get-Content -LiteralPath (RevFile $id "followup-r1.md") -Raw -Encoding UTF8
       Check "C: followup-r1.md is Stage 3 + Stage 4" ($followup.Contains("## Stage 3 — Resolution Context") -and $followup.Contains("## Stage 4 — Final Judgment")) "followup-r1.md"
-      Check "C (Turn 2 narrative): items 7/8 are left for the Human to fill in the copied text" ($followup.Contains("- 背景・目的: <!-- Humanが記入 -->") -and $followup.Contains("- すでに決まっている方針・実装経緯: <!-- Humanが記入 -->")) "placeholders"
+      $markers = @("JA-BACKGROUND-7f3a 背景: 移行の安全性を優先する", "JA-DECISIONS-7f3a 方針: schemaVersion は 1 のまま", "二行目の経緯", "JA-TRADEOFFS-7f3a 速度より可読性")
+      $missing = @($markers | Where-Object { -not $followup.Contains($_) })
+      Check "C (RF-WF-01, JA): followup-r1.md holds the Human's narrative verbatim" ($missing.Count -eq 0) ("missing: " + ($missing -join " | "))
+      Check "C (RF-WF-01, JA): the copied text is the stored artifact" (Same-Text $script:lastCopied $followup) ("copied length=" + $(if ($script:lastCopied) { $script:lastCopied.Length } else { "none" }) + " file length=" + $followup.Length)
+      $turn1 = Get-Content -LiteralPath (RevFile $id "request-r1.md") -Raw -Encoding UTF8
+      Check "C (RF-WF-01): the narrative is not in Turn 1" (-not $turn1.Contains("7f3a")) "request-r1.md"
+      $followupHash = Hash (RevFile $id "followup-r1.md")
 
       $r = Reason "action-verdict"
       Check "C: verdict refused with a reason while the judgment is awaited" ($r.ariaDisabled -eq "true" -and $r.text) $r.text
@@ -393,6 +423,7 @@ try {
       SetVal "judgment-text" "Synthetic Final Judgment C v1."; Click "judgment-submit"
       Check "C: Final Judgment captured" ((Wait-NoDialog) -and (Wait-State "workflow-fresh-state" "JUDGMENT_RECEIVED")) (State "workflow-fresh-state")
       Check "C: the Fresh Assessment is not overwritten by the judgment" ((Hash (RevFile $id "result-r1.md")) -eq $resultHash) "result-r1.md"
+      Check "C (RF-WF-01): followup-r1.md is byte-identical after the Final Judgment" ((Hash (RevFile $id "followup-r1.md")) -eq $followupHash) "followup-r1.md"
       $r = Reason "action-copy-followup"
       Check "C: Turn 2 cannot be re-sent once judged" ($r.ariaDisabled -eq "true" -and $r.text) $r.text
 
@@ -616,6 +647,46 @@ try {
   }
   catch { Check "negative: conflict check completed" $false "$_" }
 
+  # --- RF-WF-01 in English ----------------------------------------------------------------------------
+  try {
+    $toEnglish = @'
+(() => {
+  const select = document.querySelector('[data-testid=language-selector]');
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value").set;
+  setter.call(select, "en");
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+  return true;
+})()
+'@
+    Invoke-Cdp $toEnglish | Out-Null
+    Wait-For 'document.documentElement.lang === "en"' 10 | Out-Null
+    $id = "rv-20260923-scnr01"
+    Select-Review $id
+    Invoke-GuardedCopy "action-copy-prompt" "R (EN): Turn 1 copy" | Out-Null
+    Click "action-capture"; Wait-Exists "capture-text" | Out-Null
+    SetVal "capture-text" "Synthetic Fresh Assessment R: intent unclear."; SetVal "capture-reviewed-head" $HR; Click "capture-submit"
+    Wait-Exists "verdict-dialog" 5 | Out-Null
+    Close-Dialog
+    Write-Turn2 "EN-BACKGROUND-9c1d the migration must stay reversible" "EN-DECISIONS-9c1d we keep schemaVersion 1; <tags> & `"quotes`" as typed" "EN-TRADEOFFS-9c1d readability over speed"
+    if (Invoke-GuardedCopy "followup-submit" "R (EN): Turn 2 copy") {
+      Wait-State "workflow-fresh-state" "TURN_2_SENT" | Out-Null
+      $followup = Get-Content -LiteralPath (RevFile $id "followup-r1.md") -Raw -Encoding UTF8
+      $markers = @("EN-BACKGROUND-9c1d the migration must stay reversible", "EN-DECISIONS-9c1d we keep schemaVersion 1; <tags> & `"quotes`" as typed", "EN-TRADEOFFS-9c1d readability over speed")
+      $missing = @($markers | Where-Object { -not $followup.Contains($_) })
+      Check "R (RF-WF-01, EN): an English Turn 2 holds the Human's narrative verbatim" ($followup.Contains("# Resolution Follow-up (Turn 2)") -and $missing.Count -eq 0) ("missing: " + ($missing -join " | "))
+      Check "R (RF-WF-01, EN): the copied text is the stored artifact" (Same-Text $script:lastCopied $followup) ("copied length=" + $(if ($script:lastCopied) { $script:lastCopied.Length } else { "none" }) + " file length=" + $followup.Length)
+      $followupHash = Hash (RevFile $id "followup-r1.md")
+      Click "action-capture-judgment"; Wait-Exists "judgment-text" | Out-Null
+      SetVal "judgment-text" "Synthetic Final Judgment R."; Click "judgment-submit"; Wait-NoDialog | Out-Null
+      $r = Reason "action-copy-followup"
+      Check "R (RF-WF-01, EN): after the Final Judgment the follow-up is byte-identical and cannot be rewritten" ((Wait-State "workflow-fresh-state" "JUDGMENT_RECEIVED") -and (Hash (RevFile $id "followup-r1.md")) -eq $followupHash -and $r.ariaDisabled -eq "true") $r.text
+      Freeze $id @("followup-r1.md", "result-r1.md")
+    }
+    Invoke-Cdp ($toEnglish -replace '"en"', '"ja"') | Out-Null
+    Wait-For 'document.documentElement.lang === "ja"' 10 | Out-Null
+  }
+  catch { Check "R (RF-WF-01, EN): completed" $false "$_" }
+
   # --- Scenario G — locale, restart -----------------------------------------------------------------
   try {
     $tree = Get-Tree $dataDir -withoutSettings
@@ -719,6 +790,10 @@ finally {
 }
 
 Test-Clean "every process this run started has stopped"
+$clipboardAtEnd = Get-ClipboardFingerprint
+Write-Output ("clipboard at end:   " + $clipboardAtEnd)
+$stripSeq = { param($f) ($f -replace " seq=\d+$", "") }
+Check "the operator's clipboard is as it was at the start (kind, length, hash)" ((& $stripSeq $clipboardAtStart) -eq (& $stripSeq $clipboardAtEnd)) "$clipboardAtStart -> $clipboardAtEnd"
 $script:results | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $root "results.json") -Encoding UTF8
 Write-Summary
 Write-Output ("results: {0}" -f (Join-Path $root "results.json"))

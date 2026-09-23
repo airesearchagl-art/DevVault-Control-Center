@@ -199,6 +199,21 @@ function Get-ClipboardKind {
   catch { return "unknown" }
 }
 
+# What the clipboard holds, without reading it into the log: kind, length and SHA-256 of the text,
+# and the Windows sequence number. Used to show that a run left the operator's clipboard as it was.
+function Get-ClipboardFingerprint {
+  $kind = Get-ClipboardKind
+  $sequence = [DvccDesktop]::GetClipboardSequenceNumber()
+  if ($kind -ne "text") { return "kind=$kind seq=$sequence" }
+  $text = Get-Clipboard -Raw
+  $sha = [System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($text))).Replace("-", "").Substring(0, 16)
+  return "kind=text length=$($text.Length) sha256=$sha seq=$sequence"
+}
+
+# The text DVCC itself put on the clipboard by the last guarded copy (read before the operator's
+# clipboard is put back), or $null when the copy was skipped or DVCC did not write.
+$script:lastCopied = $null
+
 # Presses a control that writes the clipboard, under the guard described at the top. Returns $false
 # (and records INCONCLUSIVE) when the clipboard could not be put back, in which case nothing is pressed.
 function Invoke-GuardedCopy([string] $testId, [string] $label) {
@@ -209,6 +224,7 @@ function Invoke-GuardedCopy([string] $testId, [string] $label) {
   }
   $snapshot = if ($kind -eq "text") { Get-Clipboard -Raw } else { $null }
   $before = [DvccDesktop]::GetClipboardSequenceNumber()
+  $script:lastCopied = $null
 
   Invoke-Cdp "document.querySelector('[data-testid=$testId]').click(); true" | Out-Null
 
@@ -221,6 +237,10 @@ function Invoke-GuardedCopy([string] $testId, [string] $label) {
   }
 
   if ($afterCopy -ne $before) {
+    # DVCC's own write, read back before anything is restored; only if nobody wrote after it.
+    if ([DvccDesktop]::GetClipboardSequenceNumber() -eq $afterCopy) {
+      try { $script:lastCopied = Get-Clipboard -Raw } catch { $script:lastCopied = $null }
+    }
     if ([DvccDesktop]::GetClipboardSequenceNumber() -eq $afterCopy) {
       try {
         if ($null -eq $snapshot) { $null | clip.exe } else { Set-Clipboard -Value $snapshot }
