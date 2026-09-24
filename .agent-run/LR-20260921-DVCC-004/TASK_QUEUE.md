@@ -73,8 +73,9 @@
 
 - [x] Turn 2 narrative dialog; narrative passed explicitly to the builder; saved == copied
 - [x] Tests A–J, mutation M-RF1..M-RF3
-- [~] Targeted running smoke — functional checks PASS; clipboard preservation FAIL (SF-WF-01) → STOP
-- [ ] New product freeze (blocked on SF-WF-01)
+- [~] Targeted running smoke — functional checks PASS; clipboard preservation FAIL (SF-WF-01) → STOP (superseded below)
+- [x] SF-WF-01: clipboard-safe harness (`86146d1`), self-check, targeted workflow and localization smoke
+- [x] Product freeze `7ba7bb8`
 
 ## Final
 

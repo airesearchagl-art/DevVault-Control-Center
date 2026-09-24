@@ -577,3 +577,70 @@ unknown, no guard warning, content intentionally not inspected; the later locali
 its starting clipboard. Not classified as a product defect.
 
 Stopped here as instructed: preservation failed a second time in the workflow smoke.
+
+## SF-WF-01 — clipboard-safe smoke harness (2026-09-24)
+
+Start `0ae23fe` (clean, equal to the remote branch). Product freeze **`7ba7bb8`** — `src`, `src-tauri`,
+`package.json`, `package-lock.json`, `index.html`, `vite.config.ts`, `tsconfig.json` byte-identical to
+it (empty diff). Verification-harness head **`86146d1`**. Release exe unchanged,
+`7A206E45846FB4CC829987D83FDD5AB11FF70242EC1585F266686F1CEC07EF71` (built from the `7ba7bb8` sources).
+
+**IPC contract, read from the installed packages (no web research).** `@tauri-apps/plugin-clipboard-
+manager` **2.3.3**, `dist-js/index.js`: `writeText(text, opts)` → `invoke('plugin:clipboard-manager|
+write_text', { label: opts?.label, text })`. `@tauri-apps/api` 2.11.1 `core.js`: `invoke` →
+`window.__TAURI_INTERNALS__.invoke(cmd, args, options)`. Tauri **2.11.5** (`Cargo.lock`),
+`scripts/core.js` / `ipc.js` / `ipc-protocol.js`: `invoke`, `ipc` and `postMessage` are defined with
+`Object.defineProperty` (non-writable; `ipc` frozen); the brownfield pattern (no isolation, no
+`freezePrototype` in `tauri.conf.json`) sends every command as `fetch(convertFileSrc(cmd, 'ipc'),
+{ method: 'POST', body: JSON.stringify(payload) })`, i.e. on Windows a POST to
+`http://ipc.localhost/plugin%3Aclipboard-manager%7Cwrite_text` with body `{"text": …}`, and completes
+on a response header `Tauri-Response: ok`.
+
+**Interceptor** (`scripts/lib/dvcc-smoke.ps1`): installed by `Start-App` in every page the harness
+drives (the run throws if it cannot be); wraps `window.fetch`, answers only that exact URL (captures
+`text`, returns `200`, `Tauri-Response: ok`, JSON `null`), forwards every other request to the original
+`fetch`; `Remove-ClipboardInterceptor` restores the original in cleanup. `Invoke-InterceptedCopy`
+refuses to press a copy control unless the interceptor is in place and expects exactly one captured
+write. The operator clipboard is only read as a fingerprint (kind, length, SHA-256 prefix, sequence);
+a sequence change during a run is EXTERNAL_CLIPBOARD_ACTIVITY and makes the preservation check
+INCONCLUSIVE, never a restore. `Invoke-GuardedCopy`, `Set-Clipboard` and `clip.exe` no longer appear
+anywhere under `scripts/`.
+
+**Self-check** (`scripts/verify-clipboard-interceptor.ps1`, 12.37 GiB available): 9 PASS / 0 / 0 —
+interceptor at the IPC transport; one Copy review prompt → exactly one write-text call; captured
+payload == `request-r1.md` (1276 = 1276); Windows clipboard sequence 2837 → 2837; other IPC forwarded
+(2 → 8, request file and `requestSavedAt` written); the app reported success; interceptor removed and
+`fetch` restored; operator clipboard unchanged.
+
+**RF-WF-01 targeted workflow smoke** — the full script once, because the copy path changed in every
+scenario (12.55 GiB): **113 PASS / 0 FAIL / 0 INCONCLUSIVE**. Every copy's intercepted payload equals
+its artifact (A, B R1, B R2, C, exact-HEAD, R EN Turn 1: `request-r<N>.md`; C JA and R EN Turn 2:
+`followup-r1.md`, 991 and 1568 characters). Cancel: no file, no `followupSavedAt`, no event, no
+clipboard write. JA and EN narratives verbatim; not in Turn 1; follow-up byte-identical after the Final
+Judgment and refused for rewriting. All other Wave 5 scenario checks pass.
+
+**Localization smoke** (12.94 GiB): **27 / 0 / 0**; the EN and JA copies equal the saved request
+(2033 and 1276 characters).
+
+**Operator.** Clipboard `kind=text length=14569 sha256=5290C489978DD4EB seq=2837` before and after each
+of the three runs; no EXTERNAL_CLIPBOARD_ACTIVITY; the harness wrote the OS clipboard 0 times.
+`%APPDATA%\DevVault-Control` byte-identical to the first Wave 5 snapshot; no DVCC process left; no
+Human process touched.
+
+**Earlier unsafe smoke evidence.** Accepted from the RF-WF-01 run of `e532539`: the narrative dialog's
+running path, cancel writes nothing, JA and EN persisted narratives, Turn 1 isolation, the Final
+Judgment path, follow-up immutability, operator DVCC data untouched. Not accepted as closure evidence:
+OS clipboard preservation, and any OS-clipboard-based attribution of copied text (replaced by the
+intercepted payloads above). The unit and integration evidence (865 tests, M-RF1..M-RF3) stands.
+
+**Clipboard anomaly history, kept as observed.** (1) 2367 → 935 characters, Wave 5 re-run; (2) 1132 →
+1821 characters, RF-WF-01 run. Both occurred during a workflow smoke that used the old guard;
+attribution unknown and not claimed; the localization runs preserved their own starting clipboard;
+60 s of idle observation after (2) showed no sequence movement; nothing but length and hash was ever
+inspected. The old guard's attribution rule (first sequence change = DVCC) could restore an older
+snapshot over a concurrent foreign write, which is consistent with both observations but not proven.
+
+**Not verified by the smokes any more:** DVCC's real write to the Windows clipboard, because the
+plugin call is intercepted by design.
+
+SF-WF-01: **CLOSED**. RF-WF-01: **fixed, pending independent verification**.

@@ -3,13 +3,13 @@
 - Run ID: LR-20260921-DVCC-004
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: STOPPED — RF-WF-01 repaired (`7ba7bb8`) and verified by tests and mutation; the targeted smoke's functional checks passed, but it raised safety finding SF-WF-01 (clipboard not preserved), so no new product freeze is declared
+- Current state: RUNNING — product freeze `7ba7bb8` (RF-WF-01 fixed, pending independent verification); SF-WF-01 closed by the clipboard-safe harness `86146d1`
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/review-workflow-v0.3
 - Base SHA: 4c1962b0c47321805554be2218bba996ff5de92f
-- Current head: the RF-WF-01 evidence record on top of `e532539` (smoke update) and `7ba7bb84214d896fda90593c97d5bc73c540bf6d` (repair product head); see `git log`
-- Current wave: Focused Repair RF-WF-01 → STOP on SF-WF-01 (Human decision)
-- Last successful checkpoint: RF-WF-01 repair (`7ba7bb8`); previous product freeze `85b0d11` is superseded and no new freeze is declared yet
+- Current head: the SF-WF-01 evidence record on top of `86146d1` (verification-harness head); product freeze `7ba7bb84214d896fda90593c97d5bc73c540bf6d`; see `git log`
+- Current wave: RF-WF-01 and SF-WF-01 closed → Final Convergence
+- Last successful checkpoint: product freeze `7ba7bb8` (supersedes `85b0d11`); verification-harness head `86146d1`
 - Task Packet ID: LRP-20260921-DVCC-004
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260921-DVCC-004/TASK_PACKET_SNAPSHOT.md
@@ -106,6 +106,10 @@ both what `followup-r<N>.md` holds and what is copied; cancelling writes nothing
 
 ## Checks
 
+SF-WF-01 (harness `86146d1`, product `7ba7bb8` byte-identical, release exe `7A206E45…EF71`):
+interceptor self-check 9 / 0 / 0; workflow smoke 113 PASS / 0 FAIL / 0 INCONCLUSIVE; localization
+smoke 27 / 0 / 0; the operator clipboard fingerprint and sequence (2837) unchanged across all three.
+
 RF-WF-01 (start `0d9afd3`, repair `7ba7bb8`): typecheck PASS, Vitest PASS (31 files, 865 tests),
 build PASS, localization parity PASS (i18n suite); `src-tauri/` untouched, Rust not re-run. Release
 `build --no-bundle` PASS, exe SHA-256 `7A206E45846FB4CC829987D83FDD5AB11FF70242EC1585F266686F1CEC07EF71`.
@@ -157,8 +161,9 @@ localization scanner's AST candidate. See QUALITY_DEBT.md.
 
 ## Explicit unverified items
 
-- SF-WF-01 (open): the workflow smoke did not preserve the operator's clipboard in the RF-WF-01
-  run; mechanism unidentified. The smoke is not to be re-run on an operator machine until resolved.
+- SF-WF-01: closed (`86146d1`); the smokes never write the operator clipboard. What is *not* verified
+  by the smokes any more is DVCC's real write to the Windows clipboard itself: the plugin call is
+  intercepted, so the OS clipboard path is covered only by the plugin and by the earlier runs.
 - RW-11, RW-13, RW-14, RW-15, RW-17, RW-21: verified in the running app in Wave 5 (see EVIDENCE).
 - RF-WF-01: independent verification pending.
 - RW-23: closed by the 2026-09-24 re-run with a readable clipboard (97/0/0); the earlier 6 INCONCLUSIVE are superseded, not upgraded.
@@ -203,12 +208,9 @@ Wave 4: new `src/domain/{headBinding,actionRefusal,freshnessCause}.ts`,
 
 ## Next action
 
-Human decision on SF-WF-01 (how the smoke's clipboard guard is to be fixed or replaced, and whether
-the RF-WF-01 smoke evidence stands). Then a new product freeze, Final Convergence, focused
-independent review, Draft PR.
+Final Convergence, then a focused independent review in a separate context, then the Draft PR.
 
 ## Remaining tasks
 
-- Resolve SF-WF-01; declare the new product freeze.
 - Final Convergence, Independent Verification in a separate context, Draft PR.
 - Phase 4 stays blocked until Phase 3 merges.
