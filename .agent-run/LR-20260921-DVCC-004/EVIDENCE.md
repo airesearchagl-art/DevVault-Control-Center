@@ -644,3 +644,10 @@ snapshot over a concurrent foreign write, which is consistent with both observat
 plugin call is intercepted by design.
 
 SF-WF-01: **CLOSED**. RF-WF-01: **fixed, pending independent verification**.
+
+## Final Convergence (2026-09-25)
+
+Recorded in `FINAL_CONVERGENCE.md`: fresh gate PASS at `32d01f9`; freeze integrity PASS (`7ba7bb8..HEAD`
+touches only `scripts/` and this run folder); harness boundary PASS; full diff 68 files classified, no
+unrelated feature, no Phase 4 IDE Bridge; evidence reused without re-running (no invalidation reason);
+RW-01..RW-24 PASS; Required Fixes none; hard checks PASS. Independent review pending.

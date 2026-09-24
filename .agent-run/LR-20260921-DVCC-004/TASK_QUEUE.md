@@ -79,6 +79,6 @@
 
 ## Final
 
-- [ ] Final Convergence (freeze, full diff review, required checks, hard checks, quality debt, unverified items)
+- [x] Final Convergence (freeze, full diff review, required checks, hard checks, quality debt, unverified items) — FINAL_CONVERGENCE.md
 - [ ] Independent Verification (separate context)
 - [ ] Draft PR → STOP

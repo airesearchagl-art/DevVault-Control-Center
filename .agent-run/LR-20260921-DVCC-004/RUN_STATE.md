@@ -3,13 +3,13 @@
 - Run ID: LR-20260921-DVCC-004
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: RUNNING — product freeze `7ba7bb8` (RF-WF-01 fixed, pending independent verification); SF-WF-01 closed by the clipboard-safe harness `86146d1`
+- Current state: FINAL CONVERGENCE COMPLETE — awaiting independent review (see FINAL_CONVERGENCE.md); no pull request
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/review-workflow-v0.3
 - Base SHA: 4c1962b0c47321805554be2218bba996ff5de92f
-- Current head: the SF-WF-01 evidence record on top of `86146d1` (verification-harness head); product freeze `7ba7bb84214d896fda90593c97d5bc73c540bf6d`; see `git log`
-- Current wave: RF-WF-01 and SF-WF-01 closed → Final Convergence
-- Last successful checkpoint: product freeze `7ba7bb8` (supersedes `85b0d11`); verification-harness head `86146d1`
+- Current head: the Final Convergence evidence commit (exact SHA in `git log` and the review packet); verification-harness head `86146d1`; product freeze `7ba7bb84214d896fda90593c97d5bc73c540bf6d`
+- Current wave: Final Convergence complete → Independent Review (separate context)
+- Last successful checkpoint: Final Convergence (product freeze `7ba7bb8`, harness `86146d1`)
 - Task Packet ID: LRP-20260921-DVCC-004
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260921-DVCC-004/TASK_PACKET_SNAPSHOT.md
@@ -39,7 +39,7 @@ one that looked silent in the stale copy: a second substantive review of the sam
 
 - [x] RW-01 branch created from fresh merged main `4c1962b`
 - [x] RW-02 canonical contract discovered at latest main `77ce41e` and recorded with line-level citations; SPEC_GAP assessed and passed
-- [x] RW-03 Fresh Context Turn 1 / Turn 2 — domain, both artifacts, the service path and the surface; the prompt rework is Wave 4
+- [x] RW-03 Fresh Context Turn 1 / Turn 2 — domain, both artifacts, the service path, the surface and the canonical Stage 1–4 prompts; running smoke A and C
 - [x] RW-04 Risk Tier 0 / 1 / 2 — values, subjects, escalation, refusal, persistence and the Human's own selection surface
 - [x] RW-05 Risk Tier independent of Review / Resource / Freshness — its module imports none of them, asserted by a test
 - [x] RW-06 same-head duplicate detected — pure function over Phase 2's `compareHead`, nine oracle cases, mutation M1
@@ -47,19 +47,19 @@ one that looked silent in the stale copy: a second substantive review of the sam
 - [x] RW-08 evidence reuse implemented only as the canonical contract allows — per item, bound to the head, derived Freshness excluded
 - [x] RW-09 reused evidence shows source, head and age, with the reason it is offered
 - [x] RW-10 FIX_REQUIRED hands off to re-review without losing the round relation — both models, and the card that reads them
-- [x] RW-11 past request / result / checkpoint artifacts are never rewritten automatically — saved requests are never regenerated, handoffs name earlier files without touching them; running-app check in Wave 5
+- [x] RW-11 past request / result / checkpoint artifacts are never rewritten automatically — saved requests are never regenerated, handoffs name earlier files without touching them; verified in the running app (Wave 5 smoke)
 - [x] RW-12 the review timeline reads per round, by grouping the existing events file
-- [x] RW-13 Phase 2 Freshness stays separate from Review State — own card, no callback but the Human's refresh, asserted by render tests and M-D4; running-app check in Wave 5
-- [x] RW-14 UNKNOWN is never filled in by guesswork — the domain reports `UNDECIDABLE` and `UNAVAILABLE` instead of guessing, and the surface shows them; Freshness UNKNOWN shows its reason and its kind (M-D3); running-app check in Wave 5
-- [x] RW-15 JA / EN parity — dictionaries, accessible structure and prompts checked in both languages; running-app check in Wave 5
+- [x] RW-13 Phase 2 Freshness stays separate from Review State — own card, no callback but the Human's refresh, asserted by render tests and M-D4; verified in the running app (Wave 5 smoke)
+- [x] RW-14 UNKNOWN is never filled in by guesswork — the domain reports `UNDECIDABLE` and `UNAVAILABLE` instead of guessing, and the surface shows them; Freshness UNKNOWN shows its reason and its kind (M-D3); verified in the running app (Wave 5 smoke)
+- [x] RW-15 JA / EN parity — dictionaries, accessible structure and prompts checked in both languages; verified in the running app (Wave 5 smoke)
 - [x] RW-16 new workflow prompts are semantically equal in JA and EN — line-by-line parity of kind, recorded values, placeholders and imperative strength (M-D2)
-- [x] RW-17 existing Phase 1 / 2 / Localization runtime data still loads — asserted against the v1 fixture, with a mutation probe; the running app is verified in Wave 5
+- [x] RW-17 existing Phase 1 / 2 / Localization runtime data still loads — asserted against the v1 fixture, with a mutation probe; verified in the running app (Wave 5 smoke)
 - [x] RW-18 no ChatGPT login, send or scrape — diff scan since `4c1962b`: no fetch / socket / API code; Tauri commands unchanged
 - [x] RW-19 no GitHub API automation — same scan
 - [x] RW-20 no IDE bridge brought forward from Phase 4 — same scan
-- [x] RW-21 a locale switch changes no workflow or domain data — asserted on rendered state and a frozen session; running-app check in Wave 5
-- [x] RW-22 Security / Privacy / Permission / Data integrity / Irreversible-data safety PASS — see EVIDENCE Wave 5 hard checks
-- [x] RW-23 isolated-desktop workflow smoke PASS — 97 PASS / 0 FAIL / 0 INCONCLUSIVE on the frozen build (2026-09-24 re-run)
+- [x] RW-21 a locale switch changes no workflow or domain data — asserted on rendered state and a frozen session; verified in the running app (Wave 5 smoke)
+- [x] RW-22 Security / Privacy / Permission / Data integrity / Irreversible-data safety PASS — see FINAL_CONVERGENCE.md hard checks
+- [x] RW-23 isolated-desktop workflow smoke PASS — 113 PASS / 0 FAIL / 0 INCONCLUSIVE and localization 27 / 0 / 0 on the clipboard-safe harness `86146d1` (97 / 0 / 0 is historical)
 - [x] RW-24 README and data contract reconciled to the fresh product state — with a static check that the contract names every round field, event type and stored code
 
 ## Completed
@@ -155,20 +155,18 @@ EVIDENCE. Toolchain: node v24.15.0, npm 11.12.1, rustc 1.95.0, git 2.53.0.window
 
 ## Quality Debt
 
-Carried forward, out of scope unless Phase 3 makes one worse: QD-001 (reader threads detached after a
-timeout), QD-002 (`git status` runs filters configured in the observed repository), and the
-localization scanner's AST candidate. See QUALITY_DEBT.md.
+Open: QD-001 (reader threads detached after a timeout), QD-002 (`git status` runs filters configured in
+the observed repository), QD-003 (regex, not AST, hard-coded-text gate), QD-005 (verdict dialog opens
+after a Fresh Assessment), QD-006 (state-level refusals name internal identifiers), QD-007 (screen
+reader untested). QD-004 became RF-WF-01 and is repaired. See QUALITY_DEBT.md.
 
 ## Explicit unverified items
 
-- SF-WF-01: closed (`86146d1`); the smokes never write the operator clipboard. What is *not* verified
-  by the smokes any more is DVCC's real write to the Windows clipboard itself: the plugin call is
-  intercepted, so the OS clipboard path is covered only by the plugin and by the earlier runs.
-- RW-11, RW-13, RW-14, RW-15, RW-17, RW-21: verified in the running app in Wave 5 (see EVIDENCE).
-- RF-WF-01: independent verification pending.
-- RW-23: closed by the 2026-09-24 re-run with a readable clipboard (97/0/0); the earlier 6 INCONCLUSIVE are superseded, not upgraded.
-- Screen-reader behaviour was not tested (QD-007).
-- RW-24: complete (Wave 4, `cc36a82`).
+- Screen-reader behaviour: UNVERIFIED (QD-007).
+- The real Windows clipboard write in the final configuration: not verified by the final automated
+  smoke, which intercepts DVCC's `plugin:clipboard-manager|write_text` call by design; the harness
+  proves the exact payload, and the earlier unsafe runs are not used to attribute copied text.
+- RF-WF-01: fixed; independent verification pending.
 - No GitHub CI exists for this repository; every check is local.
 
 ## Known failures
@@ -208,9 +206,9 @@ Wave 4: new `src/domain/{headBinding,actionRefusal,freshnessCause}.ts`,
 
 ## Next action
 
-Final Convergence, then a focused independent review in a separate context, then the Draft PR.
+Independent review of the full Phase 3 delta in a separate context, read-only, bound to the final evidence head. The Draft PR only after it returns READY CANDIDATE with no Required Fix.
 
 ## Remaining tasks
 
-- Final Convergence, Independent Verification in a separate context, Draft PR.
+- Independent Verification in a separate context; then the Draft PR (not Ready).
 - Phase 4 stays blocked until Phase 3 merges.

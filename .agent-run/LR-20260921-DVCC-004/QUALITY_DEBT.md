@@ -1,7 +1,11 @@
 # Quality Debt — LR-20260921-DVCC-004
 
-Nothing new is open yet. Carried forward from the merged phases, and out of scope for Phase 3 unless
-a Phase 3 feature makes one of them worse:
+Current summary (Final Convergence, 2026-09-25): open QD-001, QD-002, QD-003, QD-005, QD-006,
+QD-007. QD-004 was promoted to RF-WF-01 and repaired (`7ba7bb8`, independent verification pending).
+SF-WF-01 is closed (`86146d1`). The records below are kept as written.
+
+Carried forward from the merged phases, and out of scope for Phase 3 unless a Phase 3 feature makes one
+of them worse:
 
 | ID | From | What it is |
 |---|---|---|
