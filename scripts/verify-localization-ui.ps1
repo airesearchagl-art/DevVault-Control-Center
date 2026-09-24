@@ -4,11 +4,10 @@
 # the synthetic fixtures. Nothing appears on the operator's desktop and nothing outside the
 # temporary data folder is written.
 #
-# The clipboard is shared across desktops, so the one action that writes it (Copy review prompt) is
-# guarded: the clipboard is only touched when it holds text this test can put back, it is restored
-# immediately after each copy rather than at the end of the run, and it is left alone if anyone
-# else wrote to it in between (checked with the Windows clipboard sequence number). A clipboard
-# holding an image or files is never overwritten — those checks are skipped instead.
+# The one action that writes the clipboard (Copy review prompt) never reaches the operator's
+# clipboard: lib\dvcc-smoke.ps1 intercepts DVCC's clipboard write-text call inside the page, and the
+# request check compares that captured text with the request file DVCC saved (SF-WF-01). The
+# operator's clipboard is only read, as a fingerprint, before and after.
 #
 # Checks: Japanese by default, the switch to English, the review state untouched by a switch,
 # settings.json after each switch, the language restored after a restart, and the review request
@@ -29,12 +28,12 @@ $runId = [guid]::NewGuid().ToString("N").Substring(0, 8)
 $root = Join-Path $env:TEMP "dvcc-l10n-$runId"
 $dataDir = Join-Path $root "data"
 $desktopName = "dvcc-l10n-$runId"
-# Hidden desktop, CDP, the clipboard guard and spawned-PID-only cleanup are shared with the other
-# running-app smokes, so the safety logic lives in one place.
+# Hidden desktop, CDP, the clipboard interceptor and spawned-PID-only cleanup are shared with the
+# other running-app smokes, so the safety logic lives in one place.
 . (Join-Path $PSScriptRoot "lib\dvcc-smoke.ps1")
 
 function Invoke-CopyPrompt([string] $label) {
-  return Invoke-GuardedCopy "action-copy-prompt" $label
+  return Invoke-InterceptedCopy "action-copy-prompt" $label
 }
 
 function Get-DataHashes {
@@ -64,6 +63,8 @@ $switchScript = @'
 # --- run --------------------------------------------------------------------------------------------
 New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
 Copy-Item -Path (Join-Path $repo "fixtures\v1\valid\*") -Destination $dataDir -Recurse -Force
+$clipboardBefore = Get-ClipboardFingerprint
+Write-Output ("clipboard at start: " + $clipboardBefore)
 [DvccDesktop]::Create($desktopName)
 
 # Only processes this run started are ever stopped (see lib\dvcc-smoke.ps1).
@@ -123,6 +124,7 @@ try {
   $requestEn = if (Test-Path $requestPath) { Get-Content -Path $requestPath -Raw -Encoding UTF8 } else { "" }
   if ($copiedEn) {
     Check "the request is written in English" ($requestEn -like "*# Independent Review Request*") ($requestEn.Split("`n")[0])
+    Check "the English copy is exactly the saved request" (Test-SameText $copiedEn $requestEn) ("copied=" + $copiedEn.Length + " file=" + $requestEn.Length)
   }
 
   Invoke-Cdp ($switchScript -replace "__LOCALE__", "ja") | Out-Null
@@ -132,6 +134,7 @@ try {
   $requestJa = if (Test-Path $requestPath) { Get-Content -Path $requestPath -Raw -Encoding UTF8 } else { "" }
   if ($copiedJa) {
     Check "the request is written in Japanese" ($requestJa -like "*# 独立レビュー依頼*") ($requestJa.Split("`n")[0])
+    Check "the Japanese copy is exactly the saved request" (Test-SameText $copiedJa $requestJa) ("copied=" + $copiedJa.Length + " file=" + $requestJa.Length)
   }
   if ($copiedEn -and $copiedJa) {
     Check "both requests carry the same PR fact" (($requestEn -like "*#12*") -and ($requestJa -like "*#12*")) "pr=#12"
@@ -186,13 +189,10 @@ try {
   Stop-App $appPid
 }
 finally {
-  Close-Cdp
-  # Only what this run started, by process id: another DVCC belongs to the operator.
-  foreach ($id in $started) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }
-  [DvccDesktop]::Release()
-  Remove-Item Env:\DVCC_DATA_DIR -ErrorAction SilentlyContinue
-  Remove-Item Env:\WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS -ErrorAction SilentlyContinue
+  Stop-Started
 }
+
+Test-OperatorClipboard $clipboardBefore
 
 Write-Output ""
 Write-Output ("checks: {0} passed, {1} failed, {2} inconclusive" -f ($results.Count - $failures - $skipped), $failures, $skipped)

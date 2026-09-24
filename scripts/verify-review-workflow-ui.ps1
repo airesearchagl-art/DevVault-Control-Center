@@ -88,17 +88,23 @@ function Wait-NoDialog {
   return $closed
 }
 function Cancel-Dialog { Invoke-Cdp 'document.querySelector("[role=dialog] .dialog-actions button").click(); true' | Out-Null; Wait-NoDialog | Out-Null }
-function Same-Text([string] $a, [string] $b) {
-  # The clipboard may carry CRLF; the file is LF. Only line endings and the final newline are normalised.
-  if ($null -eq $a -or $null -eq $b) { return $false }
-  return (($a -replace "`r`n", "`n").TrimEnd("`n") -eq ($b -replace "`r`n", "`n").TrimEnd("`n"))
-}
 function Write-Turn2([string] $background, [string] $decisions, [string] $tradeoffs) {
   Click "action-copy-followup"
   if (-not (Wait-Exists "followup-dialog" 5)) { throw "the Turn 2 dialog did not open" }
   SetVal "followup-background" $background
   SetVal "followup-decisions" $decisions
   SetVal "followup-tradeoffs" $tradeoffs
+}
+function Copy-Checked([string] $testId, [string] $label, [string] $reviewId, [string] $file) {
+  # One copy through the interceptor; the text DVCC tried to copy must be the artifact it saved.
+  $captured = Invoke-InterceptedCopy $testId $label
+  if ($null -eq $captured) { return $null }
+  $path = RevFile $reviewId $file
+  $deadline = (Get-Date).AddSeconds(5)
+  while (-not (Test-Path -LiteralPath $path) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 200 }
+  $saved = if (Test-Path -LiteralPath $path) { Get-Content -LiteralPath $path -Raw -Encoding UTF8 } else { $null }
+  Check "$label : the intercepted clipboard payload is $file" (Test-SameText $captured $saved) ("captured=" + $captured.Length + " file=" + $(if ($saved) { $saved.Length } else { "missing" }))
+  return $captured
 }
 function Close-Dialog { Invoke-Cdp 'document.querySelector("[role=dialog] .icon-button").click(); true' | Out-Null; Wait-NoDialog | Out-Null }
 
@@ -288,7 +294,7 @@ try {
     Click "action-start-review"
     Check "A: REVIEWING" (Wait-State "detail-review-state" "REVIEWING") (State "detail-review-state")
 
-    if (Invoke-GuardedCopy "action-copy-prompt" "A: Turn 1 copy") {
+    if (Copy-Checked "action-copy-prompt" "A: Turn 1 copy" $id "request-r1.md") {
       $ok = Wait-For ("window.__d.state('workflow-fresh-state') === 'AWAITING_ASSESSMENT'") 10
       $request = Get-Content -LiteralPath (RevFile $id "request-r1.md") -Raw -Encoding UTF8
       Check "A: request-r1.md is the canonical Turn 1, bound to the exact HEAD" ($ok -and $request.Contains("## Stage 1 — Review Target") -and $request.Contains("- HEAD binding: EXACT") -and $request.Contains($HA)) "request-r1.md"
@@ -322,7 +328,7 @@ try {
   try {
     $id = "rv-20260923-scnb01"
     Select-Review $id
-    $copiedB = Invoke-GuardedCopy "action-copy-prompt" "B: R1 Turn 1 copy"
+    $copiedB = Copy-Checked "action-copy-prompt" "B: R1 Turn 1 copy" $id "request-r1.md"
     Click "action-capture"; Wait-Exists "capture-text" | Out-Null
     SetVal "capture-text" "Synthetic Fresh Assessment B: two required fixes."
     SetVal "capture-reviewed-head" $HB
@@ -347,7 +353,7 @@ try {
     Check "B: R1 verdict and note intact" ($s.rounds[0].verdict -eq "FIX_REQUIRED" -and $s.rounds[0].verdictNote -match "R1-NOTE-SENTINEL" -and $s.rounds[0].reviewedHead -eq $HB) $s.rounds[0].verdictNote
 
     Click "action-start-review"; Wait-State "detail-review-state" "REVIEWING" | Out-Null
-    if (Invoke-GuardedCopy "action-copy-prompt" "B: R2 Turn 1 copy") {
+    if (Copy-Checked "action-copy-prompt" "B: R2 Turn 1 copy" $id "request-r2.md") {
       Start-Sleep -Milliseconds 500
       $r2 = Get-Content -LiteralPath (RevFile $id "request-r2.md") -Raw -Encoding UTF8
       Check "B: R2 request carries R1 facts, not the Human's note" ($r2.Contains("R1") -and $r2.Contains("FIX_REQUIRED") -and $r2.Contains("result-r1.md") -and $r2.Contains($HB) -and -not $r2.Contains("R1-NOTE-SENTINEL") -and -not $r2.Contains("Fix the two findings")) "request-r2.md"
@@ -372,7 +378,7 @@ try {
     $r = Reason "action-capture-judgment"
     Check "C: judgment before Turn 2 is refused with a reason" ($r.ariaDisabled -eq "true" -and $r.text) $r.text
 
-    Invoke-GuardedCopy "action-copy-prompt" "C: Turn 1 copy" | Out-Null
+    Copy-Checked "action-copy-prompt" "C: Turn 1 copy" $id "request-r1.md" | Out-Null
     Click "action-capture"; Wait-Exists "capture-text" | Out-Null
     SetVal "capture-text" "Synthetic Fresh Assessment C: one finding needs intent."; SetVal "capture-reviewed-head" $HC; Click "capture-submit"
     # The verdict dialog opens after the assessment; the Human declines it because a finding needs Turn 2.
@@ -385,21 +391,22 @@ try {
 
     # RF-WF-01: cancelling the Turn 2 dialog writes nothing and copies nothing.
     $sequenceBefore = [DvccDesktop]::GetClipboardSequenceNumber()
+    $capturedBefore = [int](Invoke-Cdp 'window.__dvccClipboard.writes.length')
     $eventsBefore = @(Read-Events $id).Count
     Write-Turn2 "CANCELLED-MARKER" "CANCELLED-MARKER" "CANCELLED-MARKER"
     Cancel-Dialog
     $s = Read-Session $id
-    Check "C (RF-WF-01): cancelling the Turn 2 dialog writes and copies nothing" ((-not (Test-Path (RevFile $id "followup-r1.md"))) -and $null -eq $s.rounds[0].followupSavedAt -and @(Read-Events $id).Count -eq $eventsBefore -and [DvccDesktop]::GetClipboardSequenceNumber() -eq $sequenceBefore -and (State "workflow-fresh-state") -eq "ASSESSMENT_RECEIVED") "no file, no followupSavedAt, no event, clipboard untouched"
+    Check "C (RF-WF-01): cancelling the Turn 2 dialog writes and copies nothing" ((-not (Test-Path (RevFile $id "followup-r1.md"))) -and $null -eq $s.rounds[0].followupSavedAt -and @(Read-Events $id).Count -eq $eventsBefore -and [int](Invoke-Cdp 'window.__dvccClipboard.writes.length') -eq $capturedBefore -and [DvccDesktop]::GetClipboardSequenceNumber() -eq $sequenceBefore -and (State "workflow-fresh-state") -eq "ASSESSMENT_RECEIVED") "no file, no followupSavedAt, no event, no clipboard write"
 
     Write-Turn2 "JA-BACKGROUND-7f3a 背景: 移行の安全性を優先する" "JA-DECISIONS-7f3a 方針: schemaVersion は 1 のまま`n二行目の経緯" "JA-TRADEOFFS-7f3a 速度より可読性"
-    if (Invoke-GuardedCopy "followup-submit" "C: Turn 2 copy") {
+    if (Copy-Checked "followup-submit" "C: Turn 2 copy" $id "followup-r1.md") {
       Check "C: Turn 2 sent" (Wait-State "workflow-fresh-state" "TURN_2_SENT") (State "workflow-fresh-state")
       $followup = Get-Content -LiteralPath (RevFile $id "followup-r1.md") -Raw -Encoding UTF8
       Check "C: followup-r1.md is Stage 3 + Stage 4" ($followup.Contains("## Stage 3 — Resolution Context") -and $followup.Contains("## Stage 4 — Final Judgment")) "followup-r1.md"
       $markers = @("JA-BACKGROUND-7f3a 背景: 移行の安全性を優先する", "JA-DECISIONS-7f3a 方針: schemaVersion は 1 のまま", "二行目の経緯", "JA-TRADEOFFS-7f3a 速度より可読性")
       $missing = @($markers | Where-Object { -not $followup.Contains($_) })
       Check "C (RF-WF-01, JA): followup-r1.md holds the Human's narrative verbatim" ($missing.Count -eq 0) ("missing: " + ($missing -join " | "))
-      Check "C (RF-WF-01, JA): the copied text is the stored artifact" (Same-Text $script:lastCopied $followup) ("copied length=" + $(if ($script:lastCopied) { $script:lastCopied.Length } else { "none" }) + " file length=" + $followup.Length)
+      Check "C (RF-WF-01, JA): the copied text is the stored artifact" (Test-SameText $script:lastCopied $followup) ("copied length=" + $(if ($script:lastCopied) { $script:lastCopied.Length } else { "none" }) + " file length=" + $followup.Length)
       $turn1 = Get-Content -LiteralPath (RevFile $id "request-r1.md") -Raw -Encoding UTF8
       Check "C (RF-WF-01): the narrative is not in Turn 1" (-not $turn1.Contains("7f3a")) "request-r1.md"
       $followupHash = Hash (RevFile $id "followup-r1.md")
@@ -553,7 +560,7 @@ try {
     Check "exact-HEAD B: a short HEAD is NOT EXACT, with the next step" ((State "workflow-head-binding") -eq "SHORT" -and (Exists "workflow-head-next") -and (Exists "action-edit-head")) (Text "workflow-head-binding")
     Click "action-refresh-git"; Wait-State "workflow-head-observed" "MATCHES" | Out-Null
     Check "exact-HEAD D: the observed full HEAD is shown as a candidate only" ((State "workflow-head-observed") -eq "MATCHES" -and (Text "workflow-head-observed").Contains($HE) -and (Hash (RevFile $id "session.json")) -eq $before) (Text "workflow-head-observed")
-    if (Invoke-GuardedCopy "action-copy-prompt" "exact-HEAD B: request text") {
+    if (Copy-Checked "action-copy-prompt" "exact-HEAD B: request text" $id "request-r1.md") {
       Start-Sleep -Milliseconds 500
       $text = Get-Content -LiteralPath (RevFile $id "request-r1.md") -Raw -Encoding UTF8
       Check "exact-HEAD B: the request says NOT EXACT and never completes the HEAD" ($text.Contains("- HEAD binding: NOT EXACT") -and -not $text.Contains($HE)) "request-r1.md"
@@ -662,19 +669,19 @@ try {
     Wait-For 'document.documentElement.lang === "en"' 10 | Out-Null
     $id = "rv-20260923-scnr01"
     Select-Review $id
-    Invoke-GuardedCopy "action-copy-prompt" "R (EN): Turn 1 copy" | Out-Null
+    Copy-Checked "action-copy-prompt" "R (EN): Turn 1 copy" $id "request-r1.md" | Out-Null
     Click "action-capture"; Wait-Exists "capture-text" | Out-Null
     SetVal "capture-text" "Synthetic Fresh Assessment R: intent unclear."; SetVal "capture-reviewed-head" $HR; Click "capture-submit"
     Wait-Exists "verdict-dialog" 5 | Out-Null
     Close-Dialog
     Write-Turn2 "EN-BACKGROUND-9c1d the migration must stay reversible" "EN-DECISIONS-9c1d we keep schemaVersion 1; <tags> & `"quotes`" as typed" "EN-TRADEOFFS-9c1d readability over speed"
-    if (Invoke-GuardedCopy "followup-submit" "R (EN): Turn 2 copy") {
+    if (Copy-Checked "followup-submit" "R (EN): Turn 2 copy" $id "followup-r1.md") {
       Wait-State "workflow-fresh-state" "TURN_2_SENT" | Out-Null
       $followup = Get-Content -LiteralPath (RevFile $id "followup-r1.md") -Raw -Encoding UTF8
       $markers = @("EN-BACKGROUND-9c1d the migration must stay reversible", "EN-DECISIONS-9c1d we keep schemaVersion 1; <tags> & `"quotes`" as typed", "EN-TRADEOFFS-9c1d readability over speed")
       $missing = @($markers | Where-Object { -not $followup.Contains($_) })
       Check "R (RF-WF-01, EN): an English Turn 2 holds the Human's narrative verbatim" ($followup.Contains("# Resolution Follow-up (Turn 2)") -and $missing.Count -eq 0) ("missing: " + ($missing -join " | "))
-      Check "R (RF-WF-01, EN): the copied text is the stored artifact" (Same-Text $script:lastCopied $followup) ("copied length=" + $(if ($script:lastCopied) { $script:lastCopied.Length } else { "none" }) + " file length=" + $followup.Length)
+      Check "R (RF-WF-01, EN): the copied text is the stored artifact" (Test-SameText $script:lastCopied $followup) ("copied length=" + $(if ($script:lastCopied) { $script:lastCopied.Length } else { "none" }) + " file length=" + $followup.Length)
       $followupHash = Hash (RevFile $id "followup-r1.md")
       Click "action-capture-judgment"; Wait-Exists "judgment-text" | Out-Null
       SetVal "judgment-text" "Synthetic Final Judgment R."; Click "judgment-submit"; Wait-NoDialog | Out-Null
@@ -790,10 +797,7 @@ finally {
 }
 
 Test-Clean "every process this run started has stopped"
-$clipboardAtEnd = Get-ClipboardFingerprint
-Write-Output ("clipboard at end:   " + $clipboardAtEnd)
-$stripSeq = { param($f) ($f -replace " seq=\d+$", "") }
-Check "the operator's clipboard is as it was at the start (kind, length, hash)" ((& $stripSeq $clipboardAtStart) -eq (& $stripSeq $clipboardAtEnd)) "$clipboardAtStart -> $clipboardAtEnd"
+Test-OperatorClipboard $clipboardAtStart
 $script:results | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $root "results.json") -Encoding UTF8
 Write-Summary
 Write-Output ("results: {0}" -f (Join-Path $root "results.json"))

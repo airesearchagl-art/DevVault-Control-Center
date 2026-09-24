@@ -6,10 +6,9 @@
 #   operator's %APPDATA% folders;
 # - only processes this run started are stopped, by process id — never by name, so an operator's
 #   DVCC, browser or other WebView2 host is never touched;
-# - the clipboard is shared across desktops, so a copy is only pressed when the clipboard holds text
-#   (or nothing) this run can put back; it is put back at once, and only if nobody else wrote to it
-#   since DVCC did (Windows clipboard sequence number). Anything else is INCONCLUSIVE, not skipped
-#   silently and never overwritten.
+# - the operator's clipboard is never written, not even to put something back (SF-WF-01). DVCC's one
+#   clipboard command is intercepted inside the app's page, before it reaches Windows: see
+#   "clipboard" below. The operator's clipboard is only ever read, as a fingerprint.
 #
 # Results are written to the host, never to the output stream, so a helper that records a check still
 # returns only its own value (a skipped copy must return $false, not a truthy array of text).
@@ -163,10 +162,13 @@ function Start-App([string] $label) {
   if (-not (Wait-For "document.querySelector('[data-testid=queue-list]') !== null || document.querySelector('[data-testid=empty-no-projects]') !== null" 30)) {
     throw "$label : the app never rendered its queue"
   }
+  # Every page this harness drives has the interceptor, or the run stops before anything is clicked.
+  Install-ClipboardInterceptor $label
   return $childPid
 }
 
 function Stop-App([int] $processId) {
+  if ($script:socket) { Remove-ClipboardInterceptor | Out-Null }
   Close-Cdp
   Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
   $deadline = (Get-Date).AddSeconds(15)
@@ -178,6 +180,7 @@ function Stop-App([int] $processId) {
 
 # Only what this run started, by process id: another DVCC belongs to the operator.
 function Stop-Started {
+  if ($script:socket) { Remove-ClipboardInterceptor | Out-Null }
   Close-Cdp
   foreach ($id in $script:started) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }
   [DvccDesktop]::Release()
@@ -210,48 +213,117 @@ function Get-ClipboardFingerprint {
   return "kind=text length=$($text.Length) sha256=$sha seq=$sequence"
 }
 
-# The text DVCC itself put on the clipboard by the last guarded copy (read before the operator's
-# clipboard is put back), or $null when the copy was skipped or DVCC did not write.
+# --- clipboard interception (SF-WF-01) ---------------------------------------------------------------
+#
+# DVCC copies with `@tauri-apps/plugin-clipboard-manager` 2.3.3 `writeText(text)`, which calls
+# `invoke('plugin:clipboard-manager|write_text', { label, text })`. In Tauri 2.11.5
+# `__TAURI_INTERNALS__.invoke`, `.ipc` and `.postMessage` are non-writable, so the interception sits
+# one step further down, at the transport they all use: `fetch(convertFileSrc(cmd, 'ipc'))`, a POST to
+# `http://ipc.localhost/plugin%3Aclipboard-manager%7Cwrite_text` with the JSON body `{"text": ...}`.
+#
+# The wrapper answers exactly that one URL itself — the text is kept in page state and the app is told
+# the write succeeded, the way Tauri's own transport reports success (`Tauri-Response: ok`, JSON
+# `null`) — and passes every other request to the original `fetch` unchanged. Nothing reaches the
+# Windows clipboard. No production code changes; the wrapper lives only in the page this run started,
+# and Remove-ClipboardInterceptor puts the original `fetch` back.
+
+$script:interceptorJs = @'
+(() => {
+  if (window.__dvccClipboard) return window.__dvccClipboard.target;
+  const internals = window.__TAURI_INTERNALS__;
+  if (!internals || typeof internals.convertFileSrc !== "function") return "";
+  const target = internals.convertFileSrc("plugin:clipboard-manager|write_text", "ipc");
+  const original = window.fetch;
+  const state = { target, original, writes: [], forwarded: 0, wrapper: null };
+  state.wrapper = function (input, init) {
+    const url = typeof input === "string" ? input : input && input.url;
+    if (url === target) {
+      let text = null;
+      try { text = JSON.parse(init && init.body).text; } catch (e) { text = null; }
+      state.writes.push(typeof text === "string" ? text : null);
+      return Promise.resolve(new Response("null", { status: 200, headers: { "Content-Type": "application/json", "Tauri-Response": "ok" } }));
+    }
+    if (typeof url === "string" && url.indexOf("://ipc.localhost/") >= 0) state.forwarded++;
+    return original.apply(this, arguments);
+  };
+  window.fetch = state.wrapper;
+  window.__dvccClipboard = state;
+  return target;
+})()
+'@
+
+$script:interceptorTarget = "http://ipc.localhost/plugin%3Aclipboard-manager%7Cwrite_text"
+
+function Install-ClipboardInterceptor([string] $label) {
+  $target = Invoke-Cdp $script:interceptorJs
+  if ($target -ne $script:interceptorTarget) { throw "$label : the clipboard interceptor could not be installed (target '$target')" }
+}
+
+function Test-ClipboardInterceptor {
+  return [bool](Invoke-Cdp '!!window.__dvccClipboard && window.fetch === window.__dvccClipboard.wrapper')
+}
+
+function Remove-ClipboardInterceptor {
+  try {
+    return [bool](Invoke-Cdp '(() => { const s = window.__dvccClipboard; if (!s) return true; window.fetch = s.original; delete window.__dvccClipboard; return window.fetch === s.original; })()')
+  }
+  catch { return $false }
+}
+
+# Any change of the Windows clipboard sequence while this run was driving the app. The harness never
+# writes the clipboard, so a change is someone else's (or a leak the self-check exists to catch); it
+# is never answered by writing anything back.
+$script:clipboardSequenceAtStart = [DvccDesktop]::GetClipboardSequenceNumber()
+$script:externalClipboardActivity = $false
 $script:lastCopied = $null
 
-# Presses a control that writes the clipboard, under the guard described at the top. Returns $false
-# (and records INCONCLUSIVE) when the clipboard could not be put back, in which case nothing is pressed.
-function Invoke-GuardedCopy([string] $testId, [string] $label) {
-  $kind = Get-ClipboardKind
-  if ($kind -ne "text" -and $kind -ne "empty") {
-    Skip $label "the clipboard holds $kind, which this run cannot put back; $testId not pressed"
-    return $false
-  }
-  $snapshot = if ($kind -eq "text") { Get-Clipboard -Raw } else { $null }
-  $before = [DvccDesktop]::GetClipboardSequenceNumber()
+# Presses a control that copies, with the interceptor in place, and returns what DVCC tried to put on
+# the clipboard, or $null (INCONCLUSIVE) when it cannot be done safely. Never touches the clipboard.
+function Invoke-InterceptedCopy([string] $testId, [string] $label) {
   $script:lastCopied = $null
-
+  if (-not (Test-ClipboardInterceptor)) {
+    Skip $label "the clipboard interceptor is not in place; $testId not pressed"
+    return $null
+  }
+  $count = [int](Invoke-Cdp 'window.__dvccClipboard.writes.length')
+  $sequence = [DvccDesktop]::GetClipboardSequenceNumber()
   Invoke-Cdp "document.querySelector('[data-testid=$testId]').click(); true" | Out-Null
-
-  $deadline = (Get-Date).AddSeconds(6)
-  $afterCopy = $before
-  while ((Get-Date) -lt $deadline) {
-    $current = [DvccDesktop]::GetClipboardSequenceNumber()
-    if ($current -ne $before) { $afterCopy = $current; break }
-    Start-Sleep -Milliseconds 100
+  $seen = Wait-For "window.__dvccClipboard.writes.length > $count" 8
+  if ([DvccDesktop]::GetClipboardSequenceNumber() -ne $sequence) {
+    $script:externalClipboardActivity = $true
+    Write-Host "[note] EXTERNAL_CLIPBOARD_ACTIVITY during $testId (nothing was restored)"
   }
-
-  if ($afterCopy -ne $before) {
-    # DVCC's own write, read back before anything is restored; only if nobody wrote after it.
-    if ([DvccDesktop]::GetClipboardSequenceNumber() -eq $afterCopy) {
-      try { $script:lastCopied = Get-Clipboard -Raw } catch { $script:lastCopied = $null }
-    }
-    if ([DvccDesktop]::GetClipboardSequenceNumber() -eq $afterCopy) {
-      try {
-        if ($null -eq $snapshot) { $null | clip.exe } else { Set-Clipboard -Value $snapshot }
-      }
-      catch { Write-Host "[note] the clipboard could not be put back: $_" }
-    }
-    else {
-      Write-Host "[note] the clipboard changed after the copy; left exactly as it is"
-    }
+  if (-not $seen) {
+    Skip $label "no clipboard write reached the interceptor after $testId"
+    return $null
   }
-  return $true
+  $writes = [int](Invoke-Cdp 'window.__dvccClipboard.writes.length')
+  if ($writes -ne $count + 1) {
+    Skip $label "expected one intercepted clipboard write, saw $($writes - $count)"
+    return $null
+  }
+  $script:lastCopied = Invoke-Cdp "window.__dvccClipboard.writes[$count]"
+  return $script:lastCopied
+}
+
+# The file DVCC wrote and the text it tried to copy are the same, allowing only for CRLF/LF and the
+# final newline the storage layer guarantees.
+function Test-SameText([string] $a, [string] $b) {
+  if ($null -eq $a -or $null -eq $b) { return $false }
+  return (($a -replace "`r`n", "`n").TrimEnd("`n") -eq ($b -replace "`r`n", "`n").TrimEnd("`n"))
+}
+
+# The operator's clipboard at the end of a run: unchanged (PASS), changed by someone while nothing of
+# this run could have written it (INCONCLUSIVE, EXTERNAL_CLIPBOARD_ACTIVITY), never "restored".
+function Test-OperatorClipboard([string] $before) {
+  $after = Get-ClipboardFingerprint
+  Write-Host ("clipboard at end:   " + $after)
+  $sequenceNow = [DvccDesktop]::GetClipboardSequenceNumber()
+  if ($sequenceNow -ne $script:clipboardSequenceAtStart -or $script:externalClipboardActivity) {
+    Skip "the operator's clipboard is untouched" "EXTERNAL_CLIPBOARD_ACTIVITY: sequence $($script:clipboardSequenceAtStart) -> $sequenceNow; nothing was restored ($before -> $after)"
+    return
+  }
+  Check "the operator's clipboard is untouched" ($before -eq $after) "$before -> $after"
 }
 
 function Write-Summary {
