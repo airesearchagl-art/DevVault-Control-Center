@@ -293,6 +293,18 @@ export const en: Dictionary = {
   "workflow.handoff.previousResponse": "The previous round's response file",
   "workflow.handoff.reusedEvidence": "Evidence carried over",
   "workflow.handoff.revalidation": "Reason for reviewing the same head again",
+
+  // --- ide handoff (Phase 4a) --------------------------------------------------------------------------------
+  "ideHandoff.card.title": "IDE Handoff",
+  "ideHandoff.card.description":
+    "DVCC only copies the handoff text. It does not open or control an IDE.",
+  "ideHandoff.action.copy": "Copy IDE Handoff",
+  "ideHandoff.heading": "# IDE Handoff",
+  "ideHandoff.field.project": "Project",
+  "ideHandoff.boundary.heading": "## Boundary",
+  "ideHandoff.boundary.body":
+    "This is a Human-operated handoff.\nDVCC has not opened, resumed or controlled an IDE/session.\nMerge, release and Production require separate authorization.",
+
   "detail.card.evidence": "Duplicates and evidence",
   "workflow.duplicate.title": "Same-head duplicate review",
   "workflow.duplicate.none": "No substantive review of this head exists yet.",
@@ -577,6 +589,8 @@ export const en: Dictionary = {
     "Review request saved as request-r{round}.md and copied to the clipboard",
   "toast.requestSavedCopyFailed":
     "Saved request-r{round}.md, but copying to the clipboard failed: {error}",
+  "toast.ideHandoffCopied": "Copied the IDE handoff to the clipboard",
+  "toast.ideHandoffCopyFailed": "Copying the IDE handoff failed: {error}",
   "toast.resultSaved":
     "Result saved as result-r{round}.md. {kept}The review state is unchanged until you confirm a verdict.",
   "toast.resultSavedKept": "The previous result was kept as {file}. ",

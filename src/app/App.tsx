@@ -6,6 +6,7 @@ import { emptyProjectForm, projectToForm, type Project, type ProjectFormInput } 
 import type { ResolutionNarrative } from "../domain/prompt";
 import { deriveFreshness, type FreshnessResult } from "../domain/freshness";
 import { observationForProject, type GitObservation } from "../domain/git";
+import { buildIdeHandoff, renderIdeHandoff } from "../domain/ideHandoff";
 import { buildQueue } from "../domain/queue";
 import {
   currentRound,
@@ -396,6 +397,22 @@ export default function App() {
   };
 
   /**
+   * Phase 4a: a deterministic text the Human pastes, by hand, into an already-open IDE/agent
+   * session. Computed and copied only — no session, project or event file is read, written or
+   * appended (Human Decision section 5).
+   */
+  const copyIdeHandoff = async (project: Project, session: ReviewSession) => {
+    const artifacts = state.artifacts[session.reviewSessionId];
+    const handoff = buildIdeHandoff(project, session, currentRound(session), (artifacts?.checkpoint ?? null) !== null);
+    try {
+      await copyText(renderIdeHandoff(t, handoff));
+      notify("info", t("toast.ideHandoffCopied"));
+    } catch (error) {
+      notify("error", t("toast.ideHandoffCopyFailed", { error: describeError(t, error) }));
+    }
+  };
+
+  /**
    * Turn 2: built once from the Human's narrative, saved for the round, and that same text copied
    * (RF-WF-01). A refusal stays in the dialog; nothing is written until the Human confirms.
    */
@@ -580,6 +597,10 @@ export default function App() {
         }}
         onCopyFollowup={() => {
           onDetailDialog("followup");
+        }}
+        onCopyIdeHandoff={() => {
+          if (!selectedProject) return notify("warning", t("toast.noProjectForReview"));
+          void copyIdeHandoff(selectedProject, selectedSession);
         }}
         priorReviews={priorReviewsFor(loadedSessions, {
           reviewSessionId: selectedSession.reviewSessionId,
