@@ -110,8 +110,94 @@ test for that failure path either (it is structurally simple and has no branchin
 - Irreversible-data safety: PASS — the action is a pure read + clipboard write; nothing is deleted or
   overwritten.
 
-## Independent Review
+## Independent Review (2026-09-28)
 
-Not performed by this run (this session both implemented and evidenced the change; per the
-Independence Gate pattern established for the P2/P3 repair, the implementer cannot also be the
-independent reviewer). Status: **pending**, per Task Packet §21.
+Performed, by a separate context from the one that implemented Wave 0–4 (Independence Gate).
+
+**Result: NOT READY.**
+
+Required Fixes:
+
+- **P3-01** — Task Packet §13-L ("copy failure produces error feedback and writes no state") was
+  claimed in this file's Wave 4 section above but not separately evidenced by an executable test that
+  exercises the real App/UI handler path; only the render path (`renderIdeHandoff`) was covered by the
+  Wave 1 domain tests.
+- **P3-02** — `RUN_STATE.md`'s "Next" section was stale: it described commit and push as happening
+  *after* the Independent Review, when both had already happened before this review ran.
+
+This NOT READY result is preserved here as historical fact; it is not rewritten by the repair below.
+
+## P3-01/P3-02 Focused Repair (2026-09-28)
+
+### P3-01 — source finding
+
+`src/app/App.tsx`'s `copyIdeHandoff` (the Human's click handler) was an inline closure over component
+state, `t`, `notify` and the imported `copyText` — not independently callable or mockable without
+rendering the full app, which this codebase's test setup (`environment: "node"`, no jsdom, no
+`@testing-library/react`) cannot do, and Task Packet §5 forbids adding (`package.json` unchanged).
+
+### New test
+
+- File: `src/app/ideHandoffAction.test.ts` (new)
+- New product file: `src/app/ideHandoffAction.ts` (new) — `copyIdeHandoffAction(project, session,
+  hasCheckpoint, t, copy, notify)`, the exact logic `copyIdeHandoff` runs, factored out with `copy` and
+  `notify` as its only side-effecting parameters (no storage/hub/dispatch reference at all). This is
+  the "small dependency seam" Task Packet §2 anticipated; `App.tsx`'s `copyIdeHandoff` is now a
+  one-line wrapper passing the real `copyText`/`notify`, so production behavior is unchanged
+  byte-for-byte (verified: full regression suite green before and after the extraction, see below).
+- Test 1, "on copy failure": `copy` rejects with `new Error("clipboard write failed")`. Asserts:
+  - error feedback: exactly one `notify` call, `["error", "Copying the IDE handoff failed: clipboard
+    write failed"]` (the exact `toast.ideHandoffCopyFailed` contract, with the clipboard error detail)
+  - success feedback absent: no `notify` call with kind `"info"`
+  - state unchanged: `Project` and `ReviewSession` passed in are `toEqual` a `structuredClone` taken
+    before the call (the "reducer/domain state before/after identical" evidence form)
+  - persistence/event writes: not separately mocked, because `copyIdeHandoffAction`'s parameter list
+    contains no storage, hub or dispatch reference — `copy` and `notify` are its entire side-effecting
+    surface, both observed above. A version of this function that tried to reach storage would need a
+    reference this test never supplies; there is nothing else in scope for it to call. (A sanity check
+    — temporarily changing the failure branch's `notify("error", ...)` to `notify("info", ...)` — was
+    run and confirmed the test fails, then the file was reverted and its SHA-256 confirmed
+    byte-identical to before the check.)
+  - result: **PASS**
+- Test 2, "on copy success" (added for contrast, not required by P3-01): asserts exactly one
+  `notify("info", "Copied the IDE handoff to the clipboard")` call, no `"error"` call, and that `copy`
+  received exactly `renderIdeHandoff(t, buildIdeHandoff(project, session, round, hasCheckpoint))`.
+  Result: **PASS**.
+
+```
+Test Files  1 passed (1)
+     Tests  2 passed (2)
+```
+
+### Full verification after the repair
+
+```
+npm run typecheck   -> clean
+npm test             -> Test Files  33 passed (33) / Tests  879 passed (879)
+git diff --check     -> clean
+```
+
+(877 from Wave 4 + 2 new `ideHandoffAction.test.ts` tests = 879.)
+
+### Product behavior changed?
+
+**NO.** `src/app/App.tsx`'s only change is replacing the inline closure body of `copyIdeHandoff` with
+a call to the extracted `copyIdeHandoffAction`, passing the exact same `project`, `session`,
+`hasCheckpoint`, `t`, `copyText` and `notify` it always used. The full regression suite (879/879) and
+`docsContract`/`i18n`/`noHardCodedText` tests all pass unchanged. `src/domain/ideHandoff.ts` was not
+touched, so the Wave 3 mutation-probe evidence (M-P4A1..4) remains valid and was not re-run.
+`src-tauri/**`, `package.json`, `scripts/verify-ide-handoff-ui.ps1`, the clipboard interceptor, the
+launcher, the schema and the persistence contract are all unchanged; no running-app smoke re-run was
+performed (none is required, since nothing the smoke exercises changed).
+
+### P3-02 reconciliation
+
+`RUN_STATE.md`'s "Next" section is rewritten to say a Focused Independent Delta Re-review comes next,
+that a Draft PR follows only if that returns READY CANDIDATE with no Required Fix, and that commit and
+push for this repair happen before, not after, that re-review. The stale wording is removed; the
+Wave 4 sections above remain as historical record.
+
+## Independent Delta Re-review
+
+**Pending.** Not performed by this run: the implementer of this repair cannot also be its independent
+reviewer (Independence Gate, same pattern as the earlier P2/P3 cycle).

@@ -6,7 +6,6 @@ import { emptyProjectForm, projectToForm, type Project, type ProjectFormInput } 
 import type { ResolutionNarrative } from "../domain/prompt";
 import { deriveFreshness, type FreshnessResult } from "../domain/freshness";
 import { observationForProject, type GitObservation } from "../domain/git";
-import { buildIdeHandoff, renderIdeHandoff } from "../domain/ideHandoff";
 import { buildQueue } from "../domain/queue";
 import {
   currentRound,
@@ -63,6 +62,7 @@ import {
 import { I18nContext, type I18n } from "../i18n/context";
 import { appReducer, initialAppState, type ToastKind } from "./appState";
 import { describeError } from "./format";
+import { copyIdeHandoffAction } from "./ideHandoffAction";
 import "./App.css";
 
 const launcher = tauriLauncher;
@@ -398,18 +398,12 @@ export default function App() {
 
   /**
    * Phase 4a: a deterministic text the Human pastes, by hand, into an already-open IDE/agent
-   * session. Computed and copied only — no session, project or event file is read, written or
-   * appended (Human Decision section 5).
+   * session. `copyIdeHandoffAction` (module scope, exported) is the exact logic this runs; this
+   * wrapper only supplies the app's real `copyText` and `notify` (see its own doc comment).
    */
   const copyIdeHandoff = async (project: Project, session: ReviewSession) => {
     const artifacts = state.artifacts[session.reviewSessionId];
-    const handoff = buildIdeHandoff(project, session, currentRound(session), (artifacts?.checkpoint ?? null) !== null);
-    try {
-      await copyText(renderIdeHandoff(t, handoff));
-      notify("info", t("toast.ideHandoffCopied"));
-    } catch (error) {
-      notify("error", t("toast.ideHandoffCopyFailed", { error: describeError(t, error) }));
-    }
+    await copyIdeHandoffAction(project, session, (artifacts?.checkpoint ?? null) !== null, t, copyText, notify);
   };
 
   /**
