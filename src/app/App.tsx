@@ -62,6 +62,7 @@ import {
 import { I18nContext, type I18n } from "../i18n/context";
 import { appReducer, initialAppState, type ToastKind } from "./appState";
 import { describeError } from "./format";
+import { copyIdeHandoffAction } from "./ideHandoffAction";
 import "./App.css";
 
 const launcher = tauriLauncher;
@@ -396,6 +397,16 @@ export default function App() {
   };
 
   /**
+   * Phase 4a: a deterministic text the Human pastes, by hand, into an already-open IDE/agent
+   * session. `copyIdeHandoffAction` (module scope, exported) is the exact logic this runs; this
+   * wrapper only supplies the app's real `copyText` and `notify` (see its own doc comment).
+   */
+  const copyIdeHandoff = async (project: Project, session: ReviewSession) => {
+    const artifacts = state.artifacts[session.reviewSessionId];
+    await copyIdeHandoffAction(project, session, (artifacts?.checkpoint ?? null) !== null, t, copyText, notify);
+  };
+
+  /**
    * Turn 2: built once from the Human's narrative, saved for the round, and that same text copied
    * (RF-WF-01). A refusal stays in the dialog; nothing is written until the Human confirms.
    */
@@ -580,6 +591,10 @@ export default function App() {
         }}
         onCopyFollowup={() => {
           onDetailDialog("followup");
+        }}
+        onCopyIdeHandoff={() => {
+          if (!selectedProject) return notify("warning", t("toast.noProjectForReview"));
+          void copyIdeHandoff(selectedProject, selectedSession);
         }}
         priorReviews={priorReviewsFor(loadedSessions, {
           reviewSessionId: selectedSession.reviewSessionId,

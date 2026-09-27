@@ -302,6 +302,18 @@ export const ja = {
   "workflow.handoff.previousResponse": "前ラウンドの回答ファイル",
   "workflow.handoff.reusedEvidence": "引き継いだEvidence",
   "workflow.handoff.revalidation": "同一HEAD再レビューの理由",
+
+  // --- ide handoff (Phase 4a) --------------------------------------------------------------------------------
+  "ideHandoff.card.title": "IDE引継ぎ",
+  "ideHandoff.card.description":
+    "DVCCはこの引継ぎテキストをコピーするだけです。IDEを開いたり、操作したりすることはありません。",
+  "ideHandoff.action.copy": "IDE引継ぎをコピー",
+  "ideHandoff.heading": "# IDE引継ぎ",
+  "ideHandoff.field.project": "プロジェクト",
+  "ideHandoff.boundary.heading": "## 境界",
+  "ideHandoff.boundary.body":
+    "これはHumanが操作する引継ぎです。\nDVCCはIDE・セッションを開いたり、再開したり、操作したりしていません。\nMerge・release・Productionには別途の許可が必要です。",
+
   "detail.card.evidence": "重複とEvidence",
   "workflow.duplicate.title": "同一HEADの重複レビュー",
   "workflow.duplicate.none": "このHEADに対する既存の実質レビューはありません。",
@@ -583,6 +595,8 @@ export const ja = {
     "レビュー依頼を request-r{round}.md として保存し、クリップボードにコピーしました",
   "toast.requestSavedCopyFailed":
     "request-r{round}.md を保存しましたが、クリップボードへのコピーに失敗しました: {error}",
+  "toast.ideHandoffCopied": "IDE引継ぎをクリップボードにコピーしました",
+  "toast.ideHandoffCopyFailed": "IDE引継ぎのコピーに失敗しました: {error}",
   "toast.resultSaved":
     "レビュー結果を result-r{round}.md として保存しました。{kept}判定を確定するまでレビュー状態は変わりません。",
   "toast.resultSavedKept": "以前の結果は {file} として保持しました。",

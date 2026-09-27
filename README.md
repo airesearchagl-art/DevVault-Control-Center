@@ -10,11 +10,10 @@ expected / reviewed HEAD, ChatGPT thread, review state, resource state, previous
 action — so a ChatGPT review surface can be closed and any review resumed later, even after
 restarting the app.
 
-> Status: Phase 1 (Review Hub v0.1), Phase 2 (Evidence / Freshness v0.2) and the Localization
-> Foundation (v0.2.1) are merged. Phase 3 (Review Workflow v0.3) is under development on
-> `feat/review-workflow-v0.3`; no pull request has been opened for it yet. Running-app verification
-> is complete with the isolated-desktop workflow and localization smokes; focused independent
-> re-review is pending. Not released; no installer is published.
+> Status: Phase 1 (Review Hub v0.1), Phase 2 (Evidence / Freshness v0.2), the Localization
+> Foundation (v0.2.1) and Phase 3 (Review Workflow v0.3) are merged (PR #4). Phase 4a (IDE Handoff
+> v0.4a) is under development on `feat/ide-handoff-v0.4a`; no pull request has been opened for it
+> yet. Not released; no installer is published.
 
 ## What it does
 
@@ -41,8 +40,8 @@ restarting the app.
   HEAD is no longer current) / `WORKTREE_DIRTY` / `UNKNOWN`, always with one sentence saying why.
   Freshness never changes a review state, and the observed facts are never written to disk: they are
   read again only when you press **Refresh Git state** (one project) or **Refresh Git (all)**.
-- **Review Workflow** (Phase 3, under development — running-app verification complete; focused independent re-review pending) — the
-  canonical Fresh-Context review protocol, walked by the Human:
+- **Review Workflow** (Phase 3, merged) — the canonical Fresh-Context review protocol, walked by the
+  Human:
   - *Turn 1 / Turn 2.* **Copy review prompt** writes Turn 1 (`Stage 1 — Review Target`: Artifact,
     Contract and Material Facts; `Stage 2 — Fresh Assessment`). It never carries the implementation
     narrative (background, decisions taken, implementation history); known risks, failing tests,
@@ -76,6 +75,13 @@ restarting the app.
     it is. It stays a derived fact: it never changes the Review State, never starts a round and never
     decides whether evidence is reusable.
   - Every refused workflow control says why, and what to do next, in both languages.
+- **IDE Handoff** (Phase 4a, under development on `feat/ide-handoff-v0.4a`) — **Copy IDE Handoff**
+  computes a deterministic, localized text (project, repository, review type/PR/round/state,
+  expected/reviewed HEAD, the review's own next action, and whether a checkpoint exists) and copies
+  it to the clipboard for you to paste into an already-open Claude Code / Codex / other session.
+  Nothing is persisted or appended to the event log, and the local root, project notes, ChatGPT
+  thread pointer and any response body or verdict note are never included. DVCC does not open,
+  discover, resume or control that session.
 - **Japanese and English** — the interface is Japanese by default; the language selector in the top
   bar switches to English and back at once, without touching any review, project or Git state. The
   choice is remembered in `settings.json` in the data folder and restored at the next start. Both

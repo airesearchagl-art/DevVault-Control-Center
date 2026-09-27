@@ -31,6 +31,7 @@ import type { ReviewArtifacts } from "../../services/persistence";
 import { ReviewEvidence } from "./ReviewEvidence";
 import { ReviewFreshness } from "./ReviewFreshness";
 import { ReviewHandoff } from "./ReviewHandoff";
+import { ReviewIdeHandoff } from "./ReviewIdeHandoff";
 import { ReviewWorkflow } from "./ReviewWorkflow";
 
 export type DetailDialog =
@@ -65,6 +66,8 @@ interface ReviewDetailProps {
   onCopyPrompt: () => void;
   /** Opens the Turn 2 dialog; the follow-up is saved and copied only when the Human confirms it. */
   onCopyFollowup: () => void;
+  /** Phase 4a: copies a deterministic IDE Handoff text. Computed and copied only; nothing is persisted. */
+  onCopyIdeHandoff: () => void;
   /** Every round that could already have reviewed this head; the current round is excluded. */
   priorReviews: readonly PriorReview[];
   onRecordEvidence: (decisions: RoundEvidenceDecision[]) => void;
@@ -105,6 +108,7 @@ export function ReviewDetail({
   onOpenFolder,
   onCopyPrompt,
   onCopyFollowup,
+  onCopyIdeHandoff,
   priorReviews,
   onRecordEvidence,
   onSaveNextAction,
@@ -452,6 +456,8 @@ export function ReviewDetail({
       />
 
       <ReviewHandoff session={session} round={round} />
+
+      <ReviewIdeHandoff project={project} busy={busy} onCopy={onCopyIdeHandoff} />
 
       <section className="card">
         <header className="card-header">
