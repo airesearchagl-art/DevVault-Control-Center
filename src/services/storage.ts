@@ -60,6 +60,9 @@ export function reviewTarget(reviewId: string, file: string): StorageTarget {
 
 export const requestFileName = (round: number): string => `request-r${round}.md`;
 export const resultFileName = (round: number): string => `result-r${round}.md`;
+/** Phase 3: the Turn 2 request, and the Final Judgment it asks for. */
+export const followupFileName = (round: number): string => `followup-r${round}.md`;
+export const judgmentFileName = (round: number): string => `judgment-r${round}.md`;
 
 export function toStorageError(error: unknown): StorageError {
   if (error instanceof StorageError) return error;

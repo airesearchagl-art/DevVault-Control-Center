@@ -3,6 +3,7 @@ import { Banner, Toasts } from "../components/Banner";
 import { LanguageSelector } from "../components/LanguageSelector";
 import { ConfirmDialog } from "../components/Dialog";
 import { emptyProjectForm, projectToForm, type Project, type ProjectFormInput } from "../domain/project";
+import type { ResolutionNarrative } from "../domain/prompt";
 import { deriveFreshness, type FreshnessResult } from "../domain/freshness";
 import { observationForProject, type GitObservation } from "../domain/git";
 import { buildQueue } from "../domain/queue";
@@ -20,7 +21,17 @@ import type { ReviewAction } from "../domain/transitions";
 import { pullRequestUrl } from "../domain/validation";
 import { ProjectFormDialog } from "../features/projects/ProjectForm";
 import { ReviewDetail, type DetailDialog } from "../features/reviews/ReviewDetail";
-import { CaptureResultDialog, NextRoundDialog, SuspendDialog, VerdictDialog, type VerdictChoice } from "../features/reviews/ReviewDialogs";
+import {
+  CaptureJudgmentDialog,
+  FollowupDialog,
+  CaptureResultDialog,
+  NextRoundDialog,
+  RevalidationDialog,
+  RiskTierDialog,
+  SuspendDialog,
+  VerdictDialog,
+  type VerdictChoice,
+} from "../features/reviews/ReviewDialogs";
 import { CreateReviewDialog, EditReviewDialog } from "../features/reviews/ReviewForm";
 import { ReviewQueue } from "../features/reviews/ReviewQueue";
 import { copyText } from "../services/clipboard";
@@ -32,13 +43,18 @@ import type { SaveOutcome } from "../services/reviewService";
 import { createLocaleStore, loadSettings } from "../services/settings";
 import { tauriStorage, toStorageError } from "../services/storage";
 import { message, type Message } from "../domain/message";
+import { detectDuplicate } from "../domain/duplicate";
+import { priorReviewsFor } from "../domain/priorReviews";
+import type { RoundEvidenceDecision } from "../domain/review";
 import {
   createTranslator,
   DEFAULT_LOCALE,
   formatParts,
   translate,
   REVIEW_STATE_KEYS,
+  INVALIDATION_REASON_KEYS,
   REVIEW_TYPE_SUGGESTION_KEYS,
+  RISK_TIER_KEYS,
   VERDICT_KEYS,
   type Locale,
   type Translator,
@@ -186,6 +202,10 @@ export default function App() {
   const projectById = useMemo(() => new Map(state.projects.map((project) => [project.projectId, project])), [state.projects]);
   const selectedProject = selectedSession ? (projectById.get(selectedSession.projectId) ?? null) : null;
   const projectsWritable = isWritable(state.projectsHealth);
+  const loadedSessions = useMemo(
+    () => state.reviews.flatMap((review) => (review.session ? [review.session] : [])),
+    [state.reviews],
+  );
 
   useEffect(() => {
     if (!selectedSession) return;
@@ -375,6 +395,48 @@ export default function App() {
     }
   };
 
+  /**
+   * Turn 2: built once from the Human's narrative, saved for the round, and that same text copied
+   * (RF-WF-01). A refusal stays in the dialog; nothing is written until the Human confirms.
+   */
+  const copyFollowup = async (session: ReviewSession, narrative: ResolutionNarrative): Promise<Message | null> => {
+    try {
+      const result = await track(hub.saveFollowup(session.reviewSessionId, locale, narrative));
+      if (!result.ok) return result.error;
+      setDialog(null);
+      warnIfNeeded(result.value);
+      const round = result.value.session.reviewRound;
+      try {
+        await copyText(result.value.text);
+        notify("info", t("toast.followupSaved", { round }));
+      } catch (error) {
+        notify("error", t("toast.followupSavedCopyFailed", { round, error: describeError(t, error) }));
+      }
+      return null;
+    } catch (error) {
+      return saveFailed(t, error);
+    }
+  };
+
+  const submitJudgment = async (session: ReviewSession, text: string, replaceConfirmed: boolean): Promise<Message | null> => {
+    try {
+      const result = await track(hub.captureJudgment(session.reviewSessionId, text, replaceConfirmed));
+      if (!result.ok) return result.error;
+      warnIfNeeded(result.value);
+      const saved = result.value.session;
+      const kept = result.value.archivedAs ? `${t("toast.resultSavedKept", { file: result.value.archivedAs })} ` : "";
+      notify("info", t("toast.judgmentCaptured", { round: saved.reviewRound, kept }));
+      setDialog(null);
+      return null;
+    } catch (error) {
+      return saveFailed(t, error);
+    }
+  };
+
+  const recordEvidence = async (session: ReviewSession, decisions: RoundEvidenceDecision[]) => {
+    await runAction(session, { type: "recordEvidenceDecisions", decisions }, t("toast.evidenceRecorded", { count: decisions.length }));
+  };
+
   const submitCapture = async (
     session: ReviewSession,
     text: string,
@@ -404,6 +466,21 @@ export default function App() {
     if (!error) setDialog(null);
     return error;
   };
+
+  /** The duplicate finding for a session's current round, read the same way the card reads it. */
+  const duplicateOf = (session: ReviewSession) => {
+    const round = currentRound(session);
+    return detectDuplicate({
+      projectId: session.projectId,
+      targetHead: round.expectedHead ?? round.reviewedHead,
+      priorReviews: priorReviewsFor(loadedSessions, { reviewSessionId: session.reviewSessionId, round: round.round }),
+    });
+  };
+
+  const duplicateMatches = (session: ReviewSession): string =>
+    duplicateOf(session)
+      .matches.map((match) => t("detail.value.round", { round: match.round }))
+      .join(t("review.verdict.separator"));
 
   const withDialogClose = async (promise: Promise<Message | null>): Promise<Message | null> => {
     const error = await promise;
@@ -500,6 +577,16 @@ export default function App() {
         }}
         onCopyPrompt={() => {
           void copyPrompt(selectedSession);
+        }}
+        onCopyFollowup={() => {
+          onDetailDialog("followup");
+        }}
+        priorReviews={priorReviewsFor(loadedSessions, {
+          reviewSessionId: selectedSession.reviewSessionId,
+          round: selectedSession.reviewRound,
+        })}
+        onRecordEvidence={(decisions) => {
+          void recordEvidence(selectedSession, decisions);
         }}
         onSaveNextAction={async (text) => (await runAction(selectedSession, { type: "setNextAction", nextAction: text }, t("toast.nextActionSaved"))) === null}
       />
@@ -708,6 +795,52 @@ export default function App() {
         <CaptureResultDialog
           session={dialogSession}
           onSubmit={(text, reviewedHead, replaceConfirmed) => submitCapture(dialogSession, text, reviewedHead, replaceConfirmed)}
+          onCancel={closeDialog}
+        />
+      )}
+      {dialog?.kind === "followup" && dialogSession && (
+        <FollowupDialog session={dialogSession} onSubmit={(narrative) => copyFollowup(dialogSession, narrative)} onCancel={closeDialog} />
+      )}
+      {dialog?.kind === "judgment" && dialogSession && (
+        <CaptureJudgmentDialog
+          session={dialogSession}
+          onSubmit={(text, replaceConfirmed) => submitJudgment(dialogSession, text, replaceConfirmed)}
+          onCancel={closeDialog}
+        />
+      )}
+      {dialog?.kind === "riskTier" && dialogSession && (
+        <RiskTierDialog
+          session={dialogSession}
+          onSubmit={(riskTier, subjects) =>
+            withDialogClose(
+              runAction(
+                dialogSession,
+                { type: "setRiskTier", riskTier, subjects, confirmedByHuman: true },
+                t("toast.riskTierSet", { tier: t(RISK_TIER_KEYS[riskTier]) }),
+              ),
+            )
+          }
+          onCancel={closeDialog}
+        />
+      )}
+      {dialog?.kind === "revalidation" && dialogSession && (
+        <RevalidationDialog
+          session={dialogSession}
+          matches={duplicateMatches(dialogSession)}
+          onSubmit={(reason, explanation) =>
+            withDialogClose(
+              runAction(
+                dialogSession,
+                {
+                  type: "recordRevalidation",
+                  reason,
+                  priorReviews: duplicateOf(dialogSession).matches.map((match) => ({ ...match })),
+                  explanation,
+                },
+                t("toast.revalidationRecorded", { reason: t(INVALIDATION_REASON_KEYS[reason]) }),
+              ),
+            )
+          }
           onCancel={closeDialog}
         />
       )}

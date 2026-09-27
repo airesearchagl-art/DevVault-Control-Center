@@ -84,13 +84,28 @@ button {
   white-space: nowrap;
 }
 
-button:hover:not(:disabled) {
+button:hover:not(:disabled):not([aria-disabled="true"]) {
   border-color: var(--accent);
 }
 
-button:disabled {
+button:disabled,
+button[aria-disabled="true"] {
   opacity: 0.45;
   cursor: default;
+}
+
+/* A refused operation stays focusable and says why, next to the control (Phase 3). */
+.action-with-reason {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 32em;
+}
+
+.disabled-reason {
+  font-size: 0.85em;
+  color: var(--muted, inherit);
+  white-space: normal;
 }
 
 button.primary {
@@ -662,6 +677,23 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 3px;
+}
+
+/* A heading inside a card: the protocol sections, and each round of the timeline. */
+.subhead {
+  margin: 10px 0 4px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.card > .subhead:first-of-type {
+  margin-top: 2px;
+}
+
+.event-round + .event-round {
+  margin-top: 6px;
 }
 
 .hint {

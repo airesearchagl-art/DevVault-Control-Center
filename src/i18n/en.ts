@@ -69,8 +69,6 @@ export const en: Dictionary = {
   "detail.actions.startReview": "Start review",
   "detail.actions.captureResult": "Capture result",
   "detail.actions.confirmVerdict": "Confirm verdict",
-  "detail.actions.confirmVerdictDisabled":
-    "Capture the result of this round first",
   "detail.actions.cancelReview": "Cancel review",
   "detail.actions.startNextRound": "Start R{round}",
   "detail.actions.roundLimit": "Round limit R{max} reached",
@@ -140,6 +138,7 @@ export const en: Dictionary = {
   "detail.events.skipped_one":
     "{count} unreadable line in events.jsonl was skipped (file left unchanged).",
   "detail.events.none": "No events.",
+  "detail.events.round": "Round R{round}",
   "detail.events.stateChange": "{from} → {to}",
   "detail.events.noState": "∅",
   "detail.events.note": " — {note}",
@@ -222,6 +221,152 @@ export const en: Dictionary = {
   "state.verdict.blocked": "Blocked",
 
   // --- event type labels -----------------------------------------------------------------------------
+  // --- review workflow (Phase 3) -------------------------------------------------------------------------------
+  "state.freshContext.turn1NotSent": "Turn 1 not sent",
+  "state.freshContext.awaitingAssessment": "Awaiting the Fresh Assessment",
+  "state.freshContext.assessmentReceived": "Fresh Assessment received",
+  "state.freshContext.turn2Sent": "Turn 2 sent, awaiting the Final Judgment",
+  "state.freshContext.judgmentReceived": "Final Judgment received",
+  "state.freshContext.judgmentConfirmed": "Verdict confirmed",
+  "state.riskTier.tier0": "Tier 0",
+  "state.riskTier.tier1": "Tier 1",
+  "state.riskTier.tier2": "Tier 2",
+  "state.tier2Subject.security": "Security",
+  "state.tier2Subject.privacy": "Privacy",
+  "state.tier2Subject.credential": "Credentials",
+  "state.tier2Subject.production": "Production",
+  "state.tier2Subject.migration": "Data migration",
+
+  "detail.card.workflow": "Review workflow",
+  "workflow.fresh.title": "Fresh Context (two turns)",
+  "workflow.fresh.turn1": "Turn 1 (review request)",
+  "workflow.fresh.assessment": "Fresh Assessment",
+  "workflow.fresh.turn2": "Turn 2 (resolution follow-up)",
+  "workflow.fresh.judgment": "Final Judgment",
+  "workflow.fresh.notSent": "not sent",
+  "workflow.fresh.notReceived": "not received",
+  "workflow.fresh.hint":
+    "Turn 1 carries no background and no implementation history. That context is shared in Turn 2, after the initial assessment has come back.",
+  "workflow.actions.ariaLabel": "Workflow actions",
+  "workflow.actions.copyFollowup": "Copy Turn 2",
+  "workflow.actions.captureJudgment": "Save the Final Judgment",
+  "workflow.actions.setRiskTier": "Set the Risk Tier",
+  "workflow.riskTier.title": "Risk Tier",
+  "workflow.riskTier.unset": "not set",
+  "workflow.riskTier.subjectsLabel": "Tier 2 subjects",
+  "workflow.riskTier.noSubjects": "no Tier 2 subject declared",
+  "workflow.riskTier.hint":
+    "The Risk Tier is the Human's own axis, independent of Review State, Resource State and Freshness.",
+
+  "state.invalidation.headChanged": "The head changed",
+  "state.invalidation.baseChanged": "The base changed",
+  "state.invalidation.targetBlobChanged": "The file under review changed",
+  "state.invalidation.relevantContractChanged": "The relevant contract changed",
+  "state.invalidation.executionEnvironmentChanged": "The execution environment changed",
+  "state.evidenceSource.gitObservation": "Git observation",
+  "state.evidenceSource.humanRecordedHead": "Head recorded by the Human",
+  "state.evidenceSource.independentReviewResult": "Independent review response",
+  "state.evidenceSource.priorRunEvidence": "Evidence from an earlier run",
+  "state.evidenceStatus.reusable": "Reusable",
+  "state.evidenceStatus.recheckRequired": "Needs re-checking",
+  "state.evidenceStatus.unavailable": "Unavailable",
+  "state.evidenceReason.shaBound": "Bound to the same head",
+  "state.evidenceReason.noBinding": "No head is recorded for it",
+  "state.evidenceReason.headNotComparable": "The heads cannot be compared",
+  "state.evidenceReason.boundToAnotherHead": "Bound to another head",
+  "state.evidenceReason.baseChanged": "The base it was compared against changed",
+  "state.evidenceReason.targetBlobChanged": "The file under review changed",
+  "state.evidenceReason.relevantContractChanged": "The relevant contract changed",
+  "state.evidenceReason.executionEnvironmentChanged": "The environment it ran in changed",
+
+  "detail.card.handoff": "Handoff",
+  "workflow.handoff.requiredFix": "Required fixes",
+  "workflow.handoff.reReview": "Relation to the previous round",
+  "workflow.handoff.fromRound": "From round",
+  "workflow.handoff.response": "The response the verdict was confirmed against",
+  "workflow.handoff.verdict": "Verdict",
+  "workflow.handoff.verdictNote": "Verdict note",
+  "workflow.handoff.nextAction": "Next action",
+  "workflow.handoff.previousRound": "Previous round",
+  "workflow.handoff.previousRoundValue": "R{round} (verdict: {verdict})",
+  "workflow.handoff.previousHead": "Head reviewed in the previous round",
+  "workflow.handoff.previousResponse": "The previous round's response file",
+  "workflow.handoff.reusedEvidence": "Evidence carried over",
+  "workflow.handoff.revalidation": "Reason for reviewing the same head again",
+  "detail.card.evidence": "Duplicates and evidence",
+  "workflow.duplicate.title": "Same-head duplicate review",
+  "workflow.duplicate.none": "No substantive review of this head exists yet.",
+  "workflow.duplicate.undecidable":
+    "The heads cannot be compared, so whether this is a duplicate is undecidable. Not being able to tell is not the same as there being no duplicate.",
+  "workflow.duplicate.detected": "This head has already been reviewed substantively: {reviews}",
+  "workflow.duplicate.rule":
+    "A same-head review is not repeated without a reasonable invalidation reason. DVCC never skips or closes anything on its own.",
+  "workflow.duplicate.pathOpen": "Open the existing review and use its result",
+  "workflow.duplicate.pathReuse": "Reuse the evidence and re-check only the part that went stale",
+  "workflow.duplicate.recorded": "Recorded invalidation reason: {reason}",
+  "workflow.duplicate.explanation": "What the Human wrote: {explanation}",
+  "workflow.evidence.title": "Evidence reuse",
+  "workflow.evidence.none": "There is no evidence to offer for this round.",
+  "workflow.evidence.hint":
+    "Only evidence bound to this head is offered. DVCC reuses nothing on its own, and the record is written by a Human action.",
+  "workflow.evidence.item": "{source}: {head}",
+  "workflow.evidence.unbound": "no head recorded",
+  "workflow.evidence.capturedAt": "captured {timestamp}",
+  "workflow.evidence.recorded": "Recorded for this round: {count}",
+  "workflow.actions.recordRevalidation": "Record the invalidation reason",
+  "workflow.actions.recordEvidence": "Record the evidence decisions",
+  "workflow.head.title": "Target HEAD for Turn 1",
+  "workflow.head.bindingLabel": "HEAD binding",
+  "workflow.head.binding.exact": "EXACT: bound to the full 40-character HEAD {head}. Turn 1 is an exact-head review request.",
+  "workflow.head.binding.short": "NOT EXACT: only a short HEAD ({head}) is recorded. Turn 1 states in its own text that it is not an exact-head review.",
+  "workflow.head.binding.missing": "NOT EXACT: no expected HEAD is recorded. Turn 1 states in its own text that it is not an exact-head review.",
+  "workflow.head.next": "Next: record the full 40-character HEAD with “Edit” on the Review card. DVCC never completes a short HEAD.",
+  "workflow.head.observedLabel": "Local observation",
+  "workflow.head.observed.matches": "Observed HEAD {observed} (observed {timestamp}) matches the recorded value. It is shown as a candidate only; DVCC does not record it for you.",
+  "workflow.head.observed.differs": "Observed HEAD {observed} (observed {timestamp}) differs from the recorded value. Nothing was changed; check which one is the review target.",
+  "workflow.head.observed.undecidable": "Observed HEAD {observed} (observed {timestamp}) cannot be compared with the recorded value. It is shown as a candidate only; nothing is recorded automatically.",
+  "workflow.head.observed.unavailable": "No local HEAD has been observed. “Refresh Git state” shows a candidate; nothing is recorded automatically.",
+  "workflow.head.edit": "Edit the recorded HEAD",
+  "detail.card.workflowFreshness": "Freshness (a derived fact)",
+  "workflow.freshness.status": "Freshness",
+  "workflow.freshness.reason": "Reason",
+  "workflow.freshness.cause": "Kind of unknown",
+  "workflow.freshness.cause.notObserved": "Not observed yet",
+  "workflow.freshness.cause.gitUnavailable": "Git is unavailable",
+  "workflow.freshness.cause.noLocalRoot": "No local root is recorded",
+  "workflow.freshness.cause.headNotComparable": "The HEAD values cannot be compared",
+  "workflow.freshness.cause.observationFailed": "The observation failed",
+  "workflow.freshness.cause.nothingRecorded": "No HEAD is recorded to compare",
+  "workflow.freshness.currentHead": "Observed current HEAD",
+  "workflow.freshness.next": "Next: “Refresh Git state” observes the repository again. DVCC never refreshes on its own.",
+  "workflow.freshness.hint": "Freshness is a derived fact, shown for information. It never changes the Review State, never starts a round and never decides whether evidence is reusable — the evidence decisions under “Duplicates and evidence” are the workflow's own record.",
+  "workflow.next.captureAssessment": "Next: save the reviewer's Fresh Assessment with “Capture result”.",
+  "workflow.next.sendFollowup": "Next: send Turn 2 to the reviewer first, with “Copy Turn 2”.",
+  "workflow.next.captureJudgment": "Next: save the Final Judgment with “Save the Final Judgment”.",
+  "workflow.next.confirmVerdict": "Next: confirm the verdict against the Final Judgment.",
+  "workflow.next.roundDecided": "Next: this round is decided. To continue, start the next round.",
+  "workflow.next.notInState": "Next: the steps available in the current Review State are in the action bar above.",
+  "workflow.next.projectMissing": "It cannot be generated because the project record is missing. Next: register the project again.",
+  "workflow.revalidation.notNeeded": "Not needed: no substantive review of this head exists.",
+  "workflow.revalidation.undecidable": "It cannot be recorded while it is undecidable whether this head was already reviewed. Next: record a comparable HEAD, or refresh the Git state.",
+  "workflow.evidence.nothingToRecord": "Nothing to record: no evidence is offered for this round.",
+  "workflow.evidence.listAriaLabel": "Evidence offered for this round",
+  "workflow.duplicate.next": "Next: open the existing review, reuse its evidence, or record a canonical invalidation reason.",
+  "workflow.fresh.ariaLabel": "Fresh Context progress",
+  "workflow.riskTier.ariaLabel": "Risk Tier of this round",
+  "detail.events.roundAriaLabel": "Events of R{round}",
+  "review.riskTier.submitDisabled": "To save, choose a tier and tick the confirmation.",
+  "review.riskTier.preview": "This choice will be refused when saved:",
+
+  // --- revalidation dialog (Phase 3) ---------------------------------------------------------------------------
+  "review.revalidation.title": "Record why this head is reviewed again (R{round})",
+  "review.revalidation.body":
+    "The existing reviews this is about: {reviews}. Choose an invalidation reason from the canonical list. What you write is kept with the record, but it is never what grants the permission.",
+  "review.revalidation.reason": "Invalidation reason (canonical)",
+  "review.revalidation.explanation": "Notes (optional)",
+  "review.revalidation.explanationHint": "Say what went stale, and how, for whoever reads this later.",
+  "review.revalidation.submit": "Record this reason",
+
   "events.type.reviewCreated": "Review created",
   "events.type.reviewReady": "Marked ready for review",
   "events.type.reviewStarted": "Review started",
@@ -236,6 +381,11 @@ export const en: Dictionary = {
   "events.type.resourceChanged": "Resource state changed",
   "events.type.nextActionUpdated": "Next action updated",
   "events.type.metadataUpdated": "Review details updated",
+  "events.type.followupSaved": "Turn 2 request saved",
+  "events.type.judgmentCaptured": "Final Judgment captured",
+  "events.type.riskTierSet": "Risk Tier set",
+  "events.type.duplicateContinued": "Duplicate review continued",
+  "events.type.evidenceReused": "Evidence reused",
 
   // --- project form ------------------------------------------------------------------------------------
   "project.form.createTitle": "Create project",
@@ -327,6 +477,34 @@ export const en: Dictionary = {
     "I have read the review result and confirm this verdict.",
   "review.verdict.later": "Decide later",
   "review.verdict.submit": "Confirm verdict",
+  // --- risk tier dialog (Phase 3) ------------------------------------------------------------------------------
+  "review.riskTier.title": "Set the Risk Tier (R{round})",
+  "review.riskTier.tier": "Risk Tier",
+  "review.riskTier.subjects": "Tier 2 subjects (tick every one that applies)",
+  "review.riskTier.tier0Description": "Small, reversible, narrow in effect",
+  "review.riskTier.tier1Description": "An ordinary change, reviewed at the standard depth",
+  "review.riskTier.tier2Description": "Touches security, privacy, credentials, production or a data migration",
+  "review.riskTier.acknowledgement": "I confirm this Risk Tier as the Human",
+  "review.riskTier.rule":
+    "With a Tier 2 subject declared, Tier 0 and Tier 1 cannot be chosen. DVCC refuses with the reason rather than quietly raising it.",
+  "review.riskTier.submit": "Set the Risk Tier",
+
+  // --- final judgment dialog (Phase 3) -------------------------------------------------------------------------
+  "review.followup.title": "Write Turn 2 (R{round})",
+  "review.followup.body": "The implementation narrative you enter here goes into Turn 2 (Stage 3) exactly as written, is saved as followup-r{round}.md and is then copied. A field left blank stays as a “filled in by the Human” placeholder. None of it goes into Turn 1.",
+  "review.followup.background": "Background and purpose (optional)",
+  "review.followup.decisions": "Decisions already taken, and the implementation history (optional)",
+  "review.followup.tradeoffs": "Known trade-offs / earlier considerations / related past reviews (optional)",
+  "review.followup.notice": "Edits you make after copying are not part of followup-r{round}.md, the record DVCC keeps. Enter what you will send here.",
+  "review.followup.submit": "Save and copy Turn 2",
+  "review.judgment.title": "Save the Final Judgment (R{round})",
+  "review.judgment.text": "Final Judgment (the answer to Turn 2)",
+  "review.judgment.textHint":
+    "The Fresh Assessment is not overwritten: this is kept separately as judgment-r{round}.md.",
+  "review.judgment.replace": "Replace the saved Final Judgment (the previous text is kept in its own file)",
+  "review.judgment.submitSave": "Save the Final Judgment",
+  "review.judgment.submitReplace": "Replace the Final Judgment",
+
   "review.nextRound.title": "Start round R{round}",
   "review.nextRound.body":
     "R{previous} artifacts stay as they are. R{round} starts as {readyLabel}.",
@@ -386,6 +564,15 @@ export const en: Dictionary = {
   "toast.reviewBlocked": "Review blocked",
   "toast.reviewClosed": "Review closed",
   "toast.verdictConfirmed": "Verdict confirmed: {verdict}",
+  "toast.followupSaved":
+    "Turn 2 saved as followup-r{round}.md and copied to the clipboard",
+  "toast.followupSavedCopyFailed":
+    "Saved followup-r{round}.md, but copying to the clipboard failed: {error}",
+  "toast.judgmentCaptured":
+    "Final Judgment saved as judgment-r{round}.md. {kept}The Fresh Assessment is left as it is.",
+  "toast.riskTierSet": "Risk Tier set to {tier}",
+  "toast.revalidationRecorded": "Recorded the invalidation reason: {reason}",
+  "toast.evidenceRecorded": "Recorded {count} evidence decisions",
   "toast.requestSaved":
     "Review request saved as request-r{round}.md and copied to the clipboard",
   "toast.requestSavedCopyFailed":
@@ -461,6 +648,39 @@ export const en: Dictionary = {
   "action.archive.duplicate": "Archive file name is already recorded",
   "action.capture.replaceConfirmationRequired":
     "R{round} already has a saved result; replacing it requires explicit Human confirmation",
+  "action.archive.judgmentMismatch":
+    "Archive file name does not match the replaced Final Judgment",
+  "action.followup.assessmentRequired":
+    "Capture the Fresh Assessment of R{round} before saving a Turn 2",
+  "action.followup.judgmentCaptured":
+    "R{round} already has a Final Judgment, so its Turn 2 can no longer be rewritten",
+  "action.followup.verdictConfirmed":
+    "The verdict of R{round} is confirmed, so no Turn 2 can be saved",
+  "action.judgment.assessmentRequired":
+    "Capture the Fresh Assessment of R{round} before capturing a Final Judgment",
+  "action.judgment.followupRequired":
+    "R{round} has not sent a Turn 2, so there is no Final Judgment to capture",
+  "action.judgment.verdictConfirmed":
+    "The verdict of R{round} is confirmed, so no Final Judgment can be captured",
+  "action.judgment.replaceConfirmationRequired":
+    "R{round} already has a Final Judgment; replacing it requires explicit Human confirmation",
+  "action.riskTier.confirmationRequired": "Setting the Risk Tier requires explicit Human confirmation",
+  "action.riskTier.verdictConfirmed":
+    "The verdict of R{round} is confirmed, so the Risk Tier can no longer be changed",
+  "action.riskTier.unknown": "Unknown Risk Tier",
+  "action.riskTier.belowRequired":
+    "The subjects declared for this change require Risk Tier {required} or higher",
+  "action.revalidation.verdictConfirmed":
+    "The verdict of R{round} is confirmed, so a revalidation reason can no longer be recorded",
+  "action.revalidation.alreadyRecorded":
+    "R{round} already records why it is reviewing this head again",
+  "action.revalidation.reasonNotApplicable":
+    "That invalidation reason does not apply to a duplicate review of the same HEAD",
+  "action.revalidation.priorReviewRequired":
+    "Recording a revalidation needs the existing review it is about",
+  "action.evidence.verdictConfirmed":
+    "The verdict of R{round} is confirmed, so the evidence decisions can no longer be changed",
+  "action.evidence.duplicateItem": "Evidence “{id}” appears twice",
   "action.verdict.confirmationRequired":
     "A verdict requires explicit Human confirmation",
   "action.verdict.resultRequired":
@@ -468,6 +688,8 @@ export const en: Dictionary = {
   "action.suspend.notResumable": "Cannot suspend from {state}",
   "action.resource.unchanged": "Resource is already {state}",
   "action.verdict.unknown": "Unknown verdict",
+  "action.verdict.judgmentRequired":
+    "This round sent a Turn 2, so capture the Final Judgment (judgment-r{round}.md) before confirming a verdict",
   "action.block.confirmationRequired":
     "Blocking requires explicit Human confirmation",
   "action.block.reasonRequired": "A reason is required to block the review",
@@ -485,9 +707,11 @@ export const en: Dictionary = {
   "service.projectsNotModifiable": "projects.json cannot be modified: {problem}",
   "service.unknownProject": "Unknown project: {id}",
   "service.noArchiveName":
-    "R{round} has no free archive name left for the previous result",
+    "R{round} has no free archive name left for the previous response",
   "service.resultRequired": "Paste the review result before saving",
   "service.resultTooLong": "Review result is too long",
+  "service.judgmentRequired": "Paste the Final Judgment before saving",
+  "service.judgmentTooLong": "Final Judgment is too long",
   "service.reviewIdCollision":
     "Could not allocate a unique review id; try again",
   "service.reviewUnavailable": "Review {id} is not available",
@@ -528,6 +752,20 @@ export const en: Dictionary = {
   "schema.round.unknownVerdict": "{field} is not a known verdict",
   "schema.round.archivedResults":
     "{field} must list result-r{round}-previous-<ms>.md file names",
+  "schema.field.mustBeArray": "{field} must be an array",
+  "schema.round.unknownRiskTier": "{field} is not a known Risk Tier",
+  "schema.round.followupWithoutAssessment":
+    "{field} is present but the round has no captured Fresh Assessment",
+  "schema.round.judgmentWithoutFollowup":
+    "{field} is present but the round has no record of a Turn 2",
+  "schema.round.archivedJudgments":
+    "{field} must list judgment-r{round}-previous-<ms>.md file names",
+  "schema.round.invalidationReason": "{field} is not a known invalidation reason",
+  "schema.round.priorReviewId": "{field} is not a valid review id",
+  "schema.round.priorReviewRound": "{field} must be a positive integer",
+  "schema.round.evidenceSource": "{field} is not a known evidence source",
+  "schema.round.evidenceStatus": "{field} is not a known evidence status",
+  "schema.round.evidenceReason": "{field} is not a known evidence reason",
   "schema.session.invalidReviewId":
     "session.reviewSessionId is not a valid review id",
   "schema.session.idFolderMismatch":
@@ -557,6 +795,8 @@ export const en: Dictionary = {
     "the from of a state change is not a known state",
   "schema.event.stateChangeToUnknown":
     "the to of a state change is not a known state",
+  "schema.event.detailKindMismatch": "{field} does not match the event type",
+  "schema.event.unknownTierSubject": "{field} is not a known Tier 2 subject",
   "schema.event.unsupportedVersion": "unsupported event version",
   "schema.event.unknownType": "unknown event type",
   "schema.event.invalidReviewId": "invalid reviewSessionId",

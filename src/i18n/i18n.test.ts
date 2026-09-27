@@ -1,20 +1,31 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { REVIEW_EVENT_TYPES } from "../domain/events";
+import { EVIDENCE_REASONS, EVIDENCE_SOURCES, EVIDENCE_STATUSES } from "../domain/evidenceReuse";
+import { FRESH_CONTEXT_STATES } from "../domain/freshContext";
+import { INVALIDATION_REASONS } from "../domain/revalidation";
 import { FRESHNESS_STATES } from "../domain/freshness";
 import { GIT_STATUSES } from "../domain/git";
+import { RISK_TIERS, TIER_2_SUBJECTS } from "../domain/riskTier";
 import { RESOURCE_STATES, REVIEW_STATES, VERDICTS } from "../domain/states";
 import { en } from "./en";
 import {
   createTranslator,
   EVENT_TYPE_KEYS,
+  EVIDENCE_REASON_KEYS,
+  EVIDENCE_SOURCE_KEYS,
+  EVIDENCE_STATUS_KEYS,
   formatParts,
   formatTimestamp,
+  FRESH_CONTEXT_STATE_KEYS,
   FRESHNESS_KEYS,
   GIT_STATUS_KEYS,
+  INVALIDATION_REASON_KEYS,
   RESOURCE_HINT_KEYS,
   RESOURCE_STATE_KEYS,
   REVIEW_STATE_KEYS,
+  RISK_TIER_KEYS,
+  TIER_2_SUBJECT_KEYS,
   VERDICT_KEYS,
 } from "./index";
 import { ja } from "./ja";
@@ -60,6 +71,15 @@ const SHARED_VALUES = new Set([
   "review.verdict.separator",
   "notice.label.projects",
   "time.unknown",
+  // Canonical names from the review contract: translating them would drift from the vocabulary the
+  // reviewer and the Human share.
+  "state.riskTier.tier0",
+  "state.riskTier.tier1",
+  "state.riskTier.tier2",
+  "workflow.riskTier.title",
+  "review.riskTier.tier",
+  // A format, not a sentence: both halves are already translated.
+  "workflow.evidence.item",
 ]);
 
 describe("locales", () => {
@@ -142,7 +162,7 @@ describe("translation parity", () => {
 });
 
 describe("every persisted value has a label in both languages", () => {
-  it("covers review states, resource states, verdicts, freshness, Git status and event types", () => {
+  it("covers review states, resource states, verdicts, freshness, Git status, event types, risk tiers, Tier 2 subjects and fresh-context states", () => {
     const groups = [
       [REVIEW_STATES, REVIEW_STATE_KEYS],
       [RESOURCE_STATES, RESOURCE_STATE_KEYS],
@@ -151,6 +171,14 @@ describe("every persisted value has a label in both languages", () => {
       [FRESHNESS_STATES, FRESHNESS_KEYS],
       [GIT_STATUSES, GIT_STATUS_KEYS],
       [REVIEW_EVENT_TYPES, EVENT_TYPE_KEYS],
+      // Phase 3: the values the workflow persists and the derived state it shows.
+      [RISK_TIERS, RISK_TIER_KEYS],
+      [TIER_2_SUBJECTS, TIER_2_SUBJECT_KEYS],
+      [FRESH_CONTEXT_STATES, FRESH_CONTEXT_STATE_KEYS],
+      [INVALIDATION_REASONS, INVALIDATION_REASON_KEYS],
+      [EVIDENCE_SOURCES, EVIDENCE_SOURCE_KEYS],
+      [EVIDENCE_STATUSES, EVIDENCE_STATUS_KEYS],
+      [EVIDENCE_REASONS, EVIDENCE_REASON_KEYS],
     ] as const;
     for (const [values, keys] of groups) {
       for (const value of values) {

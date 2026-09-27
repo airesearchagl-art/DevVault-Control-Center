@@ -254,6 +254,14 @@ describe("next round contract", () => {
         verdict: null,
         verdictConfirmedAt: null,
         verdictNote: null,
+        // Phase 3: a new round starts with nothing handed over, nothing captured, nothing decided.
+        followupSavedAt: null,
+        judgmentCapturedAt: null,
+        riskTier: null,
+        riskTierSubjects: [],
+        revalidation: null,
+        evidenceDecisions: [],
+        archivedJudgments: [],
         archivedResults: [],
       });
       expect(next.reviewState).toBe("READY_FOR_REVIEW");

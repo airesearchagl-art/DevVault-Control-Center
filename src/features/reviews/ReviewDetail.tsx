@@ -1,12 +1,17 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { excerpt } from "../../app/format";
+import { ActionButton } from "../../components/ActionButton";
+import { Row } from "../../components/DetailRow";
 import { FreshnessBadge, ResourceStateBadge, ReviewStateBadge } from "../../components/StateBadge";
 import type { FreshnessResult } from "../../domain/freshness";
 import type { GitObservation } from "../../domain/git";
 import { MAX_REVIEW_ROUNDS } from "../../domain/limits";
+import type { PriorReview } from "../../domain/duplicate";
 import type { Project } from "../../domain/project";
-import { currentRound, latestCapturedRound, type ReviewSession } from "../../domain/review";
+import { currentRound, latestCapturedRound, type ReviewSession, type RoundEvidenceDecision } from "../../domain/review";
 import { RESOURCE_STATES, type ResourceState } from "../../domain/states";
+import { timelineByRound } from "../../domain/timeline";
+import { actionRefusal } from "../../domain/actionRefusal";
 import { canApply, type ReviewAction } from "../../domain/transitions";
 import { pullRequestUrl } from "../../domain/validation";
 import {
@@ -16,14 +21,32 @@ import {
   RESOURCE_HINT_KEYS,
   RESOURCE_STATE_KEYS,
   REVIEW_STATE_KEYS,
+  refusalText,
   translate,
   VERDICT_KEYS,
   type Translator,
 } from "../../i18n";
 import { useT } from "../../i18n/context";
 import type { ReviewArtifacts } from "../../services/persistence";
+import { ReviewEvidence } from "./ReviewEvidence";
+import { ReviewFreshness } from "./ReviewFreshness";
+import { ReviewHandoff } from "./ReviewHandoff";
+import { ReviewWorkflow } from "./ReviewWorkflow";
 
-export type DetailDialog = "suspend" | "capture" | "verdict" | "block" | "close" | "nextRound" | "editReview" | "editProject";
+export type DetailDialog =
+  | "suspend"
+  | "capture"
+  | "verdict"
+  | "block"
+  | "close"
+  | "nextRound"
+  | "editReview"
+  | "editProject"
+  // Phase 3
+  | "judgment"
+  | "followup"
+  | "riskTier"
+  | "revalidation";
 
 interface ReviewDetailProps {
   session: ReviewSession;
@@ -40,18 +63,12 @@ interface ReviewDetailProps {
   onOpenChatgpt: () => void;
   onOpenFolder: () => void;
   onCopyPrompt: () => void;
+  /** Opens the Turn 2 dialog; the follow-up is saved and copied only when the Human confirms it. */
+  onCopyFollowup: () => void;
+  /** Every round that could already have reviewed this head; the current round is excluded. */
+  priorReviews: readonly PriorReview[];
+  onRecordEvidence: (decisions: RoundEvidenceDecision[]) => void;
   onSaveNextAction: (text: string) => Promise<boolean>;
-}
-
-function Row({ label, children, testId, mono }: { label: string; children: ReactNode; testId?: string; mono?: boolean }) {
-  return (
-    <div className="detail-row">
-      <dt>{label}</dt>
-      <dd className={mono ? "mono" : undefined} data-testid={testId}>
-        {children}
-      </dd>
-    </div>
-  );
 }
 
 function unrecorded(t: Translator): ReactNode {
@@ -73,28 +90,6 @@ function currentBranch(t: Translator, observation: GitObservation | undefined): 
   return observation.detached === true ? t("git.branch.detached") : unobserved(t);
 }
 
-function ActionButton({
-  label,
-  testId,
-  onClick,
-  enabled,
-  primary,
-  title,
-}: {
-  label: string;
-  testId: string;
-  onClick: () => void;
-  enabled: boolean;
-  primary?: boolean;
-  title?: string;
-}) {
-  return (
-    <button type="button" className={primary ? "primary" : undefined} onClick={onClick} disabled={!enabled} data-testid={testId} title={title}>
-      {label}
-    </button>
-  );
-}
-
 export function ReviewDetail({
   session,
   project,
@@ -109,6 +104,9 @@ export function ReviewDetail({
   onOpenChatgpt,
   onOpenFolder,
   onCopyPrompt,
+  onCopyFollowup,
+  priorReviews,
+  onRecordEvidence,
   onSaveNextAction,
 }: ReviewDetailProps) {
   const t = useT();
@@ -132,7 +130,12 @@ export function ReviewDetail({
     project?.repositoryUrl && session.prNumber !== null ? pullRequestUrl(project.repositoryUrl, session.prNumber) : (project?.repositoryUrl ?? null);
   const resultText = artifacts?.latestResult?.text ?? null;
   const shownResult = resultText === null ? null : showFullResult ? { text: resultText, truncated: false } : excerpt(resultText, 20);
-  const recentEvents = artifacts ? artifacts.events.slice(-8).reverse() : [];
+  // The last events, grouped by the round they belong to, newest round first (RW-12).
+  const recentRounds = artifacts ? timelineByRound(artifacts.events.slice(-12)).reverse() : [];
+  const verdictRefusal = actionRefusal(session, "confirmVerdict");
+  const requestRefusal = actionRefusal(session, "recordRequestSaved");
+  const requestReason =
+    requestRefusal !== null ? refusalText(t, requestRefusal) : project === null ? t("workflow.next.projectMissing") : null;
   const UNRECORDED = unrecorded(t);
   const UNOBSERVED = unobserved(t);
 
@@ -182,8 +185,8 @@ export function ReviewDetail({
                 <ActionButton
                   label={t("detail.actions.confirmVerdict")}
                   testId="action-verdict"
-                  enabled={can("confirmVerdict") && round.resultCapturedAt !== null}
-                  title={round.resultCapturedAt === null ? t("detail.actions.confirmVerdictDisabled") : undefined}
+                  enabled={!busy && verdictRefusal === null}
+                  disabledReason={verdictRefusal === null ? null : refusalText(t, verdictRefusal)}
                   onClick={() => onOpenDialog("verdict")}
                 />
                 <ActionButton label={t("detail.actions.cancelReview")} testId="action-cancel-review" enabled={can("cancelReview")} onClick={() => onAction({ type: "cancelReview" })} />
@@ -238,6 +241,7 @@ export function ReviewDetail({
           label={t("detail.actions.copyPrompt", { round: session.reviewRound })}
           testId="action-copy-prompt"
           enabled={can("recordRequestSaved") && project !== null}
+          disabledReason={requestReason}
           onClick={onCopyPrompt}
         />
       </section>
@@ -423,6 +427,32 @@ export function ReviewDetail({
         )}
       </section>
 
+      <ReviewWorkflow
+        session={session}
+        round={round}
+        busy={busy}
+        projectMissing={project === null}
+        observation={observation}
+        onEditReview={() => onOpenDialog("editReview")}
+        onCopyFollowup={onCopyFollowup}
+        onCaptureJudgment={() => onOpenDialog("judgment")}
+        onSetRiskTier={() => onOpenDialog("riskTier")}
+      />
+
+      <ReviewFreshness freshness={freshness} observation={observation} busy={busy} onRefreshGit={onRefreshGit} />
+
+      <ReviewEvidence
+        session={session}
+        round={round}
+        busy={busy}
+        priorReviews={priorReviews}
+        observation={observation}
+        onRecordRevalidation={() => onOpenDialog("revalidation")}
+        onRecordEvidence={onRecordEvidence}
+      />
+
+      <ReviewHandoff session={session} round={round} />
+
       <section className="card">
         <header className="card-header">
           <h3>{t("detail.card.previousResult")}</h3>
@@ -472,37 +502,42 @@ export function ReviewDetail({
           <p className="warning-text">{t("detail.events.skipped", { count: artifacts.skippedEventLines })}</p>
         )}
         {artifacts && artifacts.errors.length > 0 && <p className="error-text">{artifacts.errors.join(" / ")}</p>}
-        {recentEvents.length === 0 ? (
+        {recentRounds.length === 0 ? (
           <p className="muted">{t("detail.events.none")}</p>
         ) : (
-          <ol className="event-list" data-testid="detail-events">
-            {recentEvents.map((event, index) => (
-              <li key={`${event.ts}-${index}`} data-event-type={event.type}>
-                <span className="mono small">{formatTimestamp(t, event.ts)}</span> <strong>{t(EVENT_TYPE_KEYS[event.type])}</strong>
-                {event.reviewState && (
-                  <span className="muted small">
-                    {" "}
-                    {t("detail.events.stateChange", {
-                      from: event.reviewState.from ? t(REVIEW_STATE_KEYS[event.reviewState.from]) : t("detail.events.noState"),
-                      to: t(REVIEW_STATE_KEYS[event.reviewState.to]),
-                    })}
-                  </span>
-                )}
-                {event.resourceState && (
-                  <span className="muted small">
-                    {" "}
-                    [
-                    {t("detail.events.stateChange", {
-                      from: event.resourceState.from ? t(RESOURCE_STATE_KEYS[event.resourceState.from]) : t("detail.events.noState"),
-                      to: t(RESOURCE_STATE_KEYS[event.resourceState.to]),
-                    })}
-                    ]
-                  </span>
-                )}
-                {event.note && <span className="small">{t("detail.events.note", { note: event.note })}</span>}
-              </li>
-            ))}
-          </ol>
+          recentRounds.map((group) => (
+            <div key={group.round} className="event-round" data-testid={`detail-events-r${group.round}`}>
+              <h4 className="subhead">{t("detail.events.round", { round: group.round })}</h4>
+              <ol className="event-list" aria-label={t("detail.events.roundAriaLabel", { round: group.round })}>
+                {group.events.map((event, index) => (
+                  <li key={`${event.ts}-${index}`} data-event-type={event.type}>
+                    <span className="mono small">{formatTimestamp(t, event.ts)}</span> <strong>{t(EVENT_TYPE_KEYS[event.type])}</strong>
+                    {event.reviewState && (
+                      <span className="muted small">
+                        {" "}
+                        {t("detail.events.stateChange", {
+                          from: event.reviewState.from ? t(REVIEW_STATE_KEYS[event.reviewState.from]) : t("detail.events.noState"),
+                          to: t(REVIEW_STATE_KEYS[event.reviewState.to]),
+                        })}
+                      </span>
+                    )}
+                    {event.resourceState && (
+                      <span className="muted small">
+                        {" "}
+                        [
+                        {t("detail.events.stateChange", {
+                          from: event.resourceState.from ? t(RESOURCE_STATE_KEYS[event.resourceState.from]) : t("detail.events.noState"),
+                          to: t(RESOURCE_STATE_KEYS[event.resourceState.to]),
+                        })}
+                        ]
+                      </span>
+                    )}
+                    {event.note && <span className="small">{t("detail.events.note", { note: event.note })}</span>}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ))
         )}
       </section>
     </article>

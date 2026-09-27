@@ -240,11 +240,12 @@ fn is_digits(text: &str, max_len: usize) -> bool {
     !text.is_empty() && text.len() <= max_len && text.bytes().all(|c| c.is_ascii_digit())
 }
 
-/// `result-r<N>-previous-<ms>[-<n>].md`: a result replaced in the same round (F-6); the optional
-/// `-<n>` (1..999, no leading zero) distinguishes texts archived for the same capture time (E-2).
-fn is_archived_result(file: &str) -> bool {
+/// `<kind>-r<N>-previous-<ms>[-<n>].md`: a reviewer response replaced in the same round (F-6); the
+/// optional `-<n>` (1..999, no leading zero) distinguishes texts archived for the same capture time
+/// (E-2). `kind` is `result` (the Fresh Assessment) or `judgment` (the Final Judgment).
+fn is_archived_response(file: &str, prefix: &str) -> bool {
     let Some(rest) = file
-        .strip_prefix("result-r")
+        .strip_prefix(prefix)
         .and_then(|rest| rest.strip_suffix(".md"))
     else {
         return false;
@@ -263,7 +264,10 @@ pub fn is_allowed_review_file(file: &str) -> bool {
     matches!(file, SESSION_FILE | CHECKPOINT_FILE | EVENTS_FILE)
         || is_round_artifact(file, "request-r")
         || is_round_artifact(file, "result-r")
-        || is_archived_result(file)
+        || is_round_artifact(file, "followup-r")
+        || is_round_artifact(file, "judgment-r")
+        || is_archived_response(file, "result-r")
+        || is_archived_response(file, "judgment-r")
 }
 
 pub fn target_path(root: &Path, target: &StorageTarget) -> Result<PathBuf, CommandError> {
@@ -840,6 +844,13 @@ pub(crate) mod tests {
             "result-r12-previous-0.md",
             "result-r1-previous-1767225600000-1.md",
             "result-r1-previous-1767225600000-999.md",
+            // Phase 3: the Turn 2 request and the Final Judgment, with the same archive shape.
+            "followup-r1.md",
+            "followup-r12.md",
+            "judgment-r1.md",
+            "judgment-r12.md",
+            "judgment-r1-previous-1767225600000.md",
+            "judgment-r1-previous-1767225600000-1.md",
         ] {
             assert!(is_allowed_review_file(good), "{good:?} should be allowed");
         }
@@ -867,6 +878,12 @@ pub(crate) mod tests {
             "result-r1-previous-1767225600000-1000.md",
             "result-r1-previous-1767225600000-.md",
             "result-r1-previous-1767225600000-1-2.md",
+            // A request has no archive, and neither kind may borrow the other's prefix.
+            "followup-r1-previous-1767225600000.md",
+            "judgment-r0.md",
+            "judgment-r1.txt",
+            "judgment-r1-previous-.md",
+            "judgment-r1-previous-1767225600000-0.md",
         ] {
             assert!(!is_allowed_review_file(bad), "{bad:?} should be rejected");
         }

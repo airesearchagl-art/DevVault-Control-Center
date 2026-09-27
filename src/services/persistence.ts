@@ -1,7 +1,7 @@
 import { message, type Message } from "../domain/message";
 import type { ReviewEvent } from "../domain/events";
 import type { Project } from "../domain/project";
-import { latestCapturedRound, type ReviewSession } from "../domain/review";
+import { latestCapturedRound, type ResponseKind, type ReviewSession } from "../domain/review";
 import {
   parseEventsFile,
   parseProjectsFile,
@@ -14,6 +14,8 @@ import {
 import {
   PROJECTS_TARGET,
   StorageError,
+  followupFileName,
+  judgmentFileName,
   requestFileName,
   resultFileName,
   reviewTarget,
@@ -272,14 +274,24 @@ export async function writeCheckpoint(backend: StorageBackend, reviewId: string,
   await backend.write(reviewTarget(reviewId, "checkpoint.md"), text.endsWith("\n") ? text : `${text}\n`);
 }
 
+/** The four per-round documents: the two requests DVCC writes and the two responses it keeps. */
+export type RoundArtifactKind = "request" | "followup" | ResponseKind;
+
+const ROUND_ARTIFACT_FILE: Record<RoundArtifactKind, (round: number) => string> = {
+  request: requestFileName,
+  followup: followupFileName,
+  result: resultFileName,
+  judgment: judgmentFileName,
+};
+
 export async function writeRoundArtifact(
   backend: StorageBackend,
   reviewId: string,
-  kind: "request" | "result",
+  kind: RoundArtifactKind,
   round: number,
   text: string,
 ): Promise<void> {
-  const file = kind === "request" ? requestFileName(round) : resultFileName(round);
+  const file = ROUND_ARTIFACT_FILE[kind](round);
   await backend.write(reviewTarget(reviewId, file), text.endsWith("\n") ? text : `${text}\n`);
 }
 

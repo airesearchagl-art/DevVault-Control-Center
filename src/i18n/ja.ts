@@ -76,8 +76,6 @@ export const ja = {
   "detail.actions.startReview": "レビュー開始",
   "detail.actions.captureResult": "レビュー結果を保存",
   "detail.actions.confirmVerdict": "判定を確定",
-  "detail.actions.confirmVerdictDisabled":
-    "先にこのラウンドのレビュー結果を保存してください",
   "detail.actions.cancelReview": "レビューを取り消す",
   "detail.actions.startNextRound": "R{round} を開始",
   "detail.actions.roundLimit": "ラウンド上限 R{max} に達しています",
@@ -148,6 +146,7 @@ export const ja = {
   "detail.events.skipped_one":
     "events.jsonl の読み取れない{count}行をスキップしました（ファイルは変更していません）。",
   "detail.events.none": "履歴はありません。",
+  "detail.events.round": "ラウンド R{round}",
   "detail.events.stateChange": "{from} → {to}",
   "detail.events.noState": "∅",
   "detail.events.note": " — {note}",
@@ -231,6 +230,152 @@ export const ja = {
   "state.verdict.blocked": "ブロック",
 
   // --- event type labels -----------------------------------------------------------------------------
+  // --- review workflow (Phase 3) -------------------------------------------------------------------------------
+  "state.freshContext.turn1NotSent": "Turn 1未送信",
+  "state.freshContext.awaitingAssessment": "Fresh Assessment待ち",
+  "state.freshContext.assessmentReceived": "Fresh Assessment受領",
+  "state.freshContext.turn2Sent": "Turn 2送信済み・Final Judgment待ち",
+  "state.freshContext.judgmentReceived": "Final Judgment受領",
+  "state.freshContext.judgmentConfirmed": "判定確定済み",
+  "state.riskTier.tier0": "Tier 0",
+  "state.riskTier.tier1": "Tier 1",
+  "state.riskTier.tier2": "Tier 2",
+  "state.tier2Subject.security": "セキュリティ",
+  "state.tier2Subject.privacy": "プライバシー",
+  "state.tier2Subject.credential": "認証情報",
+  "state.tier2Subject.production": "本番環境",
+  "state.tier2Subject.migration": "データ移行",
+
+  "detail.card.workflow": "レビューワークフロー",
+  "workflow.fresh.title": "Fresh Context（2ターン）",
+  "workflow.fresh.turn1": "Turn 1（レビュー依頼）",
+  "workflow.fresh.assessment": "Fresh Assessment（初回評価）",
+  "workflow.fresh.turn2": "Turn 2（解決フォローアップ）",
+  "workflow.fresh.judgment": "Final Judgment（最終判断）",
+  "workflow.fresh.notSent": "未送信",
+  "workflow.fresh.notReceived": "未受領",
+  "workflow.fresh.hint":
+    "Turn 1では背景・実装経緯を渡しません。初回評価を受け取ってから、Turn 2で追加contextを共有します。",
+  "workflow.actions.ariaLabel": "ワークフロー操作",
+  "workflow.actions.copyFollowup": "Turn 2をコピー",
+  "workflow.actions.captureJudgment": "最終判断を保存",
+  "workflow.actions.setRiskTier": "Risk Tierを設定",
+  "workflow.riskTier.title": "Risk Tier",
+  "workflow.riskTier.unset": "未設定",
+  "workflow.riskTier.subjectsLabel": "Tier 2対象",
+  "workflow.riskTier.noSubjects": "Tier 2対象の宣言なし",
+  "workflow.riskTier.hint":
+    "Risk Tierはレビュー状態・リソース状態・Freshnessとは独立した、Humanが決める軸です。",
+
+  "state.invalidation.headChanged": "HEADが変わった",
+  "state.invalidation.baseChanged": "baseが変わった",
+  "state.invalidation.targetBlobChanged": "レビュー対象ファイルが変わった",
+  "state.invalidation.relevantContractChanged": "関連するcontractが変わった",
+  "state.invalidation.executionEnvironmentChanged": "実行環境が変わった",
+  "state.evidenceSource.gitObservation": "Git観測",
+  "state.evidenceSource.humanRecordedHead": "Humanが記録したHEAD",
+  "state.evidenceSource.independentReviewResult": "独立レビューの回答",
+  "state.evidenceSource.priorRunEvidence": "過去Runのevidence",
+  "state.evidenceStatus.reusable": "再利用可",
+  "state.evidenceStatus.recheckRequired": "再確認が必要",
+  "state.evidenceStatus.unavailable": "利用不可",
+  "state.evidenceReason.shaBound": "同一HEADに紐づいています",
+  "state.evidenceReason.noBinding": "紐づくHEADが記録されていません",
+  "state.evidenceReason.headNotComparable": "HEADを比較できません",
+  "state.evidenceReason.boundToAnotherHead": "別のHEADに紐づいています",
+  "state.evidenceReason.baseChanged": "baseが変わっています",
+  "state.evidenceReason.targetBlobChanged": "レビュー対象ファイルが変わっています",
+  "state.evidenceReason.relevantContractChanged": "関連するcontractが変わっています",
+  "state.evidenceReason.executionEnvironmentChanged": "実行環境が変わっています",
+
+  "detail.card.handoff": "引き継ぎ",
+  "workflow.handoff.requiredFix": "修正必須の引き継ぎ",
+  "workflow.handoff.reReview": "前ラウンドとの関係",
+  "workflow.handoff.fromRound": "対象ラウンド",
+  "workflow.handoff.response": "判定の根拠となった回答",
+  "workflow.handoff.verdict": "判定",
+  "workflow.handoff.verdictNote": "判定メモ",
+  "workflow.handoff.nextAction": "次のアクション",
+  "workflow.handoff.previousRound": "前ラウンド",
+  "workflow.handoff.previousRoundValue": "R{round}（判定: {verdict}）",
+  "workflow.handoff.previousHead": "前ラウンドのレビュー済みHEAD",
+  "workflow.handoff.previousResponse": "前ラウンドの回答ファイル",
+  "workflow.handoff.reusedEvidence": "引き継いだEvidence",
+  "workflow.handoff.revalidation": "同一HEAD再レビューの理由",
+  "detail.card.evidence": "重複とEvidence",
+  "workflow.duplicate.title": "同一HEADの重複レビュー",
+  "workflow.duplicate.none": "このHEADに対する既存の実質レビューはありません。",
+  "workflow.duplicate.undecidable":
+    "HEADを比較できないため、重複かどうか判定できません。判定できないことは「重複なし」ではありません。",
+  "workflow.duplicate.detected": "このHEADはすでに実質的にレビューされています: {reviews}",
+  "workflow.duplicate.rule":
+    "合理的な失効理由がない限り、同一HEADの再レビューは行いません。DVCCは自動でスキップも自動クローズもしません。",
+  "workflow.duplicate.pathOpen": "既存レビューを開いて、その結果を使う",
+  "workflow.duplicate.pathReuse": "Evidenceを再利用し、失効した部分だけを再確認する",
+  "workflow.duplicate.recorded": "記録済みの失効理由: {reason}",
+  "workflow.duplicate.explanation": "Humanの記述: {explanation}",
+  "workflow.evidence.title": "Evidenceの再利用",
+  "workflow.evidence.none": "このラウンドに提示できるEvidenceはありません。",
+  "workflow.evidence.hint":
+    "同一HEADに紐づくEvidenceだけを提示します。DVCCが勝手に再利用することはなく、記録はHumanの操作で行われます。",
+  "workflow.evidence.item": "{source}: {head}",
+  "workflow.evidence.unbound": "HEAD未記録",
+  "workflow.evidence.capturedAt": "取得: {timestamp}",
+  "workflow.evidence.recorded": "このラウンドで記録済み: {count}件",
+  "workflow.actions.recordRevalidation": "失効理由を記録",
+  "workflow.actions.recordEvidence": "Evidenceの判断を記録",
+  "workflow.head.title": "Turn 1の対象HEAD",
+  "workflow.head.bindingLabel": "HEADの固定",
+  "workflow.head.binding.exact": "EXACT: 40文字のfull HEAD {head} に固定されています。Turn 1はexact-head review依頼になります。",
+  "workflow.head.binding.short": "NOT EXACT: 短縮HEAD（{head}）しか記録されていません。Turn 1はexact-head reviewではないことを本文で明示します。",
+  "workflow.head.binding.missing": "NOT EXACT: レビュー予定HEADが記録されていません。Turn 1はexact-head reviewではないことを本文で明示します。",
+  "workflow.head.next": "次の操作: レビューカードの「編集」で40文字のfull HEADを記録してください。DVCCが短縮HEADを補完することはありません。",
+  "workflow.head.observedLabel": "ローカル観測",
+  "workflow.head.observed.matches": "観測HEAD {observed}（観測日時 {timestamp}）は記録値と一致します。候補として表示しているだけで、DVCCが記録することはありません。",
+  "workflow.head.observed.differs": "観測HEAD {observed}（観測日時 {timestamp}）は記録値と異なります。何も変更していません。どちらがレビュー対象か確認してください。",
+  "workflow.head.observed.undecidable": "観測HEAD {observed}（観測日時 {timestamp}）は記録値と比較できません。候補として表示しているだけで、自動では記録しません。",
+  "workflow.head.observed.unavailable": "ローカルHEADは観測されていません。「Git状態を更新」で候補を確認できます。自動では何も記録しません。",
+  "workflow.head.edit": "記録HEADを編集",
+  "detail.card.workflowFreshness": "Freshness（導出された事実）",
+  "workflow.freshness.status": "Freshness状態",
+  "workflow.freshness.reason": "理由",
+  "workflow.freshness.cause": "不明の種類",
+  "workflow.freshness.cause.notObserved": "まだ観測していません",
+  "workflow.freshness.cause.gitUnavailable": "Gitを利用できません",
+  "workflow.freshness.cause.noLocalRoot": "ローカルルートが記録されていません",
+  "workflow.freshness.cause.headNotComparable": "HEADを比較できません",
+  "workflow.freshness.cause.observationFailed": "観測に失敗しました",
+  "workflow.freshness.cause.nothingRecorded": "比較するHEADが記録されていません",
+  "workflow.freshness.currentHead": "観測した現在のHEAD",
+  "workflow.freshness.next": "次の操作: 「Git状態を更新」でリポジトリを観測し直せます。DVCCが自動で更新することはありません。",
+  "workflow.freshness.hint": "Freshnessは参考として表示する導出された事実です。レビュー状態を変えず、ラウンドを開始せず、Evidenceの再利用可否も決めません。Evidenceの判断は「重複とEvidence」の記録が正です。",
+  "workflow.next.captureAssessment": "次の操作: ReviewerのFresh Assessmentを「レビュー結果を保存」で保存してください。",
+  "workflow.next.sendFollowup": "次の操作: 先に「Turn 2をコピー」でTurn 2をReviewerへ送ってください。",
+  "workflow.next.captureJudgment": "次の操作: 「最終判断を保存」でFinal Judgmentを保存してください。",
+  "workflow.next.confirmVerdict": "次の操作: Final Judgmentに基づいて判定を確定してください。",
+  "workflow.next.roundDecided": "次の操作: このラウンドは判定確定済みです。続ける場合は次のラウンドを開始してください。",
+  "workflow.next.notInState": "次の操作: 現在のレビュー状態で使える操作は、上部の操作バーにあります。",
+  "workflow.next.projectMissing": "プロジェクトの記録が見つからないため生成できません。次の操作: プロジェクトを登録し直してください。",
+  "workflow.revalidation.notNeeded": "不要です: このHEADに対する既存の実質レビューはありません。",
+  "workflow.revalidation.undecidable": "重複かどうか判定できない間は記録できません。次の操作: 比較できるHEADを記録するか、Git状態を更新してください。",
+  "workflow.evidence.nothingToRecord": "記録するものはありません: このラウンドに提示されたEvidenceはありません。",
+  "workflow.evidence.listAriaLabel": "このラウンドに提示されたEvidence",
+  "workflow.duplicate.next": "次の操作: 既存レビューを開く、Evidenceを再利用する、または正規の失効理由を記録する、のいずれかを選んでください。",
+  "workflow.fresh.ariaLabel": "Fresh Contextの進行",
+  "workflow.riskTier.ariaLabel": "このラウンドのRisk Tier",
+  "detail.events.roundAriaLabel": "R{round}のイベント",
+  "review.riskTier.submitDisabled": "保存するには、Tierを選び、確認のチェックを入れてください。",
+  "review.riskTier.preview": "この選択は保存時に拒否されます:",
+
+  // --- revalidation dialog (Phase 3) ---------------------------------------------------------------------------
+  "review.revalidation.title": "同一HEADの再レビュー理由を記録（R{round}）",
+  "review.revalidation.body":
+    "対象の既存レビュー: {reviews}。canonical listから失効理由を選んでください。自由記述は記録として残りますが、許可の根拠にはなりません。",
+  "review.revalidation.reason": "失効理由（canonical）",
+  "review.revalidation.explanation": "補足（任意）",
+  "review.revalidation.explanationHint": "何がどう失効したのかを、後から読む人に向けて書いてください。",
+  "review.revalidation.submit": "この理由で記録する",
+
   "events.type.reviewCreated": "レビュー作成",
   "events.type.reviewReady": "レビュー準備完了",
   "events.type.reviewStarted": "レビュー開始",
@@ -245,6 +390,11 @@ export const ja = {
   "events.type.resourceChanged": "リソース状態の変更",
   "events.type.nextActionUpdated": "次のアクションを更新",
   "events.type.metadataUpdated": "レビュー情報を更新",
+  "events.type.followupSaved": "Turn 2の依頼を保存",
+  "events.type.judgmentCaptured": "最終判断を保存",
+  "events.type.riskTierSet": "Risk Tierを設定",
+  "events.type.duplicateContinued": "重複レビューを継続",
+  "events.type.evidenceReused": "Evidenceを再利用",
 
   // --- project form ------------------------------------------------------------------------------------
   "project.form.createTitle": "プロジェクトを登録",
@@ -332,6 +482,34 @@ export const ja = {
     "レビュー結果を読んだうえで、この判定を確定します。",
   "review.verdict.later": "あとで決める",
   "review.verdict.submit": "判定を確定",
+  // --- risk tier dialog (Phase 3) ------------------------------------------------------------------------------
+  "review.riskTier.title": "Risk Tierを設定（R{round}）",
+  "review.riskTier.tier": "Risk Tier",
+  "review.riskTier.subjects": "Tier 2対象（該当するものをすべて）",
+  "review.riskTier.tier0Description": "軽微・可逆・影響範囲が限定される変更",
+  "review.riskTier.tier1Description": "通常の機能変更。標準的なレビュー深度",
+  "review.riskTier.tier2Description": "セキュリティ・プライバシー・認証情報・本番環境・データ移行に関わる変更",
+  "review.riskTier.acknowledgement": "このRisk TierをHumanとして確定します",
+  "review.riskTier.rule":
+    "宣言したTier 2対象がある場合、Tier 0 / Tier 1は選べません。DVCCは黙って引き上げず、理由を示して拒否します。",
+  "review.riskTier.submit": "Risk Tierを設定",
+
+  // --- final judgment dialog (Phase 3) -------------------------------------------------------------------------
+  "review.followup.title": "Turn 2 を作成（R{round}）",
+  "review.followup.body": "ここで入力したimplementation narrativeはTurn 2（Stage 3）にそのまま入り、followup-r{round}.mdとして保存されたうえでコピーされます。空欄の項目は「Humanが記入」の欄として残ります。Turn 1には入りません。",
+  "review.followup.background": "背景・目的（任意）",
+  "review.followup.decisions": "すでに決まっている方針・実装経緯（任意）",
+  "review.followup.tradeoffs": "known trade-offs / 過去の検討 / 関連する過去レビュー（任意）",
+  "review.followup.notice": "コピーした後に手で加えた変更は、DVCCが記録するfollowup-r{round}.mdには含まれません。送る内容はここで入力してください。",
+  "review.followup.submit": "Turn 2 を保存してコピー",
+  "review.judgment.title": "最終判断を保存（R{round}）",
+  "review.judgment.text": "Final Judgment（Turn 2の回答）",
+  "review.judgment.textHint":
+    "Fresh Assessmentは上書きされません。judgment-r{round}.md として別に保存されます。",
+  "review.judgment.replace": "保存済みの最終判断を置き換えます（以前の内容は別ファイルに退避します）",
+  "review.judgment.submitSave": "最終判断を保存",
+  "review.judgment.submitReplace": "最終判断を置き換える",
+
   "review.nextRound.title": "ラウンド R{round} を開始",
   "review.nextRound.body":
     "R{previous} の成果物はそのまま残ります。R{round} は{readyLabel}として開始します。",
@@ -392,6 +570,15 @@ export const ja = {
   "toast.reviewBlocked": "レビューをブロックしました",
   "toast.reviewClosed": "レビューを完了にしました",
   "toast.verdictConfirmed": "判定を確定しました: {verdict}",
+  "toast.followupSaved":
+    "Turn 2を followup-r{round}.md として保存し、クリップボードにコピーしました",
+  "toast.followupSavedCopyFailed":
+    "followup-r{round}.md を保存しましたが、クリップボードへのコピーに失敗しました: {error}",
+  "toast.judgmentCaptured":
+    "最終判断を judgment-r{round}.md として保存しました。{kept}Fresh Assessmentはそのまま残ります。",
+  "toast.riskTierSet": "Risk Tierを {tier} に設定しました",
+  "toast.revalidationRecorded": "失効理由「{reason}」を記録しました",
+  "toast.evidenceRecorded": "Evidenceの判断を{count}件記録しました",
   "toast.requestSaved":
     "レビュー依頼を request-r{round}.md として保存し、クリップボードにコピーしました",
   "toast.requestSavedCopyFailed":
@@ -467,12 +654,47 @@ export const ja = {
   "action.archive.duplicate": "退避ファイル名は既に記録されています",
   "action.capture.replaceConfirmationRequired":
     "R{round} には保存済みの結果があります。差し替えるには明示的な確認が必要です",
+  "action.archive.judgmentMismatch":
+    "退避ファイル名が差し替え対象の最終判断と一致しません",
+  "action.followup.assessmentRequired":
+    "Turn 2を保存する前に、R{round} のレビュー結果（Fresh Assessment）を保存してください",
+  "action.followup.judgmentCaptured":
+    "R{round} は最終判断を保存済みのため、Turn 2を保存し直せません",
+  "action.followup.verdictConfirmed":
+    "R{round} は判定が確定しているため、Turn 2を保存できません",
+  "action.judgment.assessmentRequired":
+    "最終判断を保存する前に、R{round} のレビュー結果（Fresh Assessment）を保存してください",
+  "action.judgment.followupRequired":
+    "R{round} ではTurn 2をまだ送っていないため、最終判断を保存できません",
+  "action.judgment.verdictConfirmed":
+    "R{round} は判定が確定しているため、最終判断を保存できません",
+  "action.judgment.replaceConfirmationRequired":
+    "R{round} には保存済みの最終判断があります。差し替えるには明示的な確認が必要です",
+  "action.riskTier.confirmationRequired": "Risk Tierの設定には明示的な確認が必要です",
+  "action.riskTier.verdictConfirmed":
+    "R{round} は判定が確定しているため、Risk Tierを変更できません",
+  "action.riskTier.unknown": "不明なRisk Tierです",
+  "action.riskTier.belowRequired":
+    "宣言された対象のため、Risk Tierは {required} 以上である必要があります",
+  "action.revalidation.verdictConfirmed":
+    "R{round} は判定が確定しているため、再検証の理由を記録できません",
+  "action.revalidation.alreadyRecorded":
+    "R{round} には再検証の理由がすでに記録されています",
+  "action.revalidation.reasonNotApplicable":
+    "同一HEADの重複レビューには適用できない失効理由です",
+  "action.revalidation.priorReviewRequired":
+    "再検証の記録には、対象となる既存レビューが必要です",
+  "action.evidence.verdictConfirmed":
+    "R{round} は判定が確定しているため、Evidenceの判断を変更できません",
+  "action.evidence.duplicateItem": "Evidence「{id}」が重複しています",
   "action.verdict.confirmationRequired": "判定の確定には明示的な確認が必要です",
   "action.verdict.resultRequired":
     "判定を確定する前に R{round} のレビュー結果を保存してください",
   "action.suspend.notResumable": "{state} からは一時中断できません",
   "action.resource.unchanged": "リソース状態はすでに {state} です",
   "action.verdict.unknown": "不明な判定です",
+  "action.verdict.judgmentRequired":
+    "Turn 2を送ったラウンドでは、最終判断（judgment-r{round}.md）を保存してから判定を確定してください",
   "action.block.confirmationRequired": "ブロックには明示的な確認が必要です",
   "action.block.reasonRequired": "レビューをブロックするには理由が必要です",
   "action.block.reasonTooLong": "理由が長すぎます",
@@ -487,9 +709,11 @@ export const ja = {
   "service.projectsNotModifiable": "projects.json を変更できません: {problem}",
   "service.unknownProject": "未登録のプロジェクトです: {id}",
   "service.noArchiveName":
-    "R{round} の以前の結果を保持できるファイル名が残っていません",
+    "R{round} の以前の回答を保持できるファイル名が残っていません",
   "service.resultRequired": "保存する前にレビュー結果を貼り付けてください",
   "service.resultTooLong": "レビュー結果が長すぎます",
+  "service.judgmentRequired": "保存する前に最終判断を貼り付けてください",
+  "service.judgmentTooLong": "最終判断が長すぎます",
   "service.reviewIdCollision":
     "一意のレビューIDを採番できませんでした。もう一度お試しください",
   "service.reviewUnavailable": "レビュー {id} を利用できません",
@@ -532,6 +756,20 @@ export const ja = {
   "schema.round.unknownVerdict": "{field} は既知の判定ではありません",
   "schema.round.archivedResults":
     "{field} には result-r{round}-previous-<ms>.md 形式のファイル名のみ記載できます",
+  "schema.field.mustBeArray": "{field} は配列である必要があります",
+  "schema.round.unknownRiskTier": "{field} は既知のRisk Tierではありません",
+  "schema.round.followupWithoutAssessment":
+    "{field} がありますが、このラウンドにはレビュー結果（Fresh Assessment）の記録がありません",
+  "schema.round.judgmentWithoutFollowup":
+    "{field} がありますが、対応するTurn 2の記録がありません",
+  "schema.round.archivedJudgments":
+    "{field} には judgment-r{round}-previous-<ms>.md 形式のファイル名のみ記載できます",
+  "schema.round.invalidationReason": "{field} は既知の失効理由ではありません",
+  "schema.round.priorReviewId": "{field} は有効なレビューIDではありません",
+  "schema.round.priorReviewRound": "{field} は正の整数である必要があります",
+  "schema.round.evidenceSource": "{field} は既知のEvidence種別ではありません",
+  "schema.round.evidenceStatus": "{field} は既知のEvidence判定ではありません",
+  "schema.round.evidenceReason": "{field} は既知のEvidence理由ではありません",
   "schema.session.invalidReviewId":
     "session.reviewSessionId は有効なレビューIDではありません",
   "schema.session.idFolderMismatch":
@@ -562,6 +800,8 @@ export const ja = {
     "状態変化の from が既知の状態ではありません",
   "schema.event.stateChangeToUnknown":
     "状態変化の to が既知の状態ではありません",
+  "schema.event.detailKindMismatch": "{field} がイベント種別と一致しません",
+  "schema.event.unknownTierSubject": "{field} は既知のTier 2主題ではありません",
   "schema.event.unsupportedVersion": "対応していないイベントバージョンです",
   "schema.event.unknownType": "不明なイベント種別です",
   "schema.event.invalidReviewId": "reviewSessionId が不正です",
