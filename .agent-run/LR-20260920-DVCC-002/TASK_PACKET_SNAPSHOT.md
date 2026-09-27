@@ -25,7 +25,7 @@ project: DevVault Control Center (DVCC)
 phase: Phase 2 — Evidence / Freshness
 module_version: Evidence / Freshness v0.2
 repository: airesearchagl-art/DevVault-Control-Center
-local_root: C:\Users\shuns\.claude\projects\DevVaultControlCenter
+local_root: <USER_HOME>\.claude\projects\DevVaultControlCenter
 final_output: DRAFT_PR
 per_wave_human_confirmation: not required (only Hard Boundary or scope change stops the run)
 ```

@@ -16,8 +16,10 @@ working_branch: feat/evidence-freshness-v0.2
 task_packet_id: LRP-20260920-DVCC-002
 task_packet_revision: 1
 task_packet_snapshot_path: .agent-run/LR-20260920-DVCC-002/TASK_PACKET_SNAPSHOT.md
-task_packet_digest_sha256: b9ecd5c0d1a9d8388cc212072c3c08a5a57a45af90035c4f2a2232688a6f9dd8
-task_packet_snapshot_bytes: 17432
+task_packet_digest_sha256: 802850b3a93b9495905b473b35925cfb400ea946ef45326938047afd7186e3af
+task_packet_digest_sha256_original_pre_redaction: b9ecd5c0d1a9d8388cc212072c3c08a5a57a45af90035c4f2a2232688a6f9dd8
+task_packet_snapshot_bytes: 17429
+task_packet_snapshot_bytes_original_pre_redaction: 17432
 run_artifact_path: .agent-run/LR-20260920-DVCC-002/
 checkpoint_policy: EACH_WAVE
 checkpoint_commit: true
@@ -69,5 +71,6 @@ The previous run's artifacts (`.agent-run/LR-20260917-DVCC-001/`) are historical
 
 ```powershell
 (Get-FileHash -Algorithm SHA256 -LiteralPath .agent-run/LR-20260920-DVCC-002/TASK_PACKET_SNAPSHOT.md).Hash.ToLower()
-# must equal b9ecd5c0d1a9d8388cc212072c3c08a5a57a45af90035c4f2a2232688a6f9dd8
+# current sanitized snapshot must equal 802850b3a93b9495905b473b35925cfb400ea946ef45326938047afd7186e3af
+# original pre-redaction digest was b9ecd5c0d1a9d8388cc212072c3c08a5a57a45af90035c4f2a2232688a6f9dd8
 ```

@@ -3,17 +3,18 @@
 - Run ID: LR-20260921-DVCC-004
 - Mode: LONG_RUN (ENDURANCE not authorized)
 - Horizon: 8H
-- Current state: FINAL CONVERGENCE COMPLETE — awaiting independent review (see FINAL_CONVERGENCE.md); no pull request
+- Current state: POST-INDEPENDENT-REVIEW REPAIR COMPLETE — P2 privacy redaction and P3 README reconciliation fixed; focused independent delta re-review pending; no pull request
 - Repository: airesearchagl-art/DevVault-Control-Center
 - Working branch: feat/review-workflow-v0.3
 - Base SHA: 4c1962b0c47321805554be2218bba996ff5de92f
-- Current head: the Final Convergence evidence commit (exact SHA in `git log` and the review packet); verification-harness head `86146d1`; product freeze `7ba7bb84214d896fda90593c97d5bc73c540bf6d`
-- Current wave: Final Convergence complete → Independent Review (separate context)
+- Current head: the post-independent-review repair commit (exact SHA reported with the repair report); verification-harness head `86146d1`; product freeze `7ba7bb84214d896fda90593c97d5bc73c540bf6d`
+- Current wave: Independent FULL Review returned NOT READY (P2/P3) → focused repair complete → focused independent delta re-review
 - Last successful checkpoint: Final Convergence (product freeze `7ba7bb8`, harness `86146d1`)
 - Task Packet ID: LRP-20260921-DVCC-004
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260921-DVCC-004/TASK_PACKET_SNAPSHOT.md
-- Task Packet SHA-256: 22673c39c5136e0785ed9ca1a5a4367ce154916c1c62f872635c6d303469db92 (verified at this checkpoint: match)
+- Task Packet original pre-redaction SHA-256: 22673c39c5136e0785ed9ca1a5a4367ce154916c1c62f872635c6d303469db92 (historical; matched through Final Convergence)
+- Task Packet sanitized SHA-256: 8b74f8b43954990f307e010a1dbefaded7e4d23ad76c01e367cf80d01fa83d9b (current repository snapshot; privacy-only redaction)
 
 ## Objective
 
@@ -206,9 +207,9 @@ Wave 4: new `src/domain/{headBinding,actionRefusal,freshnessCause}.ts`,
 
 ## Next action
 
-Independent review of the full Phase 3 delta in a separate context, read-only, bound to the final evidence head. The Draft PR only after it returns READY CANDIDATE with no Required Fix.
+Focused independent delta re-review of the P2/P3 repair, read-only, bound to the post-review repair head. The Draft PR only after the re-review returns READY CANDIDATE with no Required Fix.
 
 ## Remaining tasks
 
-- Independent Verification in a separate context; then the Draft PR (not Ready).
+- Focused Independent Delta Re-review of the P2/P3 repair; then the Draft PR if READY CANDIDATE with no Required Fix.
 - Phase 4 stays blocked until Phase 3 merges.

@@ -12,8 +12,9 @@ restarting the app.
 
 > Status: Phase 1 (Review Hub v0.1), Phase 2 (Evidence / Freshness v0.2) and the Localization
 > Foundation (v0.2.1) are merged. Phase 3 (Review Workflow v0.3) is under development on
-> `feat/review-workflow-v0.3`; no pull request has been opened for it yet, and it has not been
-> verified in the running app. Not released; no installer is published.
+> `feat/review-workflow-v0.3`; no pull request has been opened for it yet. Running-app verification
+> is complete with the isolated-desktop workflow and localization smokes; focused independent
+> re-review is pending. Not released; no installer is published.
 
 ## What it does
 
@@ -40,7 +41,7 @@ restarting the app.
   HEAD is no longer current) / `WORKTREE_DIRTY` / `UNKNOWN`, always with one sentence saying why.
   Freshness never changes a review state, and the observed facts are never written to disk: they are
   read again only when you press **Refresh Git state** (one project) or **Refresh Git (all)**.
-- **Review Workflow** (Phase 3, under development — not yet verified in the running app) — the
+- **Review Workflow** (Phase 3, under development — running-app verification complete; focused independent re-review pending) — the
   canonical Fresh-Context review protocol, walked by the Human:
   - *Turn 1 / Turn 2.* **Copy review prompt** writes Turn 1 (`Stage 1 — Review Target`: Artifact,
     Contract and Material Facts; `Stage 2 — Fresh Assessment`). It never carries the implementation

@@ -34,7 +34,7 @@ Repository:
 airesearchagl-art/DevVault-Control-Center
 
 Local Root:
-C:\Users\shuns\.claude\projects\DevVaultControlCenter
+<USER_HOME>\.claude\projects\DevVaultControlCenter
 
 Expected current main:
 4c1962b0c47321805554be2218bba996ff5de92f

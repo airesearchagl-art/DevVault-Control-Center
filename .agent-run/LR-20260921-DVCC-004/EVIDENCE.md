@@ -43,7 +43,7 @@ and Phase 3 does not invent one (DECISIONS RW-003).
 
 The delegated cross-project scan found five local mirrors of the vault repository and reported that
 the newest one carries a `Tier 2 Review Execution Contract` the working copy does not. Checked
-directly: `C:\Users\shuns\obsidian-vault\...\DevVault_Review_Depth_Tiering.md` is 2026-09-03,
+directly: `<USER_HOME>\obsidian-vault\...\DevVault_Review_Depth_Tiering.md` is 2026-09-03,
 7 103 bytes, 58 lines; the 2026-09-16 mirror is 9 845 bytes, 88 lines. The working copy this session
 read first was therefore **stale**, and the missing section is exactly the one that defines evidence
 reuse.
@@ -651,3 +651,14 @@ Recorded in `FINAL_CONVERGENCE.md`: fresh gate PASS at `32d01f9`; freeze integri
 touches only `scripts/` and this run folder); harness boundary PASS; full diff 68 files classified, no
 unrelated feature, no Phase 4 IDE Bridge; evidence reused without re-running (no invalidation reason);
 RW-01..RW-24 PASS; Required Fixes none; hard checks PASS. Independent review pending.
+
+
+## Post-Independent Review P2/P3 repair (2026-09-27)
+
+The Independent FULL Review returned NOT READY solely on P2 privacy redaction and P3 README status convergence. Product source, tests and verification harness were not changed by this repair.
+
+- Privacy redaction: user-home prefixes in committed run artifacts were replaced with `<USER_HOME>` while preserving the relative path and every review-relevant fact. The repository-wide pre-repair scan identified five files / six user-home occurrences; all identified occurrences were sanitized.
+- Task Packet LR-20260921-DVCC-004: original pre-redaction digest `22673c39c5136e0785ed9ca1a5a4367ce154916c1c62f872635c6d303469db92`; current sanitized digest `8b74f8b43954990f307e010a1dbefaded7e4d23ad76c01e367cf80d01fa83d9b`.
+- Task Packet LR-20260920-DVCC-002: original pre-redaction digest `b9ecd5c0d1a9d8388cc212072c3c08a5a57a45af90035c4f2a2232688a6f9dd8`; current sanitized digest `802850b3a93b9495905b473b35925cfb400ea946ef45326938047afd7186e3af`.
+- README: stale running-app-verification wording was reconciled; Phase 3 remains under development, with no PR, release or installer claim.
+- Independent delta re-review: pending.

@@ -13,7 +13,8 @@
 - Task Packet ID: LRP-20260920-DVCC-002
 - Task Packet revision: 1
 - Task Packet snapshot path: .agent-run/LR-20260920-DVCC-002/TASK_PACKET_SNAPSHOT.md
-- Task Packet SHA-256: b9ecd5c0d1a9d8388cc212072c3c08a5a57a45af90035c4f2a2232688a6f9dd8 (verified at this checkpoint: match)
+- Task Packet sanitized SHA-256: 802850b3a93b9495905b473b35925cfb400ea946ef45326938047afd7186e3af (current repository snapshot; privacy-only redaction)
+- Task Packet original pre-redaction SHA-256: b9ecd5c0d1a9d8388cc212072c3c08a5a57a45af90035c4f2a2232688a6f9dd8 (historical; matched at the Phase 2 checkpoint)
 
 - Draft PR: https://github.com/airesearchagl-art/DevVault-Control-Center/pull/2 (draft, base main, head feat/evidence-freshness-v0.2 @ b386add)
 
@@ -92,7 +93,7 @@ No hard stop condition triggered. Environment condition (not a product failure):
 
 ## Resume instructions
 
-1. Verify `RUN_MANIFEST.md` binding; recompute SHA-256 of `TASK_PACKET_SNAPSHOT.md` (must equal b9ecd5c0d1a9d8388cc212072c3c08a5a57a45af90035c4f2a2232688a6f9dd8).
+1. Verify `RUN_MANIFEST.md` binding; recompute SHA-256 of `TASK_PACKET_SNAPSHOT.md` (current sanitized snapshot must equal 802850b3a93b9495905b473b35925cfb400ea946ef45326938047afd7186e3af; original pre-redaction digest was b9ecd5c0d1a9d8388cc212072c3c08a5a57a45af90035c4f2a2232688a6f9dd8).
 2. Verify repository / branch `feat/evidence-freshness-v0.2` / base f557aa6 / head = latest checkpoint commit / clean working tree.
 3. `npm ci` (if `node_modules` is absent), `npx vitest run`, `cargo test` (in `src-tauri`) as targeted smoke.
 4. Continue from "Next action". Any mismatch → BLOCKED and escalate to the Human.

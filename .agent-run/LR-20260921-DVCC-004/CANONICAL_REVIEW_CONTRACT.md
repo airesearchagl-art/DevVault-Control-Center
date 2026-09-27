@@ -15,8 +15,8 @@ The Human authorized a **read-only** fetch of that main for this discovery. Resu
 | Copy | Date | `DevVault_Review_Depth_Tiering.md` |
 |---|---|---|
 | `airesearchagl-art/obsidian-vault` @ `77ce41e6ff9e243ac2c8dc37ee29f5d5f4f24157` (main, 2026-09-21T04:34:07Z) | latest | 88 lines, 9 845 bytes |
-| `C:\Users\shuns\.vscode\project\obsidian-vault-self-hosted-fallback` | 2026-09-16 | **byte-identical** to latest main (modulo CRLF) for both load-bearing files |
-| `C:\Users\shuns\obsidian-vault` (the working vault) | 2026-09-03 | 58 lines, 7 103 bytes — **stale**: it lacks the whole `Tier 2 Review Execution Contract`, including the evidence-reuse rules |
+| `<USER_HOME>\.vscode\project\obsidian-vault-self-hosted-fallback` | 2026-09-16 | **byte-identical** to latest main (modulo CRLF) for both load-bearing files |
+| `<USER_HOME>\obsidian-vault` (the working vault) | 2026-09-03 | 58 lines, 7 103 bytes — **stale**: it lacks the whole `Tier 2 Review Execution Contract`, including the evidence-reuse rules |
 
 **Phase 3 binds to latest main `77ce41e`.** All line numbers below are from the files as fetched from
 that commit; they are saved outside the repository (session scratchpad) and were not copied into it.

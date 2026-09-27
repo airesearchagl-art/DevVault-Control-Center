@@ -7,9 +7,10 @@
 - Final endpoint: Draft PR. Ready, merge, release and Production are prohibited.
 - Task Packet: LRP-20260921-DVCC-004, revision 1
 - Task Packet snapshot: `.agent-run/LR-20260921-DVCC-004/TASK_PACKET_SNAPSHOT.md`
-- Task Packet SHA-256: `22673c39c5136e0785ed9ca1a5a4367ce154916c1c62f872635c6d303469db92` (30 778 bytes)
+- Task Packet original pre-redaction SHA-256: `22673c39c5136e0785ed9ca1a5a4367ce154916c1c62f872635c6d303469db92` (30 778 bytes; historical)
+- Task Packet sanitized SHA-256: `8b74f8b43954990f307e010a1dbefaded7e4d23ad76c01e367cf80d01fa83d9b` (30 775 bytes; current repository snapshot)
 - Repository: airesearchagl-art/DevVault-Control-Center
-- Local root: `C:\Users\shuns\.claude\projects\DevVaultControlCenter`
+- Local root: `<USER_HOME>\.claude\projects\DevVaultControlCenter`
 - Base: `main` @ `4c1962b0c47321805554be2218bba996ff5de92f` (PR #3 merged 2026-09-21T04:15:05Z)
 - Working branch: `feat/review-workflow-v0.3`, created from `origin/main` at the fresh gate
 
