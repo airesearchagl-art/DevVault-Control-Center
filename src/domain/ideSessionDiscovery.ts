@@ -10,6 +10,32 @@ import type { Project } from "./project";
  * Task Packet §17: native access is the Rust readers' job; this module only decides).
  */
 
+/**
+ * A snapshot of every Project field a binding decision can depend on (Independent Review RF-P4B1-01).
+ * Two registries with the same set of `(projectId, repositoryUrl, localRoot)` triples produce the
+ * same fingerprint regardless of Project order; any edit — a changed `repositoryUrl`/`localRoot`, or
+ * a Project added/removed/renamed — changes it. Never persisted: it exists only to answer "does a
+ * runtime-only scan still match what the Project registry looks like right now."
+ */
+export type ProjectBindingFingerprint = string;
+
+export function computeProjectBindingFingerprint(projects: readonly Project[]): ProjectBindingFingerprint {
+  const relevant = projects
+    .map((project) => ({ projectId: project.projectId, repositoryUrl: project.repositoryUrl, localRoot: project.localRoot }))
+    .sort((a, b) => a.projectId.localeCompare(b.projectId));
+  return JSON.stringify(relevant);
+}
+
+/**
+ * True once the Project registry has changed (in any binding-relevant way) since `fingerprint` was
+ * captured — whether that happened before a scan even started, or while one was still in flight. A
+ * stale result must never be displayed as current (Task Packet RF-P4B1-01): the caller's job is to
+ * check this before rendering `MATCHED`/`AMBIGUOUS` content, not to try to intercept every edit.
+ */
+export function isIdeSessionsStale(fingerprint: ProjectBindingFingerprint, currentProjects: readonly Project[]): boolean {
+  return computeProjectBindingFingerprint(currentProjects) !== fingerprint;
+}
+
 export const PROVIDER_KINDS = ["CLAUDE_CODE", "CODEX"] as const;
 export type ProviderKind = (typeof PROVIDER_KINDS)[number];
 

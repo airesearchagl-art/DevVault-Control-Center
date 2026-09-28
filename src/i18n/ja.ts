@@ -319,6 +319,7 @@ export const ja = {
   "ideSessions.action.refresh": "IDEセッションを更新",
   "ideSessions.state.notObserved": "未取得",
   "ideSessions.state.refreshing": "更新中…",
+  "ideSessions.state.stale": "プロジェクトの情報が変更されたため、この結果は最新ではありません。もう一度更新してください。",
   "ideSessions.state.error": "エラー",
   "ideSessions.provider.claudeCode": "Claude Code",
   "ideSessions.provider.codex": "Codex",

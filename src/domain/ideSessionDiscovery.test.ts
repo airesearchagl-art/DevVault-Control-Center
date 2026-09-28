@@ -3,8 +3,10 @@ import type { Project } from "./project";
 import {
   bindClaudeSessions,
   bindCodexSessions,
+  computeProjectBindingFingerprint,
   encodeClaudeWorkspacePath,
   isCodexManagedMirrorPath,
+  isIdeSessionsStale,
   normalizeRepositoryIdentity,
   type CanonicalPaths,
   type ClaudeDiscoveryRaw,
@@ -294,5 +296,54 @@ describe("bindCodexSessions", () => {
     const raw: CodexDiscoveryRaw = { status: "ok", threads: [thread({ gitOriginUrl: "https://github.com/example-org/alpha.git" })] };
     const result = bindCodexSessions(raw, [alpha], canon({}));
     expect(JSON.stringify(result)).not.toContain("PRIVATE_PROJECT_NOTES");
+  });
+});
+
+describe("stale binding invalidation (Independent Review RF-P4B1-01)", () => {
+  it("computeProjectBindingFingerprint is order-independent and changes on any binding-relevant edit", () => {
+    const a = project({ projectId: "a", repositoryUrl: "https://github.com/example-org/a.git", localRoot: "C:\\work\\a" });
+    const b = project({ projectId: "b", repositoryUrl: null, localRoot: "C:\\work\\b" });
+    const original = computeProjectBindingFingerprint([a, b]);
+
+    expect(computeProjectBindingFingerprint([b, a])).toBe(original); // order-independent
+
+    const editedRepositoryUrl = { ...a, repositoryUrl: "https://github.com/example-org/renamed.git" };
+    expect(computeProjectBindingFingerprint([editedRepositoryUrl, b])).not.toBe(original);
+
+    const editedLocalRoot = { ...a, localRoot: "C:\\work\\a-moved" };
+    expect(computeProjectBindingFingerprint([editedLocalRoot, b])).not.toBe(original);
+
+    expect(computeProjectBindingFingerprint([a])).not.toBe(original); // a Project removed
+
+    // A change to a field the binding never reads (displayName) must not affect the fingerprint.
+    const renamedOnly = { ...a, displayName: "A totally different display name" };
+    expect(computeProjectBindingFingerprint([renamedOnly, b])).toBe(original);
+  });
+
+  it("A: a loaded result becomes stale the instant the Project registry it was computed from is edited", () => {
+    const a = project({ projectId: "a", repositoryUrl: "https://github.com/example-org/a.git" });
+    const fingerprintAtLoadTime = computeProjectBindingFingerprint([a]);
+    expect(isIdeSessionsStale(fingerprintAtLoadTime, [a])).toBe(false);
+
+    const editedRepositoryUrl = { ...a, repositoryUrl: "https://github.com/example-org/a-renamed.git" };
+    expect(isIdeSessionsStale(fingerprintAtLoadTime, [editedRepositoryUrl])).toBe(true);
+  });
+
+  it("B: a scan whose fingerprint was captured before Projects changed can never read as current, no matter when it resolves", () => {
+    const a = project({ projectId: "a", localRoot: "C:\\work\\a" });
+    // The fingerprint a scan-start captures, before the async scan itself has returned.
+    const fingerprintCapturedAtScanStart = computeProjectBindingFingerprint([a]);
+
+    // The Human edits Project "a" while that scan is still in flight.
+    const projectsAfterEditDuringScan = [{ ...a, localRoot: "C:\\work\\a-moved" }];
+
+    // The scan now resolves and would be dispatched as "loaded" carrying the pre-edit fingerprint.
+    // Whoever renders it must treat it as stale against the CURRENT registry, not the one the scan
+    // itself saw — the old result must never be displayed as if it still matches project "a"'s new
+    // localRoot.
+    expect(isIdeSessionsStale(fingerprintCapturedAtScanStart, projectsAfterEditDuringScan)).toBe(true);
+
+    // Had nothing changed by the time it resolved, it must still read as current.
+    expect(isIdeSessionsStale(fingerprintCapturedAtScanStart, [a])).toBe(false);
   });
 });

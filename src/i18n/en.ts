@@ -310,6 +310,7 @@ export const en: Dictionary = {
   "ideSessions.action.refresh": "Refresh IDE Sessions",
   "ideSessions.state.notObserved": "Not observed",
   "ideSessions.state.refreshing": "Refreshing…",
+  "ideSessions.state.stale": "Project data has changed since this result was observed; it is no longer current. Refresh again.",
   "ideSessions.state.error": "Error",
   "ideSessions.provider.claudeCode": "Claude Code",
   "ideSessions.provider.codex": "Codex",

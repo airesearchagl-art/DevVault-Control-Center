@@ -72,6 +72,8 @@ interface ReviewDetailProps {
   onCopyIdeHandoff: () => void;
   /** Phase 4b-1: Human-triggered, read-only local session discovery. Runtime-only; see `appState.ts`. */
   ideSessions: IdeSessionsState;
+  /** True once the Project registry has changed since `ideSessions` was computed (RF-P4B1-01). */
+  ideSessionsStale: boolean;
   onRefreshIdeSessions: () => void;
   /** Every round that could already have reviewed this head; the current round is excluded. */
   priorReviews: readonly PriorReview[];
@@ -115,6 +117,7 @@ export function ReviewDetail({
   onCopyFollowup,
   onCopyIdeHandoff,
   ideSessions,
+  ideSessionsStale,
   onRefreshIdeSessions,
   priorReviews,
   onRecordEvidence,
@@ -466,7 +469,13 @@ export function ReviewDetail({
 
       <ReviewIdeHandoff project={project} busy={busy} onCopy={onCopyIdeHandoff} />
 
-      <ReviewIdeSessions project={project} ideSessions={ideSessions} busy={busy} onRefresh={onRefreshIdeSessions} />
+      <ReviewIdeSessions
+        project={project}
+        ideSessions={ideSessions}
+        stale={ideSessionsStale}
+        busy={busy}
+        onRefresh={onRefreshIdeSessions}
+      />
 
       <section className="card">
         <header className="card-header">

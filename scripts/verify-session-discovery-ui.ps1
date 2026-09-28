@@ -153,6 +153,29 @@ Write-Text $buildDbFile $buildDbScript
 & node.exe $buildDbFile
 if ($LASTEXITCODE -ne 0) { throw "failed to build the synthetic Codex state DB" }
 
+# --- Codex fixture (RF-P4B1-04): a second, schema-broken state file — missing the required
+# git_origin_url column entirely, so the format gate must fail closed to UNSUPPORTED_FORMAT rather
+# than guess a shape for it.
+$codexHomeBroken = Join-Path $root "codex-home-broken"
+New-Item -ItemType Directory -Path (Join-Path $codexHomeBroken ".codex") -Force | Out-Null
+$codexDbBrokenPath = (Join-Path $codexHomeBroken ".codex\state_5.sqlite") -replace "\\", "\\\\"
+$buildBrokenDbScript = @"
+const { DatabaseSync } = require("node:sqlite");
+const db = new DatabaseSync("$codexDbBrokenPath");
+db.exec(``CREATE TABLE threads (
+  id TEXT PRIMARY KEY, cwd TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+  cli_version TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0,
+  first_user_message TEXT NOT NULL DEFAULT '', preview TEXT NOT NULL DEFAULT ''
+)``);
+const insert = db.prepare("INSERT INTO threads (id, cwd, created_at, updated_at, cli_version, archived, first_user_message, preview) VALUES (?,?,?,?,?,?,?,?)");
+insert.run("codex-broken-1", "C:\\\\nowhere\\\\unregistered", 1000, 1000, "0.99.0", 0, "$CODEX_PROMPT_SENTINEL_1", "$CODEX_PREVIEW_SENTINEL_1");
+db.close();
+"@
+$buildBrokenDbFile = Join-Path $root "build-codex-db-broken.cjs"
+Write-Text $buildBrokenDbFile $buildBrokenDbScript
+& node.exe $buildBrokenDbFile
+if ($LASTEXITCODE -ne 0) { throw "failed to build the synthetic broken-schema Codex state DB" }
+
 $clipboardAtStart = Get-ClipboardFingerprint
 Write-Output ("clipboard at start: " + $clipboardAtStart)
 [DvccDesktop]::Create($desktopName)
@@ -241,6 +264,37 @@ try {
   Check "DVCC's own data files are byte-identical (nothing persisted by discovery)" (Same-Tree $before $after) ("files=" + $after.Count)
   Check "the Claude Code fixture is byte-identical (never modified)" (Same-Tree $claudeBefore $claudeAfter) ("files=" + $claudeAfter.Count)
   Check "the Codex fixture is byte-identical (never modified, no WAL checkpoint left behind)" (Same-Tree $codexBefore $codexAfter) ("files=" + $codexAfter.Count)
+
+  # --- RF-P4B1-04: unsupported Codex schema -------------------------------------------------------
+  $codexBrokenBefore = Get-Tree $codexHomeBroken
+  $env:DVCC_CODEX_HOME_DIR = $codexHomeBroken
+  $appPid2 = Start-App "unsupported-schema start"
+  if (-not (Wait-For "document.querySelector('[data-testid=queue-item]') !== null" 20)) { throw "the queue never rendered (unsupported-schema run)" }
+  Select-Review "rv-20260928-sessa1"
+  if (-not (Wait-For "document.querySelector('[data-testid=detail-ide-sessions]') !== null" 15)) { throw "the IDE Sessions card never appeared (unsupported-schema run)" }
+
+  Refresh-AndWait
+  Assert-NoForbiddenContent "JA/unsupported-schema"
+  $codexStatusJa = Invoke-Cdp "document.querySelector('[data-testid=ide-sessions-provider-CODEX]')?.dataset.providerStatus"
+  Check "JA : an unsupported Codex schema renders unsupportedFormat, not session rows" ($codexStatusJa -eq "unsupportedFormat") "status=$codexStatusJa"
+  $claudeStatusJa = Invoke-Cdp "document.querySelector('[data-testid=ide-sessions-provider-CLAUDE_CODE]')?.dataset.providerStatus"
+  Check "JA : Claude discovery is unaffected by Codex's broken schema" ($claudeStatusJa -eq "ok") "status=$claudeStatusJa"
+
+  Invoke-Cdp ($switchScript -replace "__LOCALE__", "en") | Out-Null
+  if (-not (Wait-For "document.documentElement.lang === 'en'" 15)) { throw "the interface never switched to English (unsupported-schema run)" }
+  Refresh-AndWait
+  Assert-NoForbiddenContent "EN/unsupported-schema"
+  $codexStatusEn = Invoke-Cdp "document.querySelector('[data-testid=ide-sessions-provider-CODEX]')?.dataset.providerStatus"
+  Check "EN : an unsupported Codex schema renders unsupportedFormat, not session rows" ($codexStatusEn -eq "unsupportedFormat") "status=$codexStatusEn"
+
+  Stop-App $appPid2
+  Test-Clean "no spawned process is left running (unsupported-schema run)"
+  Remove-Item Env:\DVCC_CODEX_HOME_DIR -ErrorAction SilentlyContinue
+
+  $codexBrokenAfter = Get-Tree $codexHomeBroken
+  $afterUnsupported = Get-Tree $dataDir
+  Check "the broken-schema Codex fixture is byte-identical (never modified)" (Same-Tree $codexBrokenBefore $codexBrokenAfter) ("files=" + $codexBrokenAfter.Count)
+  Check "DVCC's own data files are still byte-identical after the unsupported-schema run" (Same-Tree $before $afterUnsupported) ("files=" + $afterUnsupported.Count)
 }
 finally {
   Remove-Item Env:\DVCC_CLAUDE_HOME_DIR -ErrorAction SilentlyContinue

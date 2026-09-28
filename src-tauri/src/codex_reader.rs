@@ -25,6 +25,19 @@ const BUSY_TIMEOUT: Duration = Duration::from_millis(2000);
 /// discovery return an unbounded amount of data.
 const MAX_SESSIONS: usize = 200;
 
+/// A row whose `id`, `cwd`, `cli_version` or `git_origin_url` exceeds this length is not a
+/// plausible metadata value — session ids, paths and version strings are always far shorter — and
+/// is dropped rather than trusted (Independent Review RF-P4B1-02). No provider string is ever
+/// truncated and kept: a value this large is treated as a format anomaly, not partial data.
+const MAX_METADATA_STRING_LEN: usize = 4096;
+
+fn within_bounds(row: &CodexThreadRow) -> bool {
+    row.id.len() <= MAX_METADATA_STRING_LEN
+        && row.cwd.len() <= MAX_METADATA_STRING_LEN
+        && row.cli_version.len() <= MAX_METADATA_STRING_LEN
+        && row.git_origin_url.as_ref().is_none_or(|url| url.len() <= MAX_METADATA_STRING_LEN)
+}
+
 const REQUIRED_COLUMNS: &[&str] = &[
     "id",
     "cwd",
@@ -191,7 +204,12 @@ fn scan(path: &std::path::Path) -> CodexDiscovery {
         }
     };
     match rows {
-        Ok(threads) => CodexDiscovery::Ok { threads },
+        // A row with an implausibly long metadata string is dropped, not truncated-and-kept: the
+        // rest of the (bounded, well-formed) result is still returned rather than failing closed
+        // for the whole scan over one anomalous row.
+        Ok(threads) => CodexDiscovery::Ok {
+            threads: threads.into_iter().filter(within_bounds).collect(),
+        },
         Err(error) => CodexDiscovery::Unavailable {
             reason: format!("a row could not be read: {error}"),
         },
@@ -328,6 +346,31 @@ mod tests {
         let result = scan(&db.0);
         let CodexDiscovery::Ok { threads } = result else { panic!("expected Ok, got {result:?}") };
         assert_eq!(threads.len(), MAX_SESSIONS);
+    }
+
+    #[test]
+    fn a_row_with_an_oversized_metadata_string_is_dropped_not_truncated_and_kept() {
+        let db = TempDb::new();
+        create_valid_schema(&db.0);
+        let conn = Connection::open(&db.0).unwrap();
+        let oversized_cwd = "C:\\".to_string() + &"x".repeat(MAX_METADATA_STRING_LEN + 1);
+        conn.execute(
+            "INSERT INTO threads (id, cwd, created_at, updated_at, cli_version, archived, git_origin_url)
+             VALUES ('oversized', ?1, 0, 0, '0.1.0', 0, NULL)",
+            rusqlite::params![oversized_cwd],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO threads (id, cwd, created_at, updated_at, cli_version, archived, git_origin_url)
+             VALUES ('normal', 'C:\\work\\alpha', 0, 0, '0.1.0', 0, NULL)",
+            [],
+        )
+        .unwrap();
+        drop(conn);
+        let result = scan(&db.0);
+        let CodexDiscovery::Ok { threads } = result else { panic!("expected Ok, got {result:?}") };
+        assert_eq!(threads.len(), 1, "the oversized row must be dropped, the normal one kept");
+        assert_eq!(threads[0].id, "normal");
     }
 
     #[test]

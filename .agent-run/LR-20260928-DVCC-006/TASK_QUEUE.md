@@ -8,8 +8,12 @@
       full regression, README reconciliation
 - [x] Wave 5 — release binary rebuild, running-app smoke (`verify-session-discovery-ui.ps1`, 48/48),
       final convergence
-- [ ] Independent Review of this delta (separate context; this run cannot review its own work) —
-      should specifically weigh the M-P4B1-01 / AC4B1-25 gap
-- [ ] Draft PR against `main` (only after Independent Review returns READY CANDIDATE, no Required Fix)
+- [x] Independent Review of the Wave 5 head — **NOT READY** (RF-P4B1-01..04)
+- [x] RF-P4B1-01..04 focused repair — stale-binding fingerprint, native metadata bounds, M-P4B1-01
+      closure (5/5 mutation probes now killed), unsupported-schema smoke scenario (68/68); committed
+      and pushed
+- [ ] Focused Independent Delta Re-review of the repair (separate context; this run cannot review its
+      own work)
+- [ ] Draft PR against `main` (only after the re-review returns READY CANDIDATE, no Required Fix)
 - [ ] Phase 4b-2 (Human-selected resume) — not started, out of scope for this run
 - [ ] Ready / merge / release / Production — prohibited until a later, separate Human Gate

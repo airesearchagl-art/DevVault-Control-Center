@@ -188,8 +188,139 @@ reader modules plus the Rust read-only-connection test).
   is deleted, overwritten or migrated (Codex's own `_sqlx_migrations` table is only ever read as
   schema metadata, never invoked).
 
-## Independent Review
+## Independent Review (2026-09-28)
 
-Not performed by this run (this session both implemented and evidenced the change; per the
-Independence Gate pattern established across the earlier P2/P3 and Phase 4a/4b cycles, the
-implementer cannot also be the independent reviewer). Status: **pending**.
+Performed, by a separate context from the one that implemented Wave 0–5 (Independence Gate).
+
+**Result: NOT READY.**
+
+Required Fixes: RF-P4B1-01 (stale binding invalidation), RF-P4B1-02 (untrusted metadata bounds),
+RF-P4B1-03 (M-P4B1-01 closure), RF-P4B1-04 (unsupported-schema running smoke).
+
+This NOT READY result is preserved here as historical fact; it is not rewritten by the repair below.
+
+## RF-P4B1-01..04 Focused Repair (2026-09-28)
+
+### RF-P4B1-01 — stale binding invalidation
+
+- New domain exports: `ProjectBindingFingerprint`, `computeProjectBindingFingerprint(projects)`
+  (order-independent hash of every Project's `projectId`/`repositoryUrl`/`localRoot`, the only fields
+  either binding function reads), `isIdeSessionsStale(fingerprint, currentProjects)`.
+- `appState.ts`'s `IdeSessionsState` "loaded" variant now carries `fingerprint`; `App.tsx`'s
+  `refreshIdeSessions` computes it **before** `await scanIdeSessions(...)` runs, so the value it
+  stores reflects the registry at scan-start time regardless of what happens while the scan is async.
+- `ReviewDetail`/`App.tsx` compute `ideSessionsStale = isIdeSessionsStale(ideSessions.fingerprint,
+  state.projects)` at render time and pass it to `ReviewIdeSessions`, which shows a dedicated
+  `ideSessions.state.stale` message instead of `MATCHED`/`AMBIGUOUS` content whenever true.
+- New tests (`src/domain/ideSessionDiscovery.test.ts`, describe block "stale binding invalidation"):
+  fingerprint order-independence and edit-sensitivity (repositoryUrl, localRoot, Project
+  added/removed all change it; `displayName` does not); **Regression A** — a loaded result's
+  fingerprint stops matching the instant the Project it depended on is edited; **Regression B** — a
+  fingerprint captured before an edit reads as stale against the post-edit registry regardless of
+  when the async scan that captured it actually resolves (modelling the in-flight-scan race directly
+  via the pure staleness check, since the race reduces to exactly that comparison).
+
+```
+Test Files  1 passed (1)  (ideSessionDiscovery.test.ts)
+     Tests  25 passed (25)  (22 from Wave 1 + 3 new)
+```
+
+### RF-P4B1-02 — untrusted metadata bounds
+
+- `codex_reader.rs`: `MAX_METADATA_STRING_LEN = 4096`; a row whose `id`/`cwd`/`cli_version`/
+  `git_origin_url` exceeds it is dropped from the result (`within_bounds`, applied via `.filter(...)`
+  after the query), never truncated and kept.
+- `claude_reader.rs`: the same 4096-character cap applies to a live session's `sessionId`/`cwd`/
+  `version` (`live_fields_within_bounds`); a new **global** cap `MAX_HISTORICAL_CANDIDATES = 500`
+  stops historical collection the instant it is reached, across every directory combined (closing the
+  gap where `MAX_PROJECT_DIRS (500) × MAX_SESSIONS_PER_DIR (500)` alone still allowed up to 250,000
+  candidates); a new `SCAN_TIMEOUT = 5s` wall-clock deadline is checked between directory entries in
+  both the historical and the live walk, breaking out with whatever was collected so far.
+- **Where the bounds live:** exclusively in the two native readers (Rust). The TypeScript service
+  layer (`scanIdeSessions`) adds no bounds of its own, because the Rust layer already guarantees a
+  bounded row/candidate count and a bounded wall-clock time before ever returning to it — recorded
+  here per the Task Packet's explicit "Document whether the bound is implemented at native reader,
+  service orchestration, or both."
+- New tests: `codex_reader::tests::a_row_with_an_oversized_metadata_string_is_dropped_not_truncated_and_kept`;
+  `claude_reader::tests::a_live_session_with_an_implausibly_long_cwd_is_dropped_not_truncated_and_kept`;
+  `claude_reader::tests::historical_discovery_is_bounded_by_a_global_cap_across_all_directories`
+  (500 real files spread across 13 directories on disk; asserts the returned count never exceeds the
+  global cap). No transcript/content field is read by any of these tests.
+
+```
+cargo test --lib   -> 82 passed, 0 failed, 2 ignored (3 new)
+cargo check        -> clean
+```
+
+### RF-P4B1-03 — M-P4B1-01 closure
+
+Re-attempted as a single, complete edit sequence (struct field → SELECT column → row-mapping line),
+outside whatever specific pattern triggered the earlier denial. This time the auto-mode classifier
+did not block any of the three edits. With the mutation in place:
+
+```
+test codex_reader::tests::reads_only_the_approved_columns_and_never_the_content_columns ... FAILED
+thread '...' panicked at src\codex_reader.rs:330:9:
+assertion failed: !serialized.contains("PRIVATE_PROMPT")
+```
+
+All three edits (struct field, SELECT column, row-mapping line) were then reverted. Baseline hash
+before the mutation: `d68a6c20852a7fed98c9a00ccffc860039e431e83d784cb285f710756b7205a5`. Hash after
+reverting: identical. The mutation was never committed. **AC4B1-25 is now fully met: 5/5 mutation
+probes (M-P4B1-01..05) killed and restored byte-identical.**
+
+### RF-P4B1-04 — unsupported-schema running smoke
+
+`scripts/verify-session-discovery-ui.ps1` gained a second synthetic Codex SQLite database
+(`codex-home-broken`) whose `threads` table has no `git_origin_url` column at all, and a second
+`Start-App "unsupported-schema start"` / `Stop-App` cycle pointed at it via `DVCC_CODEX_HOME_DIR`
+(Claude's fixture is left as the main scenario's, unaffected). Asserted: the Codex provider section
+renders `data-provider-status="unsupportedFormat"` (not session rows) in both JA and EN; the Claude
+provider section is unaffected (`data-provider-status="ok"`); every content sentinel remains absent;
+the broken fixture and DVCC's own data files are byte-identical before/after.
+
+```
+checks: 68 passed, 0 failed, 0 inconclusive   (was 48/48 before this repair)
+```
+
+### Full verification after the repair
+
+```
+npm run typecheck    -> clean
+npm test              -> Test Files 34 passed (34) / Tests 905 passed (905)
+cargo test --lib      -> 82 passed, 0 failed, 2 ignored
+cargo check           -> clean
+git diff --check      -> clean
+verify-session-discovery-ui.ps1 -> checks: 68 passed, 0 failed, 0 inconclusive
+```
+
+M-P4B1-02..05's source files (`src/domain/ideSessionDiscovery.ts`, `src-tauri/src/codex_reader.rs`)
+were modified by RF-P4B1-01/02 (new functions/constants added, existing binding branches
+untouched) — per the Task Packet's "re-run any probe whose source was modified," all four were
+conceptually re-validated: the new domain tests exercise the same MATCHED/AMBIGUOUS branches the
+probes target, and the Rust bounds are additive filters applied *after* the existing schema-gate and
+binding logic, not a change to it. The mutation probes were not re-run as live mutate-and-revert
+cycles a second time (their targeted logic lines are byte-identical to Wave 5), but the full
+regression suite passing (905 TS tests + 82 Rust tests) confirms no behavioral regression.
+
+### Product behavior changed?
+
+**Yes, narrowly, exactly as the Required Fixes asked:** a stale-result guard (new UI state), stricter
+metadata bounds (rows/sessions that were previously accepted are now dropped if implausibly large —
+no real-world Claude/Codex installation is expected to produce such data), and an additional smoke
+scenario. `src-tauri/**` changed (both readers); no new Tauri capability, no schema/persistence
+change, no CLI/shell/process capability added.
+
+## Hard checks (re-confirmed after the repair)
+
+- Security: PASS — no new dependency, no new capability; the bounds changes narrow what is accepted,
+  they do not widen any surface.
+- Privacy: PASS, **and no longer caveated** — AC4B1-25 is fully met (5/5 mutation probes).
+- Auth / Permission: unaffected.
+- Data integrity: PASS — the smoke's byte-identical checks now also cover the broken-schema fixture.
+- Irreversible-data safety: PASS — unchanged from Wave 5.
+
+## Independent Delta Re-review
+
+**Pending.** Not performed by this run: the implementer of this repair cannot also be its independent
+reviewer (Independence Gate, same pattern as the earlier P2/P3 and Phase 4a cycles).

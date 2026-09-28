@@ -16,6 +16,8 @@ import { useT } from "../../i18n/context";
 export interface ReviewIdeSessionsProps {
   project: Project | null;
   ideSessions: IdeSessionsState;
+  /** True once the Project registry has changed since `ideSessions` was computed (RF-P4B1-01). */
+  stale: boolean;
   busy: boolean;
   onRefresh: () => void;
 }
@@ -81,7 +83,7 @@ function ProviderSection({ provider, result, project, t }: { provider: ProviderK
   );
 }
 
-export function ReviewIdeSessions({ project, ideSessions, busy, onRefresh }: ReviewIdeSessionsProps) {
+export function ReviewIdeSessions({ project, ideSessions, stale, busy, onRefresh }: ReviewIdeSessionsProps) {
   const t = useT();
   if (project === null) return null;
 
@@ -103,7 +105,15 @@ export function ReviewIdeSessions({ project, ideSessions, busy, onRefresh }: Rev
           {t("ideSessions.state.error")}: {ideSessions.message}
         </p>
       )}
-      {ideSessions.status === "loaded" && (
+      {ideSessions.status === "loaded" && stale && (
+        // A Project's binding-relevant fields (id / repositoryUrl / localRoot) changed since this
+        // scan ran: its MATCHED/AMBIGUOUS content may no longer be correct, so it is never shown as
+        // current (Independent Review RF-P4B1-01). Only a fresh Refresh can clear this.
+        <p className="muted" data-testid="ide-sessions-stale">
+          {t("ideSessions.state.stale")}
+        </p>
+      )}
+      {ideSessions.status === "loaded" && !stale && (
         <>
           <ProviderSection provider="CLAUDE_CODE" result={ideSessions.scan.claude} project={project} t={t} />
           <ProviderSection provider="CODEX" result={ideSessions.scan.codex} project={project} t={t} />

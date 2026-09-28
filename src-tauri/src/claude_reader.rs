@@ -9,16 +9,28 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::time::UNIX_EPOCH;
+use std::time::{Duration, Instant, UNIX_EPOCH};
 
 const CLAUDE_HOME_ENV: &str = "DVCC_CLAUDE_HOME_DIR";
 
-/// Bounds untrusted provider input (Task Packet §18).
+/// Bounds untrusted provider input (Task Packet §18 / Independent Review RF-P4B1-02).
 const MAX_PROJECT_DIRS: usize = 500;
 const MAX_SESSIONS_PER_DIR: usize = 500;
+/// A global ceiling on top of the per-directory one above: `MAX_PROJECT_DIRS *
+/// MAX_SESSIONS_PER_DIR` alone would still allow up to 250,000 candidates, which is not a
+/// "practical" cap. Historical scanning stops the instant this many candidates are collected,
+/// across every directory combined.
+const MAX_HISTORICAL_CANDIDATES: usize = 500;
 const MAX_LIVE_SESSIONS: usize = 200;
 /// A live session-lock file is a few hundred bytes; anything wildly larger is not one.
 const MAX_LIVE_SESSION_FILE_BYTES: u64 = 64 * 1024;
+/// A session id, cwd or version string this long is not plausible metadata; the session it came
+/// from is dropped rather than trusted (mirrors `codex_reader.rs`'s `MAX_METADATA_STRING_LEN`).
+const MAX_METADATA_STRING_LEN: usize = 4096;
+/// Discovery cannot wait indefinitely on a pathological filesystem (Task Packet §18): both the
+/// historical and the live walk are bounded by this wall-clock deadline, checked between
+/// directory entries, and return whatever was collected so far rather than hang.
+const SCAN_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -100,15 +112,25 @@ fn scan_historical(projects_dir: &std::path::Path) -> Vec<HistoricalCandidate> {
     let Ok(entries) = std::fs::read_dir(projects_dir) else {
         return out;
     };
-    for entry in entries.flatten().take(MAX_PROJECT_DIRS) {
+    let deadline = Instant::now() + SCAN_TIMEOUT;
+    'directories: for entry in entries.flatten().take(MAX_PROJECT_DIRS) {
+        if Instant::now() >= deadline {
+            break;
+        }
         let Ok(file_type) = entry.file_type() else { continue };
         if !file_type.is_dir() {
             continue;
         }
         let encoded_dir_name = entry.file_name().to_string_lossy().into_owned();
+        if encoded_dir_name.len() > MAX_METADATA_STRING_LEN {
+            continue; // not a plausible encoded workspace directory name
+        }
         let dir_path = entry.path();
         let Ok(session_files) = std::fs::read_dir(&dir_path) else { continue };
         for session_entry in session_files.flatten().take(MAX_SESSIONS_PER_DIR) {
+            if out.len() >= MAX_HISTORICAL_CANDIDATES || Instant::now() >= deadline {
+                break 'directories;
+            }
             let Ok(session_file_type) = session_entry.file_type() else { continue };
             if !session_file_type.is_file() {
                 continue;
@@ -125,13 +147,22 @@ fn scan_historical(projects_dir: &std::path::Path) -> Vec<HistoricalCandidate> {
     out
 }
 
+/// A parsed live session is only kept if every string field is a plausible length
+/// (Independent Review RF-P4B1-02) — never truncated and kept, dropped entirely instead.
+fn live_fields_within_bounds(fields: &LiveSessionFields) -> bool {
+    fields.session_id.len() <= MAX_METADATA_STRING_LEN
+        && fields.cwd.len() <= MAX_METADATA_STRING_LEN
+        && fields.version.as_ref().is_none_or(|version| version.len() <= MAX_METADATA_STRING_LEN)
+}
+
 fn scan_live(sessions_dir: &std::path::Path) -> Vec<LiveSession> {
     let mut out = Vec::new();
     let Ok(entries) = std::fs::read_dir(sessions_dir) else {
         return out;
     };
+    let deadline = Instant::now() + SCAN_TIMEOUT;
     for entry in entries.flatten() {
-        if out.len() >= MAX_LIVE_SESSIONS {
+        if out.len() >= MAX_LIVE_SESSIONS || Instant::now() >= deadline {
             break;
         }
         let Ok(file_type) = entry.file_type() else { continue };
@@ -149,6 +180,9 @@ fn scan_live(sessions_dir: &std::path::Path) -> Vec<LiveSession> {
         }
         let Ok(text) = std::fs::read_to_string(&path) else { continue };
         let Ok(fields) = serde_json::from_str::<LiveSessionFields>(&text) else { continue };
+        if !live_fields_within_bounds(&fields) {
+            continue;
+        }
         out.push(LiveSession {
             session_id: fields.session_id,
             cwd: fields.cwd,
@@ -275,6 +309,55 @@ mod tests {
         let result = scan(&home.0);
         let ClaudeDiscovery::Ok { live, .. } = result else { panic!("expected Ok") };
         assert!(live.is_empty(), "an oversized file must be skipped, not parsed");
+    }
+
+    #[test]
+    fn a_live_session_with_an_implausibly_long_cwd_is_dropped_not_truncated_and_kept() {
+        let home = TempHome::new();
+        let sessions_dir = home.0.join(".claude").join("sessions");
+        std::fs::create_dir_all(&sessions_dir).unwrap();
+        // Well under MAX_LIVE_SESSION_FILE_BYTES (64 KiB) as a whole file, but the cwd field alone
+        // exceeds MAX_METADATA_STRING_LEN (4096) — this exercises the per-field bound, not the
+        // whole-file size bound already covered above.
+        let oversized_cwd = "C:\\".to_string() + &"a".repeat(MAX_METADATA_STRING_LEN + 1);
+        std::fs::write(
+            sessions_dir.join("1.json"),
+            format!(r#"{{"sessionId":"oversized","cwd":"{oversized_cwd}"}}"#),
+        )
+        .unwrap();
+        std::fs::write(sessions_dir.join("2.json"), r#"{"sessionId":"normal","cwd":"C:\\a"}"#).unwrap();
+        let result = scan(&home.0);
+        let ClaudeDiscovery::Ok { live, .. } = result else { panic!("expected Ok") };
+        assert_eq!(live.len(), 1, "the oversized session must be dropped, the normal one kept");
+        assert_eq!(live[0].session_id, "normal");
+    }
+
+    #[test]
+    fn historical_discovery_is_bounded_by_a_global_cap_across_all_directories() {
+        let home = TempHome::new();
+        let projects_dir = home.0.join(".claude").join("projects");
+        // MAX_HISTORICAL_CANDIDATES (500) split across several directories, plus enough extra to
+        // prove the cap is global, not merely per-directory.
+        let per_dir = 50;
+        let dir_count = (MAX_HISTORICAL_CANDIDATES / per_dir) + 3;
+        'outer: for d in 0..dir_count {
+            let dir = projects_dir.join(format!("dir-{d}"));
+            std::fs::create_dir_all(&dir).unwrap();
+            for s in 0..per_dir {
+                let uuid = format!("{:08x}-0000-0000-0000-{:012x}", d, s);
+                std::fs::write(dir.join(format!("{uuid}.jsonl")), "never opened").unwrap();
+                if d * per_dir + s + 1 >= MAX_HISTORICAL_CANDIDATES + per_dir {
+                    break 'outer;
+                }
+            }
+        }
+        let result = scan(&home.0);
+        let ClaudeDiscovery::Ok { historical, .. } = result else { panic!("expected Ok") };
+        assert!(
+            historical.len() <= MAX_HISTORICAL_CANDIDATES,
+            "expected at most {MAX_HISTORICAL_CANDIDATES}, got {}",
+            historical.len()
+        );
     }
 
     #[test]

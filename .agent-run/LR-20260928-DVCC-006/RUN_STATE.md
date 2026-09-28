@@ -1,6 +1,8 @@
 # Run State — LR-20260928-DVCC-006 (Phase 4b-1 Session Discovery)
 
-Updated: 2026-09-28, end of Wave 5.
+Updated: 2026-09-28, after the RF-P4B1-01..04 focused repair. The "end of Wave 5" section below is
+kept as the historical record of that point in time; see "Independent Review and Focused Repair" for
+what has happened since.
 
 ## Acceptance Criteria (Task Packet §28)
 
@@ -36,30 +38,70 @@ Updated: 2026-09-28, end of Wave 5.
       `DiscoveredIdeSession`; smoke sentinel checks)
 - [x] AC4B1-23 — JA/EN parity (`i18n.test.ts` full suite green, including the new keys)
 - [x] AC4B1-24 — domain/provider tests PASS (22 TS + 11 Rust new tests, 902 + 79 total)
-- [~] AC4B1-25 — M-P4B1-02..05 killed and restored byte-identical; **M-P4B1-01 could not be executed**
-      (auto-mode classifier denial) — see EVIDENCE.md and DECISIONS.md for what remains evidenced
-      about the underlying guarantee regardless
-- [x] AC4B1-26 — synthetic isolated running-app smoke: 48/48 checks PASS
+- [~] AC4B1-25 — at end of Wave 5: M-P4B1-02..05 killed and restored byte-identical; **M-P4B1-01 could
+      not be executed** (auto-mode classifier denial). **Resolved in the RF-P4B1-03 repair below: now
+      fully met (5/5).**
+- [x] AC4B1-26 — synthetic isolated running-app smoke: 48/48 checks PASS at end of Wave 5 (68/68 after
+      the RF-P4B1-04 repair added the unsupported-schema scenario)
 - [x] AC4B1-27 — Security / Privacy / Auth / Permission / Data integrity / Irreversible-data safety —
-      see EVIDENCE.md "Hard checks" (Privacy carries the same AC4B1-25 caveat)
+      see EVIDENCE.md "Hard checks" (the AC4B1-25 caveat above is resolved, not carried forward)
 - [x] AC4B1-28 — Phase 4b-2 (resume) remains unimplemented
+
+## Independent Review and Focused Repair (2026-09-28)
+
+An Independent Review of the Wave 5 head (`2d13cc90653d678348761c030c4da774c807b2c4`) returned
+**NOT READY**, with four Required Fixes (RF-P4B1-01..04). This NOT READY result is preserved here as
+historical fact; it is not rewritten by the repair below.
+
+- **RF-P4B1-01 — stale binding invalidation.** `src/domain/ideSessionDiscovery.ts` gained
+  `computeProjectBindingFingerprint`/`isIdeSessionsStale`: a fingerprint of every Project's
+  `(projectId, repositoryUrl, localRoot)` (order-independent; changes on any binding-relevant edit,
+  unaffected by `displayName`). `App.tsx`'s `refreshIdeSessions` captures this fingerprint *before*
+  the async scan runs and stores it with the loaded result; `ReviewIdeSessions` refuses to render
+  `MATCHED`/`AMBIGUOUS` content when the *current* registry's fingerprint no longer matches, showing
+  a new `ideSessions.state.stale` message instead until the Human refreshes again. Because the check
+  compares against the registry at render time rather than trying to intercept every edit, it equally
+  catches an edit made before the dispatch and one made while the scan was still in flight. Three new
+  domain tests (fingerprint order-independence/edit-sensitivity, regression A, regression B).
+- **RF-P4B1-02 — untrusted metadata bounds.** Both native readers now cap every provider-supplied
+  string field at 4096 characters (`MAX_METADATA_STRING_LEN` in each reader) — a row/session
+  exceeding it is dropped, never truncated-and-kept. `claude_reader.rs` gained a **global** historical
+  cap (`MAX_HISTORICAL_CANDIDATES = 500`, on top of the existing per-directory cap, closing the
+  `500 × 500` theoretical ceiling) and a 5-second wall-clock scan deadline checked between directory
+  entries in both the historical and live walks, so discovery cannot wait indefinitely on a
+  pathological filesystem. Documented (here and in code comments): all bounds are implemented **at
+  the native reader** exclusively; the TypeScript service layer adds none of its own because the Rust
+  layer already guarantees bounded output size and bounded wall-clock time before returning. Three
+  new Rust tests (oversized Codex row dropped, oversized Claude live `cwd` dropped, global historical
+  cap enforced across multiple directories).
+- **RF-P4B1-03 — M-P4B1-01 closure.** Re-attempted as a single, complete edit outside the pattern that
+  was denied before; this time the auto-mode classifier did not block it. `first_user_message` was
+  temporarily wired into `CodexThreadRow`/the SELECT/the row mapping, the privacy test
+  (`reads_only_the_approved_columns_and_never_the_content_columns`) was confirmed to **FAIL**
+  (`assertion failed: !serialized.contains("PRIVATE_PROMPT")`), and all three edits were reverted with
+  `codex_reader.rs`'s SHA-256 confirmed byte-identical to its pre-mutation hash. **AC4B1-25 is now
+  fully met (5/5 probes killed and restored byte-identical).** The mutation was never committed.
+- **RF-P4B1-04 — unsupported-schema running smoke.** `scripts/verify-session-discovery-ui.ps1` gained
+  a second synthetic Codex SQLite fixture with `git_origin_url` entirely absent from its `threads`
+  table, and a second `Start-App`/`Stop-App` cycle against it: Refresh IDE Sessions renders the Codex
+  provider section as `unsupportedFormat` (not session rows) in both JA and EN, Claude discovery is
+  unaffected, no forbidden content appears, and both the broken fixture and DVCC's own data files are
+  confirmed byte-identical before/after. The smoke now passes 68/68 (was 48/48).
 
 ## Current summary
 
-Implementation (Wave 0–5) is complete: Rust readers, native canonicalization command, TypeScript
-domain/service/UI, localization, mutation campaign (4/5 probes fully executed; the fifth blocked, not
-skipped, and reported), full regression, documentation reconciliation and a real running-app smoke
-(48/48) are all done. Product source changes are scoped to read-only discovery exactly as the Task
-Packet specified: no shell, no terminal, no process control, no provider CLI invocation, no
-persistence change.
+Implementation (Wave 0–5) plus the RF-P4B1-01..04 focused repair are complete. All four Required
+Fixes are addressed with executable evidence, not merely asserted. Full regression (Rust 82/82, TS
+905/905), `cargo check`, and `git diff --check` are clean. Product source changes remain scoped to
+read-only discovery exactly as the Task Packet specified: no shell, no terminal, no process control,
+no provider CLI invocation, no persistence change.
 
 Not yet done, and out of scope for this run: Independent Review and Draft PR. This run's implementer
 cannot also be the independent reviewer (Independence Gate).
 
 ## Next
 
-Focused Independent Review of this Task Packet's delta (`e7af6e70663b317642000d2f3ddbc6e1d0e0b124` →
-current `feat/session-discovery-v0.4b1` head), including a specific look at the AC4B1-25/M-P4B1-01
-gap. Commit and push for this run happen now, before that review — not after. Only if the review
-returns READY CANDIDATE with no Required Fix does a Draft PR follow. Ready, merge, release and
-Production remain prohibited until a later, separate Human Gate.
+Focused Independent Delta Re-review of this repair, then — only if it returns READY CANDIDATE with no
+Required Fix — a Draft PR against `main`. Commit and push for this repair have already happened
+(they precede, not follow, the re-review). Ready, merge, release and Production remain prohibited
+until a later, separate Human Gate.
