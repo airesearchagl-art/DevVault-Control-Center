@@ -76,7 +76,7 @@ describe("bindClaudeSessions", () => {
   it("A: live exact canonical cwd is MATCHED", () => {
     const alpha = project({ projectId: "alpha", localRoot: "C:\\work\\alpha" });
     const raw: ClaudeDiscoveryRaw = {
-      status: "ok",
+      status: "ok", complete: true,
       historical: [],
       live: [{ sessionId: "s-1", cwd: "\\\\?\\C:\\work\\alpha", updatedAtMs: 1000, version: "2.1.283" }],
     };
@@ -93,7 +93,7 @@ describe("bindClaudeSessions", () => {
     const alpha = project({ projectId: "alpha", localRoot: "C:\\work\\alpha" });
     const encoded = encodeClaudeWorkspacePath("C:\\work\\alpha");
     const raw: ClaudeDiscoveryRaw = {
-      status: "ok",
+      status: "ok", complete: true,
       historical: [{ encodedDirName: encoded, sessionId: "11111111-1111-1111-1111-111111111111", updatedAtMs: 1000 }],
       live: [],
     };
@@ -111,7 +111,7 @@ describe("bindClaudeSessions", () => {
     const encoded = encodeClaudeWorkspacePath("C:\\work\\alpha");
     expect(encodeClaudeWorkspacePath("C:\\work.alpha")).toBe(encoded);
     const raw: ClaudeDiscoveryRaw = {
-      status: "ok",
+      status: "ok", complete: true,
       historical: [{ encodedDirName: encoded, sessionId: "22222222-2222-2222-2222-222222222222", updatedAtMs: null }],
       live: [],
     };
@@ -124,7 +124,7 @@ describe("bindClaudeSessions", () => {
   it("K: no candidate Project encodes to the historical directory name -> NO_MATCH", () => {
     const alpha = project({ projectId: "alpha", localRoot: "C:\\work\\alpha" });
     const raw: ClaudeDiscoveryRaw = {
-      status: "ok",
+      status: "ok", complete: true,
       historical: [{ encodedDirName: "C--completely-unrelated", sessionId: "33333333-3333-3333-3333-333333333333", updatedAtMs: null }],
       live: [],
     };
@@ -142,7 +142,7 @@ describe("bindClaudeSessions", () => {
   it("a live cwd that cannot be canonicalized (folder gone) is UNAVAILABLE at the session level", () => {
     const alpha = project({ projectId: "alpha", localRoot: "C:\\work\\alpha" });
     const raw: ClaudeDiscoveryRaw = {
-      status: "ok",
+      status: "ok", complete: true,
       historical: [],
       live: [{ sessionId: "s-2", cwd: "C:\\work\\deleted", updatedAtMs: null, version: null }],
     };
@@ -155,7 +155,7 @@ describe("bindClaudeSessions", () => {
     const alpha = project({ projectId: "alpha", localRoot: "C:\\work\\alpha" });
     const encoded = encodeClaudeWorkspacePath("C:\\work\\alpha");
     const raw: ClaudeDiscoveryRaw = {
-      status: "ok",
+      status: "ok", complete: true,
       historical: [{ encodedDirName: encoded, sessionId: "same-id", updatedAtMs: 1 }],
       live: [{ sessionId: "same-id", cwd: "C:\\work\\alpha", updatedAtMs: 2, version: "2.1.283" }],
     };
@@ -183,7 +183,7 @@ describe("bindCodexSessions", () => {
 
   it("E: a unique git_origin_url match is MATCHED", () => {
     const alpha = project({ projectId: "alpha", repositoryUrl: "https://github.com/example-org/alpha.git" });
-    const raw: CodexDiscoveryRaw = { status: "ok", threads: [thread({ gitOriginUrl: "git@github.com:example-org/alpha.git" })] };
+    const raw: CodexDiscoveryRaw = { status: "ok", complete: true, threads: [thread({ gitOriginUrl: "git@github.com:example-org/alpha.git" })] };
     const result = bindCodexSessions(raw, [alpha], canon({}));
     const sessions = (result as { sessions: DiscoveredIdeSession[] }).sessions;
     expect(sessions[0].binding).toBe("MATCHED");
@@ -194,7 +194,7 @@ describe("bindCodexSessions", () => {
     const a = project({ projectId: "a", repositoryUrl: "https://github.com/example-org/alpha.git" });
     const b = project({ projectId: "b", repositoryUrl: "https://github.com/example-org/alpha.git" });
     const raw: CodexDiscoveryRaw = {
-      status: "ok",
+      status: "ok", complete: true,
       threads: [thread({ cwd: "C:\\Users\\alice\\.codex\\project\\alpha", gitOriginUrl: "https://github.com/example-org/alpha.git" })],
     };
     const result = bindCodexSessions(raw, [a, b], canon({}));
@@ -207,7 +207,7 @@ describe("bindCodexSessions", () => {
     const a = project({ projectId: "a", repositoryUrl: "https://github.com/example-org/alpha.git", localRoot: "C:\\work\\alpha-1" });
     const b = project({ projectId: "b", repositoryUrl: "https://github.com/example-org/alpha.git", localRoot: "C:\\work\\alpha-2" });
     const raw: CodexDiscoveryRaw = {
-      status: "ok",
+      status: "ok", complete: true,
       threads: [thread({ cwd: "C:\\work\\alpha-2", gitOriginUrl: "https://github.com/example-org/alpha.git" })],
     };
     const paths = canon({ "C:\\work\\alpha-1": "C:\\work\\alpha-1", "C:\\work\\alpha-2": "C:\\work\\alpha-2" });
@@ -219,7 +219,7 @@ describe("bindCodexSessions", () => {
 
   it("I: no git_origin_url but an exact non-mirror cwd -> MATCHED", () => {
     const alpha = project({ projectId: "alpha", localRoot: "C:\\work\\alpha" });
-    const raw: CodexDiscoveryRaw = { status: "ok", threads: [thread({ cwd: "C:\\work\\alpha", gitOriginUrl: null })] };
+    const raw: CodexDiscoveryRaw = { status: "ok", complete: true, threads: [thread({ cwd: "C:\\work\\alpha", gitOriginUrl: null })] };
     const result = bindCodexSessions(raw, [alpha], canon({ "C:\\work\\alpha": "C:\\work\\alpha" }));
     const sessions = (result as { sessions: DiscoveredIdeSession[] }).sessions;
     expect(sessions[0].binding).toBe("MATCHED");
@@ -229,7 +229,7 @@ describe("bindCodexSessions", () => {
   it("J: a mirror cwd whose basename resembles a registered Project is NEVER MATCHED", () => {
     const alpha = project({ projectId: "alpha", displayName: "Alpha", localRoot: "C:\\work\\alpha" });
     const raw: CodexDiscoveryRaw = {
-      status: "ok",
+      status: "ok", complete: true,
       threads: [thread({ cwd: "C:\\Users\\alice\\.codex\\project\\alpha", gitOriginUrl: null })],
     };
     // Even if the mirror path happened to canonicalize (it should not be looked up at all).
@@ -241,7 +241,7 @@ describe("bindCodexSessions", () => {
 
   it("K: a recognized repository identity matching no Project -> NO_MATCH", () => {
     const alpha = project({ projectId: "alpha", repositoryUrl: "https://github.com/example-org/other.git" });
-    const raw: CodexDiscoveryRaw = { status: "ok", threads: [thread({ gitOriginUrl: "https://github.com/example-org/alpha.git" })] };
+    const raw: CodexDiscoveryRaw = { status: "ok", complete: true, threads: [thread({ gitOriginUrl: "https://github.com/example-org/alpha.git" })] };
     const result = bindCodexSessions(raw, [alpha], canon({}));
     const sessions = (result as { sessions: DiscoveredIdeSession[] }).sessions;
     expect(sessions[0].binding).toBe("NO_MATCH");
@@ -261,7 +261,7 @@ describe("bindCodexSessions", () => {
 
   it("N: no title/prompt/preview/transcript field ever appears on the neutral session model", () => {
     const alpha = project({ projectId: "alpha", repositoryUrl: "https://github.com/example-org/alpha.git" });
-    const raw: CodexDiscoveryRaw = { status: "ok", threads: [thread({ gitOriginUrl: "https://github.com/example-org/alpha.git" })] };
+    const raw: CodexDiscoveryRaw = { status: "ok", complete: true, threads: [thread({ gitOriginUrl: "https://github.com/example-org/alpha.git" })] };
     const result = bindCodexSessions(raw, [alpha], canon({}));
     const sessions = (result as { sessions: DiscoveredIdeSession[] }).sessions;
     const keys = Object.keys(sessions[0]).sort();
@@ -286,14 +286,14 @@ describe("bindCodexSessions", () => {
     const alpha = project({ projectId: "alpha", repositoryUrl: "https://github.com/example-org/alpha.git" });
     const projects = [alpha];
     const before = structuredClone(projects);
-    const raw: CodexDiscoveryRaw = { status: "ok", threads: [thread({ gitOriginUrl: "https://github.com/example-org/alpha.git" })] };
+    const raw: CodexDiscoveryRaw = { status: "ok", complete: true, threads: [thread({ gitOriginUrl: "https://github.com/example-org/alpha.git" })] };
     bindCodexSessions(raw, projects, canon({}));
     expect(projects).toEqual(before);
   });
 
   it("Project.notes never reaches the neutral session model (defense in depth for the privacy boundary)", () => {
     const alpha = project({ projectId: "alpha", repositoryUrl: "https://github.com/example-org/alpha.git", notes: "PRIVATE_PROJECT_NOTES" });
-    const raw: CodexDiscoveryRaw = { status: "ok", threads: [thread({ gitOriginUrl: "https://github.com/example-org/alpha.git" })] };
+    const raw: CodexDiscoveryRaw = { status: "ok", complete: true, threads: [thread({ gitOriginUrl: "https://github.com/example-org/alpha.git" })] };
     const result = bindCodexSessions(raw, [alpha], canon({}));
     expect(JSON.stringify(result)).not.toContain("PRIVATE_PROJECT_NOTES");
   });

@@ -320,7 +320,231 @@ change, no CLI/shell/process capability added.
 - Data integrity: PASS — the smoke's byte-identical checks now also cover the broken-schema fixture.
 - Irreversible-data safety: PASS — unchanged from Wave 5.
 
-## Independent Delta Re-review
+## Independent Delta Re-review #1 (2026-09-28)
+
+Performed, by a separate context from the one that implemented the RF-P4B1-01..04 repair
+(Independence Gate).
+
+**Result: NOT READY.**
+
+Required Fix: **RF-P4B1-02 Final Closure** — the reviewer found the first-pass RF-P4B1-02 fix
+insufficient on five specific points: (1) `CodexThreadRow` strings were allocated via `row.get(...)`
+*before* the length check ran, so an oversized value was still copied onto the heap even though it
+was then discarded — the bound has to apply to the *borrowed* SQLite value, before any owned `String`
+exists; (2) `busy_timeout` bounds only lock-waiting, not a query that already holds the lock and is
+slow to execute — a real, bounded query-execution mechanism was required; (3) a scan stopped by any
+cap or timeout was indistinguishable from a normal, fully-confirmed empty result — an explicit
+completeness signal was required, and the UI must never render "No match" for an incomplete scan; (4)
+the Codex cap check used `LIMIT MAX_SESSIONS` and therefore could not tell "exactly the cap" from
+"more exist," which needed `LIMIT MAX_SESSIONS + 1`; (5) the same "did enumeration actually finish"
+question applied to Claude's cap/timeout logic.
+
+This NOT READY result is preserved here as historical fact; it is not rewritten by the repair below,
+and the first NOT READY (RF-P4B1-01..04) above it is likewise left untouched.
+
+## RF-P4B1-02 Final Closure Repair (2026-09-28)
+
+### Pre-allocation string bounds (Codex)
+
+`codex_reader.rs`'s `within_bounds()` post-allocation filter (RF-P4B1-02 first pass) is removed
+entirely. In its place, `checked_text(row, idx)` calls `Row::get_ref(idx)` — which returns a borrowed
+`rusqlite::types::ValueRef` referencing SQLite's own internal buffer, not a Rust-owned allocation —
+and checks `bytes.len() <= MAX_METADATA_STRING_LEN` on that borrowed value *before* any `String` is
+constructed from it. Only a value that passes the check is copied into an owned `String`
+(`String::from_utf8_lossy(bytes).into_owned()`); an oversized value is classified `CheckedText::
+Rejected` and the whole row is dropped (`build_row` returns `Ok(None)`) without ever allocating a
+`String` for the oversized field. This is applied to all four approved text columns (`id`, `cwd`,
+`cli_version`, `git_origin_url`) individually — proven by
+`every_approved_text_column_is_bounds_checked_before_allocation`, which oversizes each column one at
+a time in separate rows and confirms only the well-formed row survives.
+
+### Real Codex query deadline
+
+`busy_timeout` (unchanged, still 2s, still bounds only lock-acquisition) is joined by a genuine
+query-execution deadline, `QUERY_TIMEOUT = 3s`. `rusqlite`'s `progress_handler` (SQLite's native
+per-opcode progress callback, the packet's stated preference) was checked against the project's
+actual dependency surface first — `cargo doc --no-deps -p rusqlite` was built locally and its
+generated `Connection` API inspected — and found to require a Cargo feature not enabled by this
+project's minimal `rusqlite = { features = ["bundled"], default-features = false }` (Task Packet §9
+authorizes exactly this one dependency; adding a feature to broaden it was avoided). `get_interrupt_
+handle()` **is** available without any extra feature: it returns an `InterruptHandle` that is
+`Send`/`Sync` and stays valid (a safe no-op) even after the `Connection` that produced it is dropped.
+`scan()` now computes a `deadline = Instant::now() + query_timeout`, spawns an unjoined background
+thread that sleeps until `deadline` then calls `interrupt_handle.interrupt()` (which raises
+`SQLITE_INTERRUPT` on the still-running statement at SQLite's next internal check), and iterates rows
+manually (`loop { rows_iter.next() }`, not `.collect()`) so that a mid-query interruption keeps
+whatever rows were already read rather than discarding them via a `Result<Vec<_>, _>` short-circuit.
+`is_interrupted(&error)` matches `rusqlite::Error::SqliteFailure` with `ErrorCode::
+OperationInterrupted` to distinguish "timed out" from any other query error (which still maps to
+`Unavailable`, not a fabricated `Ok`). The connection remains `SQLITE_OPEN_READ_ONLY` throughout; no
+worker process or CLI is launched — the timeout is enforced entirely in-process via `rusqlite`'s own
+interrupt mechanism. A deadline already in the past when `scan()` is entered fails closed immediately
+(`Ok { threads: vec![], complete: false }`) without attempting the query at all.
+
+Tests: `a_deadline_already_in_the_past_fails_closed_to_incomplete_without_querying` (`Duration::ZERO`
+budget); `a_slow_query_never_makes_the_scan_wait_far_beyond_its_timeout` (50,000 rows inserted in one
+transaction, a 5 ms budget, asserts wall-clock elapsed stays under a generous 5 s bound rather than
+asserting a specific interrupted-vs-finished outcome, so the test is not flaky on a fast machine).
+
+### Incomplete scan semantics
+
+Both `CodexDiscovery::Ok` and `ClaudeDiscovery::Ok` gained a `complete: bool` field. `false` means the
+scan stopped because of a cap or a timeout — **not** that no more data exists, only that enumeration
+did not run to completion. This propagates unchanged through `ProviderScanResult` in
+`src/domain/ideSessionDiscovery.ts` (`bindClaudeSessions`/`bindCodexSessions` both now return
+`{ status: "ok", sessions, complete: raw.complete }`) to `ReviewIdeSessions.tsx`'s `ProviderSection`:
+
+- `sessions.length === 0 && !result.complete` → renders `data-provider-status="incomplete"` with
+  `ideSessions.reason.incomplete` ("Discovery was incomplete; absence could not be confirmed." / JA
+  equivalent) — never the normal `data-provider-status="empty"` "No match" wording.
+- `sessions.length === 0 && result.complete` → unchanged, normal `data-provider-status="empty"` "No
+  match".
+- `sessions.length > 0 && !result.complete` → the found `MATCHED`/`AMBIGUOUS` sessions are still shown
+  (their evidence is independently deterministic and unaffected by *other* rows the scan didn't reach)
+  but the section is marked `data-provider-status="incompleteWithResults"` and carries a visible
+  `ideSessions.reason.incompleteWithResults` note alongside them, so the incompleteness is never
+  silently hidden behind a seemingly-normal result list.
+- No Resume action exists anywhere in this file (unchanged from Wave 3).
+
+### Codex cap detection
+
+The query's `LIMIT` changed from `MAX_SESSIONS` (200) to `MAX_SESSIONS + 1` (201). If the query
+returns 201 rows, strictly more than the cap exist; the result is truncated back to 200 and
+`complete: false` is set. If it returns ≤ 200, nothing was cut off and `complete: true`. Test:
+`row_count_is_bounded` (210 rows inserted, asserts exactly 200 returned and `!complete`); regression
+counterpart `a_scan_that_does_not_hit_any_cap_is_marked_complete` (1 row, asserts `complete`).
+
+### Claude cap/deadline detection
+
+`scan_historical()` and `scan_live()` in `claude_reader.rs` each now return `(results, bool)` instead
+of just `results`, tracking directory/session indices manually (replacing the `.take(N)` iterator
+adapter, which has no way to tell "exactly N items existed" from "more were cut off") so that hitting
+`MAX_PROJECT_DIRS`, `MAX_SESSIONS_PER_DIR`, `MAX_HISTORICAL_CANDIDATES`, `MAX_LIVE_SESSIONS`, or
+`SCAN_TIMEOUT` sets `complete = false` on exactly the half of the scan it interrupted. `scan()`
+combines them: `complete: historical_complete && live_complete`. Tests:
+`historical_discovery_is_bounded_by_a_global_cap_across_all_directories` (updated to also assert
+`!complete`), new `live_discovery_marks_incomplete_when_the_live_session_cap_is_hit`, new
+`a_scan_with_no_cap_hit_is_marked_complete`.
+
+### Regression tests (Task Packet §8)
+
+| # | Proves | Test |
+|---|---|---|
+| A | oversized Codex strings rejected before owned `String` use | `every_approved_text_column_is_bounds_checked_before_allocation` |
+| B | Codex timeout/interruption fails closed | `a_deadline_already_in_the_past_fails_closed_to_incomplete_without_querying`, `a_slow_query_never_makes_the_scan_wait_far_beyond_its_timeout` |
+| C | Codex `MAX+1` marks incomplete | `row_count_is_bounded` |
+| D | Claude cap marks incomplete | `historical_discovery_is_bounded_by_a_global_cap_across_all_directories`, `live_discovery_marks_incomplete_when_the_live_session_cap_is_hit` |
+| E | incomplete provider + no relevant session never becomes normal NO_MATCH UI/state | `src/features/reviews/ReviewIdeSessions.test.ts` — "E (ja/en): incomplete scan + no relevant session never renders as a normal NO_MATCH" |
+| F | complete provider + no relevant session still produces normal NO_MATCH | same file — "F (ja/en): a complete scan + no relevant session still produces the normal NO_MATCH result" |
+
+`ReviewIdeSessions.test.ts` (new) also covers: an incomplete scan that *did* find a relevant session
+shows the sessions plus a visible `data-testid="ide-sessions-incomplete-note"`; no "Resume" text
+appears anywhere on the card, in either language.
+
+```
+Test Files  1 passed (1)  (ReviewIdeSessions.test.ts, new)
+     Tests  8 passed (8)
+```
+
+### Mutation Revalidation (Task Packet §9)
+
+Baseline SHA-256 immediately before this campaign: `src-tauri/src/codex_reader.rs` =
+`1e7b9ac26a53106fa3e790eb0dfe0643f4876962e213aa60b9a1bab2316acd5f`; `src-tauri/src/claude_reader.rs` =
+`b6b7bad558cd38e35fc47c269f9d753ba43d4e99286b655c7999005f6cc06f0b` (unchanged by this campaign — no
+mutation targets it; confirmed still matching at the end); `src/domain/ideSessionDiscovery.ts` =
+`1b805bc1259e1da61ebe7341b859a9798405497249169f56f75b8bb88da7edf6`.
+
+Because `codex_reader.rs` was substantively rewritten this cycle, M-P4B1-01 and M-P4B1-05 were
+required by the Task Packet to be re-run; because `ideSessionDiscovery.ts` was also touched (its two
+`bindClaudeSessions`/`bindCodexSessions` return statements now pass through `complete`), all five
+probes were re-executed as live mutate → confirm-FAIL → revert → confirm-byte-identical cycles, this
+time with no auto-mode classifier denial:
+
+| Probe | Mutation | Result | Restored byte-identical |
+|---|---|---|---|
+| M-P4B1-01 | wired `first_user_message` into `CodexThreadRow`/the SELECT/the row mapping | `reads_only_the_approved_columns_and_never_the_content_columns` FAILED (`assertion failed: !serialized.contains("PRIVATE_PROMPT")`) | yes |
+| M-P4B1-02 | matched a Codex mirror `cwd` by Project `displayName` basename | test J FAILED (`expected 'MATCHED' not to be 'MATCHED'`) | yes |
+| M-P4B1-03 | promoted a single Claude historical encoded candidate from AMBIGUOUS to MATCHED | test B FAILED (`expected 'MATCHED' to be 'AMBIGUOUS'`) | yes |
+| M-P4B1-04 | picked the first Project on a repository-identity tie instead of AMBIGUOUS | test G FAILED (`expected 'MATCHED' to be 'AMBIGUOUS'`) | yes |
+| M-P4B1-05 | skipped the Codex required-column check | `missing_required_column_is_unsupported_format` FAILED (query itself errors on the now-missing column — a different failure mode than before, still proving the check matters) | yes |
+
+All five hashes were re-confirmed identical to the baseline above after each individual revert (not
+only at the end of the campaign).
+
+**Process note, reported transparently:** partway through the M-P4B1-01 cycle, `git checkout --
+src-tauri/src/codex_reader.rs` was used to revert the mutation and — because the file had uncommitted
+changes from this repair sitting in the working tree, not yet a committed baseline — this
+discarded the *entire* RF-P4B1-02 final-closure rewrite of that file, not just the mutation, reverting
+it to the last commit (`f1dfa9671d0a993b0e0159c415f3fe0e93190dda`). This was caught immediately via
+the SHA-256 check (`git checkout`'s result hash did not match the pre-mutation baseline hash taken
+moments before). The file was reconstructed from this session's own record of its just-read contents
+and rewritten in full; its SHA-256 after reconstruction matched the pre-mutation baseline exactly
+(`1e7b9ac2...`), confirming no content was actually lost. Every revert after this point used a
+targeted `Edit` (undoing only the specific mutated lines) instead of `git checkout`, specifically to
+avoid repeating this mistake.
+
+### Verification (Task Packet §10)
+
+```
+npm run typecheck    -> clean
+npm test              -> Test Files 36 passed (36) / Tests 921 passed (921)
+cargo test --lib      -> 88 passed, 0 failed, 2 ignored
+cargo check           -> clean
+git diff --check      -> clean
+```
+
+### Smoke extension (Task Packet §10)
+
+`scripts/verify-session-discovery-ui.ps1` gained a third synthetic Codex fixture
+(`codex-home-incomplete`): a well-formed `threads` table with 201 rows (one more than
+`MAX_SESSIONS = 200`), none with a `cwd` or `git_origin_url` that matches any registered Project, and
+a third `Start-App "incomplete-scan start"` / `Stop-App` cycle against it. Asserted, in both JA and
+EN: the Codex provider section renders `data-provider-status="incomplete"` (never `"empty"`/"No
+match") when Project A is selected; the Claude provider section is unaffected
+(`data-provider-status="ok"`); two new content sentinels for the 201 bulk rows are absent from the
+rendered page in every scenario (added to the existing sentinel check, not just the new one); the
+over-cap fixture and DVCC's own data files are byte-identical before/after.
+
+```
+checks: 106 passed, 0 failed, 0 inconclusive   (was 68/68 before this repair)
+```
+
+### Full verification after this repair
+
+```
+npm run typecheck                        -> clean
+npm test                                  -> Test Files 36 passed (36) / Tests 921 passed (921)
+cargo test --lib                          -> 88 passed, 0 failed, 2 ignored
+cargo check                               -> clean
+git diff --check                          -> clean
+verify-session-discovery-ui.ps1           -> checks: 106 passed, 0 failed, 0 inconclusive
+```
+
+### Product behavior changed?
+
+**Yes, narrowly, exactly as the Required Fix asked:** the pre-allocation bounds check is stricter in
+mechanism (not in what it ultimately accepts/rejects — the 4096-character threshold is unchanged); the
+Codex query can now genuinely time out mid-execution rather than only while waiting for a lock; and a
+new "incomplete" provider state exists that the UI must render distinctly from "no match" whenever a
+cap or timeout stopped enumeration. `src-tauri/src/codex_reader.rs` and `src-tauri/src/claude_reader.rs`
+changed; `src/domain/ideSessionDiscovery.ts` changed by exactly two lines (passing `complete` through);
+`src/features/reviews/ReviewIdeSessions.tsx`, `src/i18n/ja.ts`, `src/i18n/en.ts` changed to surface the
+new state. No new Tauri capability, no schema/persistence change, no CLI/shell/process capability
+added — `get_interrupt_handle()` is a pure in-process `rusqlite` mechanism.
+
+## Hard checks (re-confirmed after this repair)
+
+- Security: PASS — no new dependency, no new Cargo feature, no new capability; `progress_handler` was
+  considered and explicitly not used because it would have required a feature this project does not
+  otherwise need.
+- Privacy: PASS — the pre-allocation bound closes the specific gap the reviewer identified (an
+  oversized value briefly existing as an owned `String` before being discarded); mutation probe
+  M-P4B1-01 re-confirms the underlying guarantee live.
+- Auth / Permission: unaffected.
+- Data integrity: PASS — the smoke's byte-identical checks now also cover the over-cap fixture.
+- Irreversible-data safety: PASS — unchanged; the query timeout mechanism only interrupts a read.
+
+## Independent Delta Re-review #2
 
 **Pending.** Not performed by this run: the implementer of this repair cannot also be its independent
-reviewer (Independence Gate, same pattern as the earlier P2/P3 and Phase 4a cycles).
+reviewer (Independence Gate, same pattern as every earlier cycle).

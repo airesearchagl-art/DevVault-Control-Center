@@ -19,6 +19,21 @@ delta invalidates or reopens them.
   unit tests, a complete 5/5 mutation campaign, and a real running-app smoke (68/68) against actual
   SQLite/filesystem fixtures, including an unsupported-schema case.
 
+## RF-P4B1-02 Final Closure (2026-09-28)
+
+- No new quality debt from the fixes themselves: the pre-allocation bound, the real query deadline,
+  and the completeness signal are all covered by unit tests, a live mutation re-campaign (5/5), and an
+  extended running-app smoke (106/106). See EVIDENCE.md for the full mechanism writeups.
+- **Process incident, not a product defect:** during mutation probe M-P4B1-01's revert step,
+  `git checkout -- src-tauri/src/codex_reader.rs` was used and — because the file's RF-P4B1-02
+  final-closure rewrite was still uncommitted at that point — discarded that entire rewrite instead of
+  just the mutation, reverting the file to the last commit. Caught immediately by the SHA-256 check
+  (the post-checkout hash did not match the pre-mutation baseline taken moments before); the file was
+  reconstructed from this session's own record of its contents and its hash re-confirmed identical to
+  the baseline. No content was actually lost, but this is recorded here as a reminder for future runs:
+  prefer a targeted `Edit` revert over `git checkout --` for any file with uncommitted work still in
+  it, exactly what every mutation revert after this point in this run did instead.
+
 ## Explicit unverified (carried, unaffected)
 
 - Manual screen-reader behaviour of the new "IDE Sessions" card was not tested (consistent with the

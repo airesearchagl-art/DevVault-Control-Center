@@ -1,8 +1,9 @@
 # Run State — LR-20260928-DVCC-006 (Phase 4b-1 Session Discovery)
 
-Updated: 2026-09-28, after the RF-P4B1-01..04 focused repair. The "end of Wave 5" section below is
-kept as the historical record of that point in time; see "Independent Review and Focused Repair" for
-what has happened since.
+Updated: 2026-09-28, after the RF-P4B1-02 Final Closure repair (the second Independent Review cycle).
+The "end of Wave 5" and "after RF-P4B1-01..04" sections below are kept as the historical record of
+those points in time; see "Independent Review #2 and RF-P4B1-02 Final Closure Repair" for what has
+happened since.
 
 ## Acceptance Criteria (Task Packet §28)
 
@@ -38,14 +39,25 @@ what has happened since.
       `DiscoveredIdeSession`; smoke sentinel checks)
 - [x] AC4B1-23 — JA/EN parity (`i18n.test.ts` full suite green, including the new keys)
 - [x] AC4B1-24 — domain/provider tests PASS (22 TS + 11 Rust new tests, 902 + 79 total)
-- [~] AC4B1-25 — at end of Wave 5: M-P4B1-02..05 killed and restored byte-identical; **M-P4B1-01 could
-      not be executed** (auto-mode classifier denial). **Resolved in the RF-P4B1-03 repair below: now
-      fully met (5/5).**
-- [x] AC4B1-26 — synthetic isolated running-app smoke: 48/48 checks PASS at end of Wave 5 (68/68 after
-      the RF-P4B1-04 repair added the unsupported-schema scenario)
+- [x] AC4B1-25 — at end of Wave 5: M-P4B1-02..05 killed and restored byte-identical; M-P4B1-01 resolved
+      in the RF-P4B1-03 repair (5/5). **Re-executed live a second time in the RF-P4B1-02 Final Closure
+      repair** (all 5 probes re-run against the rewritten `codex_reader.rs`/`ideSessionDiscovery.ts`,
+      each confirmed FAIL, each file re-confirmed byte-identical after revert).
+- [x] AC4B1-26 — synthetic isolated running-app smoke: 48/48 at end of Wave 5, 68/68 after RF-P4B1-04,
+      **106/106 after the RF-P4B1-02 Final Closure repair** (added the incomplete-scan scenario)
 - [x] AC4B1-27 — Security / Privacy / Auth / Permission / Data integrity / Irreversible-data safety —
-      see EVIDENCE.md "Hard checks" (the AC4B1-25 caveat above is resolved, not carried forward)
+      see EVIDENCE.md "Hard checks" (re-confirmed after each repair)
 - [x] AC4B1-28 — Phase 4b-2 (resume) remains unimplemented
+- [x] AC4B1-29 (new, RF-P4B1-02 Final Closure) — untrusted string bounds are checked on the borrowed
+      SQLite value before any owned `String` is allocated (Codex); proven by
+      `every_approved_text_column_is_bounds_checked_before_allocation`
+- [x] AC4B1-30 (new) — the Codex query has a genuine, bounded execution deadline independent of
+      `busy_timeout`, enforced via `rusqlite`'s `InterruptHandle`, connection remains read-only, no
+      worker process/CLI
+- [x] AC4B1-31 (new) — an explicit `complete: bool` signal distinguishes a fully-confirmed scan from
+      one a cap or timeout stopped early, for both providers; the UI never renders "No match" for an
+      incomplete scan with no relevant session found (regression E), and still renders normal "No
+      match" for a complete scan (regression F)
 
 ## Independent Review and Focused Repair (2026-09-28)
 
@@ -88,13 +100,37 @@ historical fact; it is not rewritten by the repair below.
   unaffected, no forbidden content appears, and both the broken fixture and DVCC's own data files are
   confirmed byte-identical before/after. The smoke now passes 68/68 (was 48/48).
 
+## Independent Review #2 and RF-P4B1-02 Final Closure Repair (2026-09-28)
+
+A Focused Independent Delta Re-review of the RF-P4B1-01..04 repair returned **NOT READY** again, with
+one Required Fix this time: **RF-P4B1-02 Final Closure** (the first-pass metadata-bounds fix was found
+insufficient on five specific points — pre-allocation ordering, a real query deadline, completeness
+semantics, Codex `LIMIT MAX+1` cap detection, and Claude cap/deadline detection). See EVIDENCE.md for
+the full text of both NOT READY results, preserved as history, and for everything this repair changed
+in response. In summary:
+
+- `codex_reader.rs`: bounds now checked on the borrowed SQLite value before allocation; a real
+  `InterruptHandle`-based query deadline; `LIMIT MAX_SESSIONS + 1` cap detection; a `complete: bool`
+  field on `CodexDiscovery::Ok`.
+- `claude_reader.rs`: manual index tracking (replacing `.take(N)`) so a cap/timeout hit is
+  distinguishable from a naturally-short result; a `complete: bool` field on `ClaudeDiscovery::Ok`.
+- `ideSessionDiscovery.ts`: `complete` passed through `ProviderScanResult`.
+- `ReviewIdeSessions.tsx` + `ja.ts`/`en.ts`: a new "incomplete" provider state, distinct from "no
+  match", with an additional note when relevant sessions are still shown alongside an incomplete scan.
+- New tests (regressions A–F, Task Packet §8), all 5 mutation probes re-run live and re-confirmed
+  killed + byte-identical, smoke extended to 106/106 with a third (incomplete-scan) scenario.
+- One process incident during the mutation campaign (`git checkout --` briefly discarded this file's
+  uncommitted rewrite instead of just the mutation) was caught immediately via the SHA-256 check,
+  fully recovered with no content loss, and is documented transparently in EVIDENCE.md.
+
 ## Current summary
 
-Implementation (Wave 0–5) plus the RF-P4B1-01..04 focused repair are complete. All four Required
-Fixes are addressed with executable evidence, not merely asserted. Full regression (Rust 82/82, TS
-905/905), `cargo check`, and `git diff --check` are clean. Product source changes remain scoped to
-read-only discovery exactly as the Task Packet specified: no shell, no terminal, no process control,
-no provider CLI invocation, no persistence change.
+Implementation (Wave 0–5), the RF-P4B1-01..04 repair, and the RF-P4B1-02 Final Closure repair are all
+complete. Every Required Fix from both Independent Review cycles is addressed with executable
+evidence, not merely asserted. Full regression (Rust 88/88, TS 921/921), `cargo check`, and
+`git diff --check` are clean; the running-app smoke passes 106/106. Product source changes remain
+scoped to read-only discovery exactly as the Task Packet specified: no shell, no terminal, no process
+control, no provider CLI invocation, no persistence change, no new Tauri capability or Cargo feature.
 
 Not yet done, and out of scope for this run: Independent Review and Draft PR. This run's implementer
 cannot also be the independent reviewer (Independence Gate).

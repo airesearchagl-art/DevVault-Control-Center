@@ -52,6 +52,16 @@ function ProviderSection({ provider, result, project, t }: { provider: ProviderK
   }
   const sessions = relevantSessions(result, project.projectId);
   if (sessions.length === 0) {
+    if (!result.complete) {
+      // An incomplete scan found no relevant session, but that is not proof none exists: a cap or
+      // timeout stopped enumeration early, so claiming NO_MATCH here would fabricate a conclusion the
+      // scan never actually reached (Independent Review RF-P4B1-02 final closure, §4/§7).
+      return (
+        <p className="muted small" data-testid={`ide-sessions-provider-${provider}`} data-provider-status="incomplete">
+          {label} — {t("ideSessions.reason.incomplete")}
+        </p>
+      );
+    }
     return (
       <p className="muted small" data-testid={`ide-sessions-provider-${provider}`} data-provider-status="empty">
         {label} — {t("ideSessions.reason.noMatch")}
@@ -59,8 +69,13 @@ function ProviderSection({ provider, result, project, t }: { provider: ProviderK
     );
   }
   return (
-    <div data-testid={`ide-sessions-provider-${provider}`} data-provider-status="ok">
+    <div data-testid={`ide-sessions-provider-${provider}`} data-provider-status={result.complete ? "ok" : "incompleteWithResults"}>
       <h4 className="subhead">{label}</h4>
+      {!result.complete && (
+        <p className="muted small" data-testid="ide-sessions-incomplete-note">
+          {t("ideSessions.reason.incompleteWithResults")}
+        </p>
+      )}
       {sessions.map((session) => (
         <div key={session.sessionId} className="ide-session-row" data-testid="ide-session-row" data-binding={session.binding}>
           <dl>

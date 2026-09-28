@@ -62,7 +62,14 @@ export interface DiscoveredIdeSession {
 }
 
 export type ProviderScanResult =
-  | { status: "ok"; sessions: DiscoveredIdeSession[] }
+  /**
+   * `complete: false` (Independent Review RF-P4B1-02 §4/§7) means a session cap, directory cap or
+   * wall-clock/query deadline stopped enumeration before it finished. `sessions` found under a
+   * partial scan may still be shown — their own evidence is unaffected — but their *absence* proves
+   * nothing: a renderer must never read an empty/short `sessions` list here as a confirmed
+   * `NO_MATCH` for the whole provider.
+   */
+  | { status: "ok"; sessions: DiscoveredIdeSession[]; complete: boolean }
   | { status: "unavailable"; reason: Message }
   | { status: "unsupportedFormat"; reason: Message };
 
@@ -79,7 +86,7 @@ export interface CodexThreadRaw {
 }
 
 export type CodexDiscoveryRaw =
-  | { status: "ok"; threads: CodexThreadRaw[] }
+  | { status: "ok"; threads: CodexThreadRaw[]; complete: boolean }
   | { status: "unavailable"; reason: string }
   | { status: "unsupportedFormat"; reason: string };
 
@@ -97,7 +104,7 @@ export interface ClaudeLiveSessionRaw {
 }
 
 export type ClaudeDiscoveryRaw =
-  | { status: "ok"; historical: ClaudeHistoricalCandidateRaw[]; live: ClaudeLiveSessionRaw[] }
+  | { status: "ok"; historical: ClaudeHistoricalCandidateRaw[]; live: ClaudeLiveSessionRaw[]; complete: boolean }
   | { status: "unavailable"; reason: string };
 
 /**
@@ -259,7 +266,7 @@ export function bindClaudeSessions(raw: ClaudeDiscoveryRaw, projects: readonly P
     });
   }
 
-  return { status: "ok", sessions };
+  return { status: "ok", sessions, complete: raw.complete };
 }
 
 export function bindCodexSessions(raw: CodexDiscoveryRaw, projects: readonly Project[], canonicalPaths: CanonicalPaths): ProviderScanResult {
@@ -340,5 +347,5 @@ export function bindCodexSessions(raw: CodexDiscoveryRaw, projects: readonly Pro
     };
   });
 
-  return { status: "ok", sessions };
+  return { status: "ok", sessions, complete: raw.complete };
 }

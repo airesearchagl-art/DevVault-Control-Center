@@ -335,6 +335,8 @@ export const en: Dictionary = {
   "ideSessions.reason.ambiguousMultipleProjects": "Multiple Projects are candidates; not unique",
   "ideSessions.reason.ambiguousHistoricalEncoding": "Historical workspace identity is ambiguous (the encoding is not reversible)",
   "ideSessions.reason.ambiguousEncodingCollision": "Two or more registered Projects share the same encoded identity",
+  "ideSessions.reason.incomplete": "Discovery was incomplete; absence could not be confirmed.",
+  "ideSessions.reason.incompleteWithResults": "Discovery did not finish; there may be more matches than shown.",
 
   "detail.card.evidence": "Duplicates and evidence",
   "workflow.duplicate.title": "Same-head duplicate review",

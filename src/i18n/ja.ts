@@ -344,6 +344,8 @@ export const ja = {
   "ideSessions.reason.ambiguousMultipleProjects": "複数のProjectが候補となり、一意に決定できません",
   "ideSessions.reason.ambiguousHistoricalEncoding": "過去のworkspace識別は不可逆な変換のため断定できません",
   "ideSessions.reason.ambiguousEncodingCollision": "複数の登録済みProjectが同じ変換結果になるため断定できません",
+  "ideSessions.reason.incomplete": "探索が完了しなかったため、一致なしとは断定できません",
+  "ideSessions.reason.incompleteWithResults": "探索は完了していません。表示中の結果以外にも一致がある可能性があります",
 
   "detail.card.evidence": "重複とEvidence",
   "workflow.duplicate.title": "同一HEADの重複レビュー",

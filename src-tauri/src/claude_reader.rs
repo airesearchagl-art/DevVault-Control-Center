@@ -66,6 +66,11 @@ pub enum ClaudeDiscovery {
     Ok {
         historical: Vec<HistoricalCandidate>,
         live: Vec<LiveSession>,
+        /// `false` when `MAX_PROJECT_DIRS`, `MAX_SESSIONS_PER_DIR`, `MAX_HISTORICAL_CANDIDATES`,
+        /// `MAX_LIVE_SESSIONS` or `SCAN_TIMEOUT` stopped enumeration early (Independent Review
+        /// RF-P4B1-02 §6): an apparently-empty or short result must never be read as "no more
+        /// sessions exist" when this is `false`.
+        complete: bool,
     },
     Unavailable {
         reason: String,
@@ -107,16 +112,27 @@ fn modified_ms(path: &std::path::Path) -> Option<u64> {
     Some(since_epoch.as_millis() as u64)
 }
 
-fn scan_historical(projects_dir: &std::path::Path) -> Vec<HistoricalCandidate> {
+/// Returns the candidates found and whether enumeration ran to completion. `.take(N)` alone cannot
+/// answer that (it silently stops, indistinguishable from "there were exactly N"), so directory and
+/// per-directory session counts are tracked manually instead (Independent Review RF-P4B1-02 §6).
+fn scan_historical(projects_dir: &std::path::Path) -> (Vec<HistoricalCandidate>, bool) {
     let mut out = Vec::new();
+    let mut complete = true;
     let Ok(entries) = std::fs::read_dir(projects_dir) else {
-        return out;
+        return (out, complete);
     };
     let deadline = Instant::now() + SCAN_TIMEOUT;
-    'directories: for entry in entries.flatten().take(MAX_PROJECT_DIRS) {
+    let mut dir_index = 0usize;
+    'directories: for entry in entries.flatten() {
         if Instant::now() >= deadline {
+            complete = false;
             break;
         }
+        if dir_index >= MAX_PROJECT_DIRS {
+            complete = false;
+            break;
+        }
+        dir_index += 1;
         let Ok(file_type) = entry.file_type() else { continue };
         if !file_type.is_dir() {
             continue;
@@ -127,10 +143,17 @@ fn scan_historical(projects_dir: &std::path::Path) -> Vec<HistoricalCandidate> {
         }
         let dir_path = entry.path();
         let Ok(session_files) = std::fs::read_dir(&dir_path) else { continue };
-        for session_entry in session_files.flatten().take(MAX_SESSIONS_PER_DIR) {
+        let mut session_index = 0usize;
+        for session_entry in session_files.flatten() {
             if out.len() >= MAX_HISTORICAL_CANDIDATES || Instant::now() >= deadline {
+                complete = false;
                 break 'directories;
             }
+            if session_index >= MAX_SESSIONS_PER_DIR {
+                complete = false;
+                break; // just this directory's remainder; other directories are still scanned
+            }
+            session_index += 1;
             let Ok(session_file_type) = session_entry.file_type() else { continue };
             if !session_file_type.is_file() {
                 continue;
@@ -144,7 +167,7 @@ fn scan_historical(projects_dir: &std::path::Path) -> Vec<HistoricalCandidate> {
             });
         }
     }
-    out
+    (out, complete)
 }
 
 /// A parsed live session is only kept if every string field is a plausible length
@@ -155,14 +178,16 @@ fn live_fields_within_bounds(fields: &LiveSessionFields) -> bool {
         && fields.version.as_ref().is_none_or(|version| version.len() <= MAX_METADATA_STRING_LEN)
 }
 
-fn scan_live(sessions_dir: &std::path::Path) -> Vec<LiveSession> {
+fn scan_live(sessions_dir: &std::path::Path) -> (Vec<LiveSession>, bool) {
     let mut out = Vec::new();
+    let mut complete = true;
     let Ok(entries) = std::fs::read_dir(sessions_dir) else {
-        return out;
+        return (out, complete);
     };
     let deadline = Instant::now() + SCAN_TIMEOUT;
     for entry in entries.flatten() {
         if out.len() >= MAX_LIVE_SESSIONS || Instant::now() >= deadline {
+            complete = false;
             break;
         }
         let Ok(file_type) = entry.file_type() else { continue };
@@ -190,7 +215,7 @@ fn scan_live(sessions_dir: &std::path::Path) -> Vec<LiveSession> {
             version: fields.version,
         });
     }
-    out
+    (out, complete)
 }
 
 fn scan(home: &std::path::Path) -> ClaudeDiscovery {
@@ -200,9 +225,13 @@ fn scan(home: &std::path::Path) -> ClaudeDiscovery {
             reason: "the Claude Code data directory does not exist".to_string(),
         };
     }
-    let historical = scan_historical(&base.join("projects"));
-    let live = scan_live(&base.join("sessions"));
-    ClaudeDiscovery::Ok { historical, live }
+    let (historical, historical_complete) = scan_historical(&base.join("projects"));
+    let (live, live_complete) = scan_live(&base.join("sessions"));
+    ClaudeDiscovery::Ok {
+        historical,
+        live,
+        complete: historical_complete && live_complete,
+    }
 }
 
 #[tauri::command]
@@ -352,12 +381,42 @@ mod tests {
             }
         }
         let result = scan(&home.0);
-        let ClaudeDiscovery::Ok { historical, .. } = result else { panic!("expected Ok") };
+        let ClaudeDiscovery::Ok { historical, complete, .. } = result else { panic!("expected Ok") };
         assert!(
             historical.len() <= MAX_HISTORICAL_CANDIDATES,
             "expected at most {MAX_HISTORICAL_CANDIDATES}, got {}",
             historical.len()
         );
+        assert!(!complete, "D: hitting the global historical cap must mark the scan incomplete");
+    }
+
+    #[test]
+    fn live_discovery_marks_incomplete_when_the_live_session_cap_is_hit() {
+        let home = TempHome::new();
+        let sessions_dir = home.0.join(".claude").join("sessions");
+        std::fs::create_dir_all(&sessions_dir).unwrap();
+        for i in 0..(MAX_LIVE_SESSIONS + 5) {
+            std::fs::write(
+                sessions_dir.join(format!("{i}.json")),
+                format!(r#"{{"sessionId":"s-{i}","cwd":"C:\\a"}}"#),
+            )
+            .unwrap();
+        }
+        let result = scan(&home.0);
+        let ClaudeDiscovery::Ok { live, complete, .. } = result else { panic!("expected Ok") };
+        assert_eq!(live.len(), MAX_LIVE_SESSIONS);
+        assert!(!complete, "D: hitting the live-session cap must mark the scan incomplete");
+    }
+
+    #[test]
+    fn a_scan_with_no_cap_hit_is_marked_complete() {
+        let home = TempHome::new();
+        let sessions_dir = home.0.join(".claude").join("sessions");
+        std::fs::create_dir_all(&sessions_dir).unwrap();
+        std::fs::write(sessions_dir.join("1.json"), r#"{"sessionId":"s-1","cwd":"C:\\a"}"#).unwrap();
+        let result = scan(&home.0);
+        let ClaudeDiscovery::Ok { complete, .. } = result else { panic!("expected Ok") };
+        assert!(complete, "F: a scan that hits no cap must be marked complete");
     }
 
     #[test]

@@ -81,6 +81,8 @@ $CODEX_PROMPT_SENTINEL_2 = "CODEX_FIRST_USER_MESSAGE_2_MUST_NOT_APPEAR"
 $CODEX_PREVIEW_SENTINEL_2 = "CODEX_PREVIEW_2_MUST_NOT_APPEAR"
 $CODEX_PROMPT_SENTINEL_3 = "CODEX_FIRST_USER_MESSAGE_3_MUST_NOT_APPEAR"
 $CODEX_PREVIEW_SENTINEL_3 = "CODEX_PREVIEW_3_MUST_NOT_APPEAR"
+$CODEX_PROMPT_SENTINEL_BULK = "CODEX_BULK_FIRST_USER_MESSAGE_MUST_NOT_APPEAR"
+$CODEX_PREVIEW_SENTINEL_BULK = "CODEX_BULK_PREVIEW_MUST_NOT_APPEAR"
 
 # --- synthetic real folders (Claude live cwd + historical candidate must exist to canonicalize) ---
 $projectARoot = Join-Path $projectsRoot "project-a"
@@ -176,13 +178,41 @@ Write-Text $buildBrokenDbFile $buildBrokenDbScript
 & node.exe $buildBrokenDbFile
 if ($LASTEXITCODE -ne 0) { throw "failed to build the synthetic broken-schema Codex state DB" }
 
+# --- Codex fixture (RF-P4B1-02 final closure, §7/§8/§10): a well-formed schema with more rows than
+# the reader's session cap (`MAX_SESSIONS` = 200 in src-tauri/src/codex_reader.rs), none of which are
+# relevant to any registered Project. This scan must come back marked `complete: false` (the `LIMIT
+# MAX+1` pattern proves more rows exist), and — since no relevant session was found either — the UI
+# must show "discovery was incomplete", never a normal "No match" (a scan that never finished cannot
+# have confirmed an absence).
+$codexHomeIncomplete = Join-Path $root "codex-home-incomplete"
+New-Item -ItemType Directory -Path (Join-Path $codexHomeIncomplete ".codex") -Force | Out-Null
+$codexDbIncompletePath = (Join-Path $codexHomeIncomplete ".codex\state_5.sqlite") -replace "\\", "\\\\"
+$buildIncompleteDbScript = @"
+const { DatabaseSync } = require("node:sqlite");
+const db = new DatabaseSync("$codexDbIncompletePath");
+db.exec(``CREATE TABLE threads (
+  id TEXT PRIMARY KEY, cwd TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+  cli_version TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0, git_origin_url TEXT,
+  first_user_message TEXT NOT NULL DEFAULT '', preview TEXT NOT NULL DEFAULT ''
+)``);
+const insert = db.prepare("INSERT INTO threads (id, cwd, created_at, updated_at, cli_version, archived, git_origin_url, first_user_message, preview) VALUES (?,?,?,?,?,?,?,?,?)");
+for (let i = 0; i < 201; i++) {
+  insert.run("codex-bulk-" + i, "C:\\\\nowhere\\\\bulk-" + i, 1000 + i, 1000 + i, "0.153.4", 0, null, "$CODEX_PROMPT_SENTINEL_BULK", "$CODEX_PREVIEW_SENTINEL_BULK");
+}
+db.close();
+"@
+$buildIncompleteDbFile = Join-Path $root "build-codex-db-incomplete.cjs"
+Write-Text $buildIncompleteDbFile $buildIncompleteDbScript
+& node.exe $buildIncompleteDbFile
+if ($LASTEXITCODE -ne 0) { throw "failed to build the synthetic over-cap Codex state DB" }
+
 $clipboardAtStart = Get-ClipboardFingerprint
 Write-Output ("clipboard at start: " + $clipboardAtStart)
 [DvccDesktop]::Create($desktopName)
 
 function Assert-NoForbiddenContent([string] $label) {
   $body = Invoke-Cdp "document.body.textContent"
-  foreach ($sentinel in @($CLAUDE_TRANSCRIPT_SENTINEL, $CODEX_PROMPT_SENTINEL_1, $CODEX_PREVIEW_SENTINEL_1, $CODEX_PROMPT_SENTINEL_2, $CODEX_PREVIEW_SENTINEL_2, $CODEX_PROMPT_SENTINEL_3, $CODEX_PREVIEW_SENTINEL_3)) {
+  foreach ($sentinel in @($CLAUDE_TRANSCRIPT_SENTINEL, $CODEX_PROMPT_SENTINEL_1, $CODEX_PREVIEW_SENTINEL_1, $CODEX_PROMPT_SENTINEL_2, $CODEX_PREVIEW_SENTINEL_2, $CODEX_PROMPT_SENTINEL_3, $CODEX_PREVIEW_SENTINEL_3, $CODEX_PROMPT_SENTINEL_BULK, $CODEX_PREVIEW_SENTINEL_BULK)) {
     Check "$label : forbidden content absent ($sentinel)" (-not $body.Contains($sentinel)) "sentinel absent"
   }
 }
@@ -295,6 +325,38 @@ try {
   $afterUnsupported = Get-Tree $dataDir
   Check "the broken-schema Codex fixture is byte-identical (never modified)" (Same-Tree $codexBrokenBefore $codexBrokenAfter) ("files=" + $codexBrokenAfter.Count)
   Check "DVCC's own data files are still byte-identical after the unsupported-schema run" (Same-Tree $before $afterUnsupported) ("files=" + $afterUnsupported.Count)
+
+  # --- RF-P4B1-02 final closure: an incomplete Codex scan (cap hit) with no relevant session must
+  # never render as a normal "No match" -------------------------------------------------------------
+  $codexIncompleteBefore = Get-Tree $codexHomeIncomplete
+  $env:DVCC_CODEX_HOME_DIR = $codexHomeIncomplete
+  $appPid3 = Start-App "incomplete-scan start"
+  if (-not (Wait-For "document.querySelector('[data-testid=queue-item]') !== null" 20)) { throw "the queue never rendered (incomplete-scan run)" }
+  Select-Review "rv-20260928-sessa1"
+  if (-not (Wait-For "document.querySelector('[data-testid=detail-ide-sessions]') !== null" 15)) { throw "the IDE Sessions card never appeared (incomplete-scan run)" }
+
+  Refresh-AndWait
+  Assert-NoForbiddenContent "JA/incomplete-scan"
+  $codexStatusIncompleteJa = Invoke-Cdp "document.querySelector('[data-testid=ide-sessions-provider-CODEX]')?.dataset.providerStatus"
+  Check "JA : an incomplete Codex scan with no relevant session never renders as No match" ($codexStatusIncompleteJa -eq "incomplete") "status=$codexStatusIncompleteJa"
+  $claudeStatusIncompleteJa = Invoke-Cdp "document.querySelector('[data-testid=ide-sessions-provider-CLAUDE_CODE]')?.dataset.providerStatus"
+  Check "JA : Claude discovery is unaffected by Codex's incomplete scan" ($claudeStatusIncompleteJa -eq "ok") "status=$claudeStatusIncompleteJa"
+
+  Invoke-Cdp ($switchScript -replace "__LOCALE__", "en") | Out-Null
+  if (-not (Wait-For "document.documentElement.lang === 'en'" 15)) { throw "the interface never switched to English (incomplete-scan run)" }
+  Refresh-AndWait
+  Assert-NoForbiddenContent "EN/incomplete-scan"
+  $codexStatusIncompleteEn = Invoke-Cdp "document.querySelector('[data-testid=ide-sessions-provider-CODEX]')?.dataset.providerStatus"
+  Check "EN : an incomplete Codex scan with no relevant session never renders as No match" ($codexStatusIncompleteEn -eq "incomplete") "status=$codexStatusIncompleteEn"
+
+  Stop-App $appPid3
+  Test-Clean "no spawned process is left running (incomplete-scan run)"
+  Remove-Item Env:\DVCC_CODEX_HOME_DIR -ErrorAction SilentlyContinue
+
+  $codexIncompleteAfter = Get-Tree $codexHomeIncomplete
+  $afterIncomplete = Get-Tree $dataDir
+  Check "the over-cap Codex fixture is byte-identical (never modified)" (Same-Tree $codexIncompleteBefore $codexIncompleteAfter) ("files=" + $codexIncompleteAfter.Count)
+  Check "DVCC's own data files are still byte-identical after the incomplete-scan run" (Same-Tree $before $afterIncomplete) ("files=" + $afterIncomplete.Count)
 }
 finally {
   Remove-Item Env:\DVCC_CLAUDE_HOME_DIR -ErrorAction SilentlyContinue
