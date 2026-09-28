@@ -1,3 +1,5 @@
+mod claude_reader;
+mod codex_reader;
 mod git;
 mod instance;
 mod launcher;
@@ -79,7 +81,10 @@ fn build_app(_gate: &instance::StartupGate) -> tauri::App {
             launcher::open_external_url,
             launcher::open_project_folder,
             launcher::open_data_dir,
+            launcher::canonicalize_local_path,
             git::inspect_git_repository,
+            claude_reader::discover_claude_sessions,
+            codex_reader::discover_codex_sessions,
         ])
         .build(tauri::generate_context!())
         .expect("error while building DevVault Control Center")

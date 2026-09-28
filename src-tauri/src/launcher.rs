@@ -277,6 +277,28 @@ pub async fn open_project_folder(app: AppHandle, path: String) -> Result<(), Com
         .map_err(open_failed)
 }
 
+/// Phase 4b-1: the canonical local identity of `path`, for Project-binding comparison only.
+/// Reuses `validate_project_folder`'s exact security boundary (UNC/network rejection, symlink and
+/// junction resolution, local-drive-only result) but never calls the opener — nothing is launched.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(tag = "status", rename_all = "camelCase")]
+pub enum CanonicalPathOutcome {
+    Ok { canonical: String },
+    Unavailable { reason: String },
+}
+
+#[tauri::command]
+pub async fn canonicalize_local_path(path: String) -> CanonicalPathOutcome {
+    match validate_project_folder(&path) {
+        Ok(resolved) => CanonicalPathOutcome::Ok {
+            canonical: resolved.to_string_lossy().into_owned(),
+        },
+        Err(error) => CanonicalPathOutcome::Unavailable {
+            reason: error.message,
+        },
+    }
+}
+
 #[tauri::command]
 pub async fn open_data_dir(app: AppHandle, root: State<'_, DataRoot>) -> Result<(), CommandError> {
     let path = root.path()?;

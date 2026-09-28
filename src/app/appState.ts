@@ -3,6 +3,8 @@ import { message, type Message } from "../domain/message";
 import type { Project } from "../domain/project";
 import type { QueueFilter } from "../domain/queue";
 import type { FileHealth, LoadedData, LoadedReview, ReviewArtifacts } from "../services/persistence";
+import type { ProjectBindingFingerprint } from "../domain/ideSessionDiscovery";
+import type { IdeSessionScan } from "../services/ideSessionDiscovery";
 import type { StorageInfo } from "../services/storage";
 
 export type ToastKind = "info" | "warning" | "error";
@@ -35,11 +37,31 @@ export interface AppState {
    * never shown for a project whose root has been changed since.
    */
   gitObservations: Record<string, ObservedGitState | undefined>;
+  /**
+   * Phase 4b-1: local Claude Code / Codex session discovery. Runtime memory only, exactly like
+   * `gitObservations` above — a Human-triggered snapshot, never persisted, unknown again after a
+   * restart until the Human clicks "Refresh IDE Sessions" again.
+   */
+  ideSessions: IdeSessionsState;
   filter: QueueFilter;
   notices: Notice[];
   toasts: Toast[];
   nextToastId: number;
 }
+
+export type IdeSessionsState =
+  | { status: "notObserved" }
+  | { status: "refreshing" }
+  /**
+   * `fingerprint` is the Project-binding fingerprint (`computeProjectBindingFingerprint`) captured
+   * the instant the scan started — before the async discovery itself ran. A renderer must compare it
+   * against the *current* registry (`isIdeSessionsStale`) before showing `scan`'s contents: if the
+   * registry has since changed, `scan` was computed from Project data that no longer holds, whether
+   * that edit happened before this dispatch fired or while the scan was still in flight
+   * (Independent Review RF-P4B1-01).
+   */
+  | { status: "loaded"; scan: IdeSessionScan; fingerprint: ProjectBindingFingerprint }
+  | { status: "error"; message: string };
 
 export const MAX_TOASTS = 5;
 
@@ -53,6 +75,7 @@ export const initialAppState: AppState = {
   selectedReviewId: null,
   artifacts: {},
   gitObservations: {},
+  ideSessions: { status: "notObserved" },
   filter: { text: "", showClosed: false },
   notices: [],
   toasts: [],
@@ -72,6 +95,9 @@ export type AppAction =
       projectCreatedAt: string;
       observation: import("../domain/git").GitObservation;
     }
+  | { type: "ideSessionsRefreshing" }
+  | { type: "ideSessionsLoaded"; scan: IdeSessionScan; fingerprint: ProjectBindingFingerprint }
+  | { type: "ideSessionsFailed"; message: string }
   | { type: "filterChanged"; filter: Partial<QueueFilter> }
   | { type: "dismissNotice"; id: string }
   | { type: "toast"; kind: ToastKind; message: string }
@@ -146,6 +172,15 @@ export function appReducer(state: AppState, action: AppAction): AppState {
           },
         },
       };
+
+    case "ideSessionsRefreshing":
+      return { ...state, ideSessions: { status: "refreshing" } };
+
+    case "ideSessionsLoaded":
+      return { ...state, ideSessions: { status: "loaded", scan: action.scan, fingerprint: action.fingerprint } };
+
+    case "ideSessionsFailed":
+      return { ...state, ideSessions: { status: "error", message: action.message } };
 
     case "filterChanged":
       return { ...state, filter: { ...state.filter, ...action.filter } };
