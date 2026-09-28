@@ -36,6 +36,7 @@ import { CreateReviewDialog, EditReviewDialog } from "../features/reviews/Review
 import { ReviewQueue } from "../features/reviews/ReviewQueue";
 import { copyText } from "../services/clipboard";
 import { observeSequentially, tauriGitObserver } from "../services/git";
+import { scanIdeSessions } from "../services/ideSessionDiscovery";
 import { tauriLauncher } from "../services/launcher";
 import { describeHealthProblem, isWritable } from "../services/persistence";
 import { ReviewHub } from "../services/reviewHub";
@@ -407,6 +408,21 @@ export default function App() {
   };
 
   /**
+   * Phase 4b-1: Human-triggered, read-only local session discovery. Started only from the "Refresh
+   * IDE Sessions" click below — never on start-up, project/review selection or a timer — and the
+   * result lives only in `state.ideSessions` (runtime memory), never written to disk.
+   */
+  const refreshIdeSessions = async () => {
+    dispatch({ type: "ideSessionsRefreshing" });
+    try {
+      const scan = await scanIdeSessions(state.projects);
+      dispatch({ type: "ideSessionsLoaded", scan });
+    } catch (error) {
+      dispatch({ type: "ideSessionsFailed", message: describeError(t, error) });
+    }
+  };
+
+  /**
    * Turn 2: built once from the Human's narrative, saved for the round, and that same text copied
    * (RF-WF-01). A refusal stays in the dialog; nothing is written until the Human confirms.
    */
@@ -595,6 +611,10 @@ export default function App() {
         onCopyIdeHandoff={() => {
           if (!selectedProject) return notify("warning", t("toast.noProjectForReview"));
           void copyIdeHandoff(selectedProject, selectedSession);
+        }}
+        ideSessions={state.ideSessions}
+        onRefreshIdeSessions={() => {
+          void refreshIdeSessions();
         }}
         priorReviews={priorReviewsFor(loadedSessions, {
           reviewSessionId: selectedSession.reviewSessionId,

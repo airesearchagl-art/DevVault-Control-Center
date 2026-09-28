@@ -11,9 +11,10 @@ action — so a ChatGPT review surface can be closed and any review resumed late
 restarting the app.
 
 > Status: Phase 1 (Review Hub v0.1), Phase 2 (Evidence / Freshness v0.2), the Localization
-> Foundation (v0.2.1) and Phase 3 (Review Workflow v0.3) are merged (PR #4). Phase 4a (IDE Handoff
-> v0.4a) is under development on `feat/ide-handoff-v0.4a`; no pull request has been opened for it
-> yet. Not released; no installer is published.
+> Foundation (v0.2.1), Phase 3 (Review Workflow v0.3) and Phase 4a (IDE Handoff v0.4a) are merged
+> (PR #5). Phase 4b-1 (read-only IDE session discovery) is under development on
+> `feat/session-discovery-v0.4b1`; no pull request has been opened for it yet. Discovery does not
+> resume, launch or control anything. Not released; no installer is published.
 
 ## What it does
 
@@ -75,13 +76,22 @@ restarting the app.
     it is. It stays a derived fact: it never changes the Review State, never starts a round and never
     decides whether evidence is reusable.
   - Every refused workflow control says why, and what to do next, in both languages.
-- **IDE Handoff** (Phase 4a, under development on `feat/ide-handoff-v0.4a`) — **Copy IDE Handoff**
-  computes a deterministic, localized text (project, repository, review type/PR/round/state,
-  expected/reviewed HEAD, the review's own next action, and whether a checkpoint exists) and copies
-  it to the clipboard for you to paste into an already-open Claude Code / Codex / other session.
-  Nothing is persisted or appended to the event log, and the local root, project notes, ChatGPT
-  thread pointer and any response body or verdict note are never included. DVCC does not open,
-  discover, resume or control that session.
+- **IDE Handoff** (Phase 4a, merged) — **Copy IDE Handoff** computes a deterministic, localized text
+  (project, repository, review type/PR/round/state, expected/reviewed HEAD, the review's own next
+  action, and whether a checkpoint exists) and copies it to the clipboard for you to paste into an
+  already-open Claude Code / Codex / other session. Nothing is persisted or appended to the event
+  log, and the local root, project notes, ChatGPT thread pointer and any response body or verdict
+  note are never included. DVCC does not open, discover, resume or control that session.
+- **IDE Sessions** (Phase 4b-1, under development on `feat/session-discovery-v0.4b1`) — Human-triggered,
+  read-only discovery of local Claude Code and Codex sessions, deterministically bound to a
+  registered Project only on exact, provable identity (an exact canonical workspace path, or an
+  exact repository identity resolving to exactly one Project) — never by display name, basename or
+  fuzzy matching. States are `MATCHED` / `NO_MATCH` / `AMBIGUOUS` / `UNAVAILABLE` /
+  `UNSUPPORTED_FORMAT`; an ambiguous session is never claimed to belong to the Project. Results live
+  only in memory and disappear on restart; nothing is written to `projects.json`, `session.json` or
+  `events.jsonl`. No conversation content, prompt, response, title, transcript or provider-owned
+  absolute path is read or shown. DVCC does not launch, resume, discover-and-open, or control any
+  IDE/session process, invoke a provider CLI, or add a shell/terminal capability.
 - **Japanese and English** — the interface is Japanese by default; the language selector in the top
   bar switches to English and back at once, without touching any review, project or Git state. The
   choice is remembered in `settings.json` in the data folder and restored at the next start. Both

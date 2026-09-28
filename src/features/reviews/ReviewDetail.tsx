@@ -28,10 +28,12 @@ import {
 } from "../../i18n";
 import { useT } from "../../i18n/context";
 import type { ReviewArtifacts } from "../../services/persistence";
+import type { IdeSessionsState } from "../../app/appState";
 import { ReviewEvidence } from "./ReviewEvidence";
 import { ReviewFreshness } from "./ReviewFreshness";
 import { ReviewHandoff } from "./ReviewHandoff";
 import { ReviewIdeHandoff } from "./ReviewIdeHandoff";
+import { ReviewIdeSessions } from "./ReviewIdeSessions";
 import { ReviewWorkflow } from "./ReviewWorkflow";
 
 export type DetailDialog =
@@ -68,6 +70,9 @@ interface ReviewDetailProps {
   onCopyFollowup: () => void;
   /** Phase 4a: copies a deterministic IDE Handoff text. Computed and copied only; nothing is persisted. */
   onCopyIdeHandoff: () => void;
+  /** Phase 4b-1: Human-triggered, read-only local session discovery. Runtime-only; see `appState.ts`. */
+  ideSessions: IdeSessionsState;
+  onRefreshIdeSessions: () => void;
   /** Every round that could already have reviewed this head; the current round is excluded. */
   priorReviews: readonly PriorReview[];
   onRecordEvidence: (decisions: RoundEvidenceDecision[]) => void;
@@ -109,6 +114,8 @@ export function ReviewDetail({
   onCopyPrompt,
   onCopyFollowup,
   onCopyIdeHandoff,
+  ideSessions,
+  onRefreshIdeSessions,
   priorReviews,
   onRecordEvidence,
   onSaveNextAction,
@@ -458,6 +465,8 @@ export function ReviewDetail({
       <ReviewHandoff session={session} round={round} />
 
       <ReviewIdeHandoff project={project} busy={busy} onCopy={onCopyIdeHandoff} />
+
+      <ReviewIdeSessions project={project} ideSessions={ideSessions} busy={busy} onRefresh={onRefreshIdeSessions} />
 
       <section className="card">
         <header className="card-header">

@@ -80,6 +80,9 @@ const SHARED_VALUES = new Set([
   "review.riskTier.tier",
   // A format, not a sentence: both halves are already translated.
   "workflow.evidence.item",
+  // Provider product names (Phase 4b-1): not translated in either language.
+  "ideSessions.provider.claudeCode",
+  "ideSessions.provider.codex",
 ]);
 
 describe("locales", () => {

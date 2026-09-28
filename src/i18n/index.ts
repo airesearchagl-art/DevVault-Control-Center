@@ -9,6 +9,7 @@ import type { Freshness } from "../domain/freshness";
 import type { GitStatus } from "../domain/git";
 import type { UnknownCause } from "../domain/freshnessCause";
 import type { HeadBinding, ObservedHeadRelation } from "../domain/headBinding";
+import type { ProviderKind, SessionBindingState, SessionSourceKind } from "../domain/ideSessionDiscovery";
 import type { ResourceState, ReviewState, Verdict } from "../domain/states";
 import { en } from "./en";
 import { ja } from "./ja";
@@ -226,6 +227,24 @@ export function refusalText(t: Translator, refusal: Message): string {
   const reason = translate(t, refusal);
   return next === undefined ? reason : `${reason} ${t(next)}`;
 }
+
+export const IDE_SESSION_PROVIDER_KEYS: Record<ProviderKind, TranslationKey> = {
+  CLAUDE_CODE: "ideSessions.provider.claudeCode",
+  CODEX: "ideSessions.provider.codex",
+};
+
+export const IDE_SESSION_SOURCE_KEYS: Record<SessionSourceKind, TranslationKey> = {
+  LIVE: "ideSessions.source.live",
+  HISTORICAL: "ideSessions.source.historical",
+};
+
+export const IDE_SESSION_BINDING_KEYS: Record<SessionBindingState, TranslationKey> = {
+  MATCHED: "ideSessions.binding.matched",
+  NO_MATCH: "ideSessions.binding.noMatch",
+  AMBIGUOUS: "ideSessions.binding.ambiguous",
+  UNAVAILABLE: "ideSessions.binding.unavailable",
+  UNSUPPORTED_FORMAT: "ideSessions.binding.unsupportedFormat",
+};
 
 export const GIT_STATUS_KEYS: Record<GitStatus, TranslationKey> = {
   OK: "git.status.ok",
