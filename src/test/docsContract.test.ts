@@ -43,12 +43,14 @@ describe("docs/data-contract-v1.md", () => {
 });
 
 describe("README status", () => {
-  it("states what is merged, what is in development, and that nothing is released", () => {
+  it("states what is merged, what is deferred, and that nothing is released", () => {
     const status = readme.slice(readme.indexOf("> Status:"), readme.indexOf("## What it does"));
     expect(status).toMatch(/Phase 1 .*Phase 2 .*Localization[\s\S]*merged/);
-    expect(status).toMatch(/Phase 3[\s\S]*under development/);
-    expect(status).toMatch(/no pull request has been opened/);
-    expect(status).toMatch(/Not released; no installer is published\./);
-    expect(status).not.toMatch(/under review/);
+    expect(status).toMatch(/Phase 4a[\s\S]*merged via[\s>]+PR #5/);
+    expect(status).toMatch(/Phase 4b-1[\s\S]*merged via[\s>]+PR #6/);
+    expect(status).toMatch(/93a703e6a7eba5ec1c66a5eaf43f0c0edbf2f69d/);
+    expect(status).toMatch(/Phase 4b-2[\s\S]*not implemented[\s\S]*deferred/);
+    expect(status).toMatch(/Not[\s>]+released; no installer is published\./);
+    expect(status).not.toMatch(/under development|under review|no pull request has been opened/);
   });
 });

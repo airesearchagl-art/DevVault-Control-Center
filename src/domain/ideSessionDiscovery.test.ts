@@ -3,6 +3,7 @@ import type { Project } from "./project";
 import {
   bindClaudeSessions,
   bindCodexSessions,
+  claudeHistoricalKey,
   computeProjectBindingFingerprint,
   encodeClaudeWorkspacePath,
   isCodexManagedMirrorPath,
@@ -164,6 +165,59 @@ describe("bindClaudeSessions", () => {
     expect(sessions).toHaveLength(1);
     expect(sessions[0].sourceKind).toBe("LIVE");
     expect(sessions[0].binding).toBe("MATCHED");
+  });
+});
+
+describe("Claude historical key case handling (DF-02, LRP-20260929-DVCC-007)", () => {
+  function historicalOnly(encodedDirName: string): ClaudeDiscoveryRaw {
+    return {
+      status: "ok", complete: true,
+      historical: [{ encodedDirName, sessionId: "44444444-4444-4444-4444-444444444444", updatedAtMs: null }],
+      live: [],
+    };
+  }
+
+  it("A: a provider key derived from a lowercase drive letter is a candidate for the uppercase Project root -> AMBIGUOUS", () => {
+    const stock = project({ projectId: "stock", localRoot: "C:\\work\\StockPilot" });
+    const providerKey = encodeClaudeWorkspacePath("c:\\work\\StockPilot");
+    expect(providerKey).not.toBe(encodeClaudeWorkspacePath("C:\\work\\StockPilot")); // really differs only by case
+    const sessions = (bindClaudeSessions(historicalOnly(providerKey), [stock], canon({})) as { sessions: DiscoveredIdeSession[] }).sessions;
+    expect(sessions[0].binding).toBe("AMBIGUOUS");
+    expect(sessions[0].candidateProjectIds).toEqual(["stock"]);
+    expect(sessions[0].matchedProjectId).toBeNull();
+  });
+
+  it("B: path-component casing differences compare equivalently", () => {
+    const stock = project({ projectId: "stock", localRoot: "C:\\Work\\STOCKPILOT" });
+    const providerKey = encodeClaudeWorkspacePath("c:\\work\\StockPilot");
+    const sessions = (bindClaudeSessions(historicalOnly(providerKey), [stock], canon({})) as { sessions: DiscoveredIdeSession[] }).sessions;
+    expect(sessions[0].binding).toBe("AMBIGUOUS");
+    expect(sessions[0].candidateProjectIds).toEqual(["stock"]);
+    expect(claudeHistoricalKey("C--Work-STOCKPILOT")).toBe(claudeHistoricalKey("c--work-stockpilot"));
+  });
+
+  it("C: case normalization that makes two Project roots share a key keeps the session AMBIGUOUS (collision)", () => {
+    const a = project({ projectId: "a", localRoot: "C:\\work\\Alpha" });
+    const b = project({ projectId: "b", localRoot: "c:\\WORK\\alpha" });
+    const sessions = (bindClaudeSessions(historicalOnly("c--work-alpha"), [a, b], canon({})) as { sessions: DiscoveredIdeSession[] }).sessions;
+    expect(sessions[0].binding).toBe("AMBIGUOUS");
+    expect(sessions[0].candidateProjectIds.sort()).toEqual(["a", "b"]);
+  });
+
+  it("D: case-insensitive historical evidence can never become MATCHED", () => {
+    const stock = project({ projectId: "stock", localRoot: "C:\\work\\StockPilot" });
+    for (const key of ["c--work-StockPilot", "C--WORK-STOCKPILOT", "c--work-stockpilot", "C--work-StockPilot"]) {
+      const result = bindClaudeSessions(historicalOnly(key), [stock], canon({ "C:\\work\\StockPilot": "C:\\work\\StockPilot" }));
+      const sessions = (result as { sessions: DiscoveredIdeSession[] }).sessions;
+      expect(sessions[0].binding).toBe("AMBIGUOUS");
+      expect(sessions[0].matchedProjectId).toBeNull();
+    }
+  });
+
+  it("a key that differs by more than case is still NO_MATCH", () => {
+    const stock = project({ projectId: "stock", localRoot: "C:\\work\\StockPilot" });
+    const sessions = (bindClaudeSessions(historicalOnly("c--work-StockPilot-Extra"), [stock], canon({})) as { sessions: DiscoveredIdeSession[] }).sessions;
+    expect(sessions[0].binding).toBe("NO_MATCH");
   });
 });
 

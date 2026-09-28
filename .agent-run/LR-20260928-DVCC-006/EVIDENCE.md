@@ -548,3 +548,23 @@ added — `get_interrupt_handle()` is a pure in-process `rusqlite` mechanism.
 
 **Pending.** Not performed by this run: the implementer of this repair cannot also be its independent
 reviewer (Independence Gate, same pattern as every earlier cycle).
+
+## Post-merge erratum (2026-09-29, recorded by LR-20260929-DVCC-007)
+
+This section is an addendum. The text above is intentionally left as originally written; it is not
+silently rewritten.
+
+- **Incorrect count above.** The "RF-P4B1-02 Final Closure Repair" sections above ("Verification
+  (Task Packet §10)" and "Full verification after this repair") state the TypeScript result as
+  `Test Files 36 passed (36) / Tests 921 passed (921)`. That count was wrong.
+- **Correct fact.** The actual final pre-merge TypeScript verification was **35 test files, 913
+  tests**, all passing (905 before that repair + 8 new tests in `ReviewIdeSessions.test.ts`; the new
+  file brought the file count from 34 to 35). The same run's final report to the Human repeated the
+  wrong figure.
+- **The checks themselves passed.** Only the reported number was wrong; no test failed and no check
+  was skipped. `npm.cmd test` on merged `main` (`93a703e6a7eba5ec1c66a5eaf43f0c0edbf2f69d`) reproduces
+  35 files / 913 tests passing.
+- **How it was established.** The discrepancy was found during the Phase 4b-1 post-merge dogfood
+  (2026-09-29), when the build/check chain run on merged `main` reported 35 / 913. The correction is
+  carried by run LR-20260929-DVCC-007 (finding DF-04).
+- Both prior NOT READY Independent Review results recorded above remain unchanged as history.

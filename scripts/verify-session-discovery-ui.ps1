@@ -87,8 +87,10 @@ $CODEX_PREVIEW_SENTINEL_BULK = "CODEX_BULK_PREVIEW_MUST_NOT_APPEAR"
 # --- synthetic real folders (Claude live cwd + historical candidate must exist to canonicalize) ---
 $projectARoot = Join-Path $projectsRoot "project-a"
 $projectCRoot = Join-Path $projectsRoot "project-c"
+$projectERoot = Join-Path $projectsRoot "Project-E"
 New-Item -ItemType Directory -Path $projectARoot -Force | Out-Null
 New-Item -ItemType Directory -Path $projectCRoot -Force | Out-Null
+New-Item -ItemType Directory -Path $projectERoot -Force | Out-Null
 
 # --- DVCC projects ---------------------------------------------------------------------------------
 $T0 = "2026-09-28T00:00:00.000Z"
@@ -105,7 +107,8 @@ Write-Json (Join-Path $dataDir "projects.json") ([ordered]@{
     (Project "project-a" "Smoke A" $projectARoot "https://github.com/example-org/repo-a"),
     (Project "project-b" "Smoke B" $null "https://github.com/example-org/shared"),
     (Project "project-c" "Smoke C" $projectCRoot $null),
-    (Project "project-d" "Smoke D" $null "https://github.com/example-org/shared")
+    (Project "project-d" "Smoke D" $null "https://github.com/example-org/shared"),
+    (Project "project-e" "Smoke E" $projectERoot $null)
   )
 })
 function Round1([string] $expected) { return [ordered]@{ round = 1; expectedHead = $expected; reviewedHead = $null; requestSavedAt = $null; resultCapturedAt = $null; verdict = $null; verdictConfirmedAt = $null; verdictNote = $null } }
@@ -120,6 +123,7 @@ function Seed-Session([string] $id, [string] $projectId) {
 Seed-Session "rv-20260928-sessa1" "project-a"
 Seed-Session "rv-20260928-sessc1" "project-c"
 Seed-Session "rv-20260928-sessb1" "project-b"
+Seed-Session "rv-20260929-sesse1" "project-e"
 
 # --- Claude Code fixture (never opened by the reader except for names/metadata) --------------------
 function EncodeClaudePath([string] $path) { return ($path -replace "/", "\") -replace "[:\\.]", "-" }
@@ -132,6 +136,13 @@ $historicalSessionId = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 $encodedC = EncodeClaudePath $projectCRoot
 New-Item -ItemType Directory -Path (Join-Path $claudeHome ".claude\projects\$encodedC") -Force | Out-Null
 Write-Text (Join-Path $claudeHome ".claude\projects\$encodedC\$historicalSessionId.jsonl") "$CLAUDE_TRANSCRIPT_SENTINEL`n"
+# DF-02 (LRP-20260929-DVCC-007): Claude recorded this history directory from a lowercase-drive cwd
+# (the real VS Code shape: `c:\...`), so its name differs from Project E's encoded root only by case.
+$historicalSessionIdE = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
+$encodedELower = EncodeClaudePath ($projectERoot.Substring(0, 1).ToLowerInvariant() + $projectERoot.Substring(1))
+if ($encodedELower -ceq (EncodeClaudePath $projectERoot)) { throw "fixture error: the lowercase-drive key must differ by case" }
+New-Item -ItemType Directory -Path (Join-Path $claudeHome ".claude\projects\$encodedELower") -Force | Out-Null
+Write-Text (Join-Path $claudeHome ".claude\projects\$encodedELower\$historicalSessionIdE.jsonl") "$CLAUDE_TRANSCRIPT_SENTINEL`n"
 
 # --- Codex fixture: a real SQLite state file, built by Node (node:sqlite), never by DVCC -----------
 New-Item -ItemType Directory -Path (Join-Path $codexHome ".codex") -Force | Out-Null
@@ -148,6 +159,17 @@ const insert = db.prepare("INSERT INTO threads (id, cwd, created_at, updated_at,
 insert.run("codex-1", "C:\\\\nowhere\\\\unregistered", 1000, 1000, "0.153.4", 0, "https://github.com/example-org/repo-a.git", "$CODEX_PROMPT_SENTINEL_1", "$CODEX_PREVIEW_SENTINEL_1");
 insert.run("codex-2", "C:\\\\nowhere\\\\unregistered2", 2000, 2000, "0.153.4", 0, "https://github.com/example-org/shared.git", "$CODEX_PROMPT_SENTINEL_2", "$CODEX_PREVIEW_SENTINEL_2");
 insert.run("codex-3", "C:\\\\Users\\\\smoketest\\\\.codex\\\\project\\\\Smoke A", 3000, 3000, "0.153.4", 0, null, "$CODEX_PROMPT_SENTINEL_3", "$CODEX_PREVIEW_SENTINEL_3");
+// DF-03 (LRP-20260929-DVCC-007): synthetic UUIDv7-shaped ids for repo-a sharing their first 8 hex
+// characters (two also share their last 8) - the real collision shape, no real id copied.
+for (const id of ["019c1a2b-0001-7aaa-8aaa-000000000001", "019c1a2b-3c4d-7bbb-8bbb-000000000002", "019c1a2b-9f00-7ccc-8ccc-0000cafe0003", "019c1a2b-9f00-7ddd-8ddd-0000cafe0003"]) {
+  insert.run(id, "C:\\\\nowhere\\\\uuid7", 4000, 4000, "0.155.0", 0, "https://github.com/example-org/repo-a.git", "$CODEX_PROMPT_SENTINEL_BULK", "$CODEX_PREVIEW_SENTINEL_BULK");
+}
+// DF-01: pad to the real dogfood volume (379 rows) - above the old cap of 200, below the new 1000.
+db.exec("BEGIN");
+for (let i = 0; i < 372; i++) {
+  insert.run("codex-pad-" + i, "C:\\\\nowhere\\\\bulk", 100 + i, 100 + i, "0.153.4", 0, null, "$CODEX_PROMPT_SENTINEL_BULK", "$CODEX_PREVIEW_SENTINEL_BULK");
+}
+db.exec("COMMIT");
 db.close();
 "@
 $buildDbFile = Join-Path $root "build-codex-db.cjs"
@@ -179,7 +201,7 @@ Write-Text $buildBrokenDbFile $buildBrokenDbScript
 if ($LASTEXITCODE -ne 0) { throw "failed to build the synthetic broken-schema Codex state DB" }
 
 # --- Codex fixture (RF-P4B1-02 final closure, §7/§8/§10): a well-formed schema with more rows than
-# the reader's session cap (`MAX_SESSIONS` = 200 in src-tauri/src/codex_reader.rs), none of which are
+# the reader's session cap (`MAX_SESSIONS` = 1000 since DF-01, src-tauri/src/codex_reader.rs), none of which are
 # relevant to any registered Project. This scan must come back marked `complete: false` (the `LIMIT
 # MAX+1` pattern proves more rows exist), and — since no relevant session was found either — the UI
 # must show "discovery was incomplete", never a normal "No match" (a scan that never finished cannot
@@ -196,9 +218,11 @@ db.exec(``CREATE TABLE threads (
   first_user_message TEXT NOT NULL DEFAULT '', preview TEXT NOT NULL DEFAULT ''
 )``);
 const insert = db.prepare("INSERT INTO threads (id, cwd, created_at, updated_at, cli_version, archived, git_origin_url, first_user_message, preview) VALUES (?,?,?,?,?,?,?,?,?)");
-for (let i = 0; i < 201; i++) {
-  insert.run("codex-bulk-" + i, "C:\\\\nowhere\\\\bulk-" + i, 1000 + i, 1000 + i, "0.153.4", 0, null, "$CODEX_PROMPT_SENTINEL_BULK", "$CODEX_PREVIEW_SENTINEL_BULK");
+db.exec("BEGIN");
+for (let i = 0; i < 1001; i++) {
+  insert.run("codex-bulk-" + i, "C:\\\\nowhere\\\\bulk", 1000 + i, 1000 + i, "0.153.4", 0, null, "$CODEX_PROMPT_SENTINEL_BULK", "$CODEX_PREVIEW_SENTINEL_BULK");
 }
+db.exec("COMMIT");
 db.close();
 "@
 $buildIncompleteDbFile = Join-Path $root "build-codex-db-incomplete.cjs"
@@ -220,6 +244,17 @@ function Assert-NoForbiddenContent([string] $label) {
 function Get-BindingStates([string] $provider) {
   $json = Invoke-Cdp ("JSON.stringify(Array.from(document.querySelectorAll('[data-testid=ide-sessions-provider-" + $provider + "] [data-testid=ide-session-row]')).map((el) => el.dataset.binding))")
   return ($json | ConvertFrom-Json)
+}
+
+function Get-CodexIdLabels {
+  $json = Invoke-Cdp "JSON.stringify(Array.from(document.querySelectorAll('[data-testid=ide-sessions-provider-CODEX] [data-testid=ide-session-id]')).map((el) => el.textContent))"
+  return @($json | ConvertFrom-Json)
+}
+
+# The IDE Sessions card's only control is Refresh: no Resume (or any other) action exists on it.
+function Assert-NoResumeControl([string] $label) {
+  $controls = Invoke-Cdp "document.querySelectorAll('[data-testid=detail-ide-sessions] button, [data-testid=detail-ide-sessions] a, [data-testid=detail-ide-sessions] [role=button]').length"
+  Check "$label : the IDE Sessions card has no control other than Refresh (no Resume)" ($controls -eq 1) "controls=$controls"
 }
 
 function Refresh-AndWait {
@@ -254,6 +289,13 @@ try {
   Check "JA/project-a : Claude live session is MATCHED" (@($claudeStatesA) -contains "MATCHED") ("states=" + ($claudeStatesA -join ","))
   $codexStatesA = Get-BindingStates "CODEX"
   Check "JA/project-a : Codex repository-identity session is MATCHED" (@($codexStatesA) -contains "MATCHED") ("states=" + ($codexStatesA -join ","))
+  # DF-01: 379 Codex rows (> old cap 200, < new cap 1000) is now a COMPLETE scan.
+  $codexStatusA = Invoke-Cdp "document.querySelector('[data-testid=ide-sessions-provider-CODEX]')?.dataset.providerStatus"
+  Check "JA/project-a : a 379-row Codex dataset is a complete scan (DF-01)" ($codexStatusA -eq "ok") "status=$codexStatusA"
+  # DF-03: UUIDv7-like ids sharing their first 8 characters render as distinct labels.
+  $labelsJa = Get-CodexIdLabels
+  Check "JA/project-a : duplicate-prefix Codex ids render distinct labels (DF-03)" (($labelsJa.Count -ge 5) -and (@($labelsJa | Sort-Object -Unique).Count -eq $labelsJa.Count)) ("labels=" + ($labelsJa -join " | "))
+  Assert-NoResumeControl "JA/project-a"
 
   # --- project-c: Claude historical AMBIGUOUS, never MATCHED --------------------------------------
   Select-Review "rv-20260928-sessc1"
@@ -271,9 +313,19 @@ try {
   $codexStatesB = Get-BindingStates "CODEX"
   Check "JA/project-b : tied repository identity is AMBIGUOUS" ((@($codexStatesB) -contains "AMBIGUOUS") -and (@($codexStatesB) -notcontains "MATCHED")) ("states=" + ($codexStatesB -join ","))
 
+  # --- project-e (DF-02): a lowercase-drive Claude history key is an AMBIGUOUS candidate -----------
+  Select-Review "rv-20260929-sesse1"
+  if (-not (Wait-For "document.querySelector('[data-testid=detail-ide-sessions]') !== null" 15)) { throw "the IDE Sessions card never appeared" }
+  Refresh-AndWait
+  Assert-NoForbiddenContent "JA/project-e"
+  $claudeStatesE = Get-BindingStates "CLAUDE_CODE"
+  Check "JA/project-e : case-varied Claude history candidate is AMBIGUOUS, not NO_MATCH/MATCHED (DF-02)" ((@($claudeStatesE) -contains "AMBIGUOUS") -and (@($claudeStatesE) -notcontains "MATCHED")) ("states=" + ($claudeStatesE -join ","))
+  Assert-NoResumeControl "JA/project-e"
+
   # --- English: the same facts, translated -----------------------------------------------------
   Invoke-Cdp ($switchScript -replace "__LOCALE__", "en") | Out-Null
   if (-not (Wait-For "document.documentElement.lang === 'en'" 15)) { throw "the interface never switched to English" }
+  Select-Review "rv-20260928-sessb1"
   Refresh-AndWait
   Assert-NoForbiddenContent "EN/project-b"
   $codexStatesBEn = Get-BindingStates "CODEX"
@@ -284,6 +336,18 @@ try {
   Assert-NoForbiddenContent "EN/project-a"
   $claudeStatesAEn = Get-BindingStates "CLAUDE_CODE"
   Check "EN/project-a : Claude live session is Matched" ((@($claudeStatesAEn) -contains "MATCHED") -and (@($claudeStatesAEn) -notcontains "AMBIGUOUS")) ("states=" + ($claudeStatesAEn -join ","))
+  $codexStatusAEn = Invoke-Cdp "document.querySelector('[data-testid=ide-sessions-provider-CODEX]')?.dataset.providerStatus"
+  Check "EN/project-a : a 379-row Codex dataset is a complete scan (DF-01)" ($codexStatusAEn -eq "ok") "status=$codexStatusAEn"
+  $labelsEn = Get-CodexIdLabels
+  Check "EN/project-a : duplicate-prefix Codex ids render distinct labels (DF-03)" (($labelsEn.Count -ge 5) -and (@($labelsEn | Sort-Object -Unique).Count -eq $labelsEn.Count)) ("labels=" + ($labelsEn -join " | "))
+  Check "JA/EN : the language switch does not alter any session id label (DF-03)" (($labelsJa -join "|") -eq ($labelsEn -join "|")) "same=$(($labelsJa -join '|') -eq ($labelsEn -join '|'))"
+  Assert-NoResumeControl "EN/project-a"
+
+  Select-Review "rv-20260929-sesse1"
+  Refresh-AndWait
+  Assert-NoForbiddenContent "EN/project-e"
+  $claudeStatesEEn = Get-BindingStates "CLAUDE_CODE"
+  Check "EN/project-e : case-varied Claude history candidate is Ambiguous, not No match/Matched (DF-02)" ((@($claudeStatesEEn) -contains "AMBIGUOUS") -and (@($claudeStatesEEn) -notcontains "MATCHED")) ("states=" + ($claudeStatesEEn -join ","))
 
   Stop-App $appPid
   Test-Clean "no spawned process is left running"

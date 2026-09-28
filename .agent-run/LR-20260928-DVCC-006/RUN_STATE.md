@@ -141,3 +141,13 @@ Focused Independent Delta Re-review of this repair, then — only if it returns 
 Required Fix — a Draft PR against `main`. Commit and push for this repair have already happened
 (they precede, not follow, the re-review). Ready, merge, release and Production remain prohibited
 until a later, separate Human Gate.
+
+## Post-merge erratum (2026-09-29, recorded by LR-20260929-DVCC-007)
+
+Addendum; the text above is left as originally written. "Current summary" above states "TS 921/921".
+That count was wrong: the actual final pre-merge TypeScript verification was **35 test files / 913
+tests**, all passing. The checks themselves passed; only the reported count was incorrect. The
+correction was established during the Phase 4b-1 post-merge dogfood (finding DF-04) and is detailed
+in this run's EVIDENCE.md "Post-merge erratum". PR #6 has since merged (`main` @
+`93a703e6a7eba5ec1c66a5eaf43f0c0edbf2f69d`) after a READY CANDIDATE Independent Review; both prior
+NOT READY reviews recorded above remain unchanged as history.

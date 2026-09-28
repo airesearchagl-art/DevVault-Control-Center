@@ -3,6 +3,7 @@ import { Row } from "../../components/DetailRow";
 import type { IdeSessionsState } from "../../app/appState";
 import type { DiscoveredIdeSession, ProviderKind, ProviderScanResult } from "../../domain/ideSessionDiscovery";
 import type { Project } from "../../domain/project";
+import { sessionIdLabels } from "../../domain/sessionIdLabels";
 import {
   formatTimestamp,
   IDE_SESSION_BINDING_KEYS,
@@ -30,9 +31,6 @@ function relevantSessions(result: ProviderScanResult, projectId: string): Discov
   );
 }
 
-function abbreviate(sessionId: string): string {
-  return sessionId.length <= 12 ? sessionId : `${sessionId.slice(0, 8)}…`;
-}
 
 function ProviderSection({ provider, result, project, t }: { provider: ProviderKind; result: ProviderScanResult; project: Project; t: Translator }) {
   const label = t(IDE_SESSION_PROVIDER_KEYS[provider]);
@@ -68,6 +66,7 @@ function ProviderSection({ provider, result, project, t }: { provider: ProviderK
       </p>
     );
   }
+  const labels = sessionIdLabels(sessions.map((session) => session.sessionId));
   return (
     <div data-testid={`ide-sessions-provider-${provider}`} data-provider-status={result.complete ? "ok" : "incompleteWithResults"}>
       <h4 className="subhead">{label}</h4>
@@ -79,8 +78,8 @@ function ProviderSection({ provider, result, project, t }: { provider: ProviderK
       {sessions.map((session) => (
         <div key={session.sessionId} className="ide-session-row" data-testid="ide-session-row" data-binding={session.binding}>
           <dl>
-            <Row label={t("ideSessions.field.sessionId")} mono>
-              {abbreviate(session.sessionId)}
+            <Row label={t("ideSessions.field.sessionId")} mono testId="ide-session-id">
+              {labels.get(session.sessionId)}
             </Row>
             <Row label={t("ideSessions.field.sourceKind")}>{t(IDE_SESSION_SOURCE_KEYS[session.sourceKind])}</Row>
             <Row label={t("detail.field.updated")}>{formatTimestamp(t, session.updatedAt)}</Row>
