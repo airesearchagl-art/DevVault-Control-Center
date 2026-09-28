@@ -101,3 +101,63 @@ describe("ReviewIdeSessions — incomplete-scan semantics (RF-P4B1-02 final clos
     });
   }
 });
+
+describe("ReviewIdeSessions — session ID labels (DF-03, LRP-20260929-DVCC-007)", () => {
+  // Synthetic UUIDv7-shaped IDs (timestamp first): all share their first 8 hex characters, and two
+  // also share their last 8 — the collision shape seen in the post-merge dogfood. No real ID is used.
+  const IDS = [
+    "019c1a2b-0001-7aaa-8aaa-000000000001",
+    "019c1a2b-3c4d-7bbb-8bbb-000000000002",
+    "019c1a2b-9f00-7ccc-8ccc-0000cafe0003",
+    "019c1a2b-9f00-7ddd-8ddd-0000cafe0003",
+  ];
+
+  function codexMatched(sessionId: string): DiscoveredIdeSession {
+    return {
+      provider: "CODEX",
+      sessionId,
+      sourceKind: "HISTORICAL",
+      binding: "MATCHED",
+      matchedProjectId: "project-alpha",
+      candidateProjectIds: [],
+      createdAt: null,
+      updatedAt: null,
+      providerVersion: null,
+      archived: false,
+      reason: { key: "ideSessions.reason.matchedRepositoryIdentity" },
+    };
+  }
+
+  function renderedIds(markup: string): string[] {
+    return [...markup.matchAll(/data-testid="ide-session-id">([^<]*)</g)].map((m) => m[1]);
+  }
+
+  it("IDs sharing their first 8 characters render as distinct labels", () => {
+    const labels = renderedIds(card("en", ok([], true), ok(IDS.map(codexMatched), true)));
+    expect(labels).toHaveLength(IDS.length);
+    expect(new Set(labels).size).toBe(IDS.length);
+    for (const label of labels) expect(label).not.toMatch(/^019c1a2b…$/);
+  });
+
+  it("labels are deterministic across renders and identical in JA and EN", () => {
+    const codex = ok(IDS.map(codexMatched), true);
+    const en1 = renderedIds(card("en", ok([], true), codex));
+    const en2 = renderedIds(card("en", ok([], true), codex));
+    const ja = renderedIds(card("ja", ok([], true), codex));
+    expect(en2).toEqual(en1);
+    expect(ja).toEqual(en1);
+  });
+
+  it("a single short ID remains readable as-is", () => {
+    expect(renderedIds(card("en", ok([], true), ok([codexMatched("t-1")], true)))).toEqual(["t-1"]);
+  });
+
+  it("the underlying session ID is unchanged by labelling (full ID never altered, label derived from it)", () => {
+    const labels = renderedIds(card("en", ok([], true), ok(IDS.map(codexMatched), true)));
+    IDS.forEach((id, i) => {
+      const [head, tail] = labels[i].split("…");
+      expect(id.startsWith(head)).toBe(true);
+      expect(id.endsWith(tail)).toBe(true);
+    });
+  });
+});

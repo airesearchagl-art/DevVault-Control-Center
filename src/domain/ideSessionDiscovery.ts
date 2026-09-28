@@ -148,6 +148,17 @@ export function encodeClaudeWorkspacePath(localRoot: string): string {
   return localRoot.replace(/\//g, "\\").replace(/[:\\.]/g, "-");
 }
 
+/**
+ * The comparison key for a Claude historical directory name: the forward-encoded form, lowercased.
+ * Windows paths are case-insensitive, and Claude keeps whatever casing the session's cwd had (a
+ * VS Code launch can record `c:\…`), so a case-sensitive comparison would drop a real candidate to
+ * NO_MATCH (DF-02). Comparison only — the key is still a lossy candidate signal, never decoded, and
+ * a match on it can only ever yield AMBIGUOUS.
+ */
+export function claudeHistoricalKey(encoded: string): string {
+  return encoded.toLowerCase();
+}
+
 // --- Codex: repository-identity normalization ---------------------------------------------------
 
 const GITHUB_HTTPS = /^https:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i;
@@ -187,10 +198,10 @@ export function bindClaudeSessions(raw: ClaudeDiscoveryRaw, projects: readonly P
   const encodedToProjectIds = new Map<string, string[]>();
   for (const project of projects) {
     if (project.localRoot === null) continue;
-    const encoded = encodeClaudeWorkspacePath(project.localRoot);
-    const list = encodedToProjectIds.get(encoded) ?? [];
+    const key = claudeHistoricalKey(encodeClaudeWorkspacePath(project.localRoot));
+    const list = encodedToProjectIds.get(key) ?? [];
     list.push(project.projectId);
-    encodedToProjectIds.set(encoded, list);
+    encodedToProjectIds.set(key, list);
   }
 
   const liveSessionIds = new Set(raw.live.map((session) => session.sessionId));
@@ -237,7 +248,7 @@ export function bindClaudeSessions(raw: ClaudeDiscoveryRaw, projects: readonly P
 
   for (const historical of raw.historical) {
     if (liveSessionIds.has(historical.sessionId)) continue; // the live entry above is authoritative
-    const candidates = encodedToProjectIds.get(historical.encodedDirName) ?? [];
+    const candidates = encodedToProjectIds.get(claudeHistoricalKey(historical.encodedDirName)) ?? [];
     let binding: SessionBindingState;
     let reason: Message;
     if (candidates.length === 0) {

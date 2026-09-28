@@ -23,8 +23,10 @@ const STATE_DB_FILE: &str = "state_5.sqlite";
 const BUSY_TIMEOUT: Duration = Duration::from_millis(2000);
 
 /// Bounds untrusted provider input (Task Packet §18): a pathological state file cannot make
-/// discovery return an unbounded amount of data.
-const MAX_SESSIONS: usize = 200;
+/// discovery return an unbounded amount of data. Raised from 200 by Human Decision (DF-01,
+/// LRP-20260929-DVCC-007): a real installation already held 379 threads, so 200 made every normal
+/// scan incomplete. It remains a hard bound, still detected via `LIMIT MAX_SESSIONS + 1`.
+const MAX_SESSIONS: usize = 1000;
 
 /// A row whose `id`, `cwd`, `cli_version` or `git_origin_url` exceeds this length is not a
 /// plausible metadata value — session ids, paths and version strings are always far shorter — and
@@ -439,22 +441,76 @@ mod tests {
         assert!(!serialized.contains("PRIVATE_PREVIEW"));
     }
 
+    /// Inserts `count` ordinary rows in one transaction (fast enough for cap-sized fixtures).
+    fn insert_ordinary_rows(path: &std::path::Path, count: usize) {
+        let mut conn = Connection::open(path).unwrap();
+        let tx = conn.transaction().unwrap();
+        {
+            let mut insert = tx
+                .prepare(
+                    "INSERT INTO threads (id, cwd, created_at, updated_at, cli_version, archived, git_origin_url)
+                     VALUES (?1, 'C:\\work', ?2, ?2, '0.1.0', 0, NULL)",
+                )
+                .unwrap();
+            for i in 0..count {
+                insert.execute(rusqlite::params![format!("t-{i}"), i as i64]).unwrap();
+            }
+        }
+        tx.commit().unwrap();
+    }
+
+    fn scan_ok(path: &std::path::Path) -> (Vec<CodexThreadRow>, bool) {
+        match scan(path, QUERY_TIMEOUT) {
+            CodexDiscovery::Ok { threads, complete } => (threads, complete),
+            other => panic!("expected Ok, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_cap_is_the_human_decided_1000() {
+        assert_eq!(MAX_SESSIONS, 1000, "DF-01 Human Decision: MAX_SESSIONS 200 -> 1000");
+    }
+
+    /// DF-01 A: the real dogfood volume (379 threads) is now a complete scan.
+    #[test]
+    fn a_real_sized_379_row_dataset_is_complete() {
+        let db = TempDb::new();
+        create_valid_schema(&db.0);
+        insert_ordinary_rows(&db.0, 379);
+        let (threads, complete) = scan_ok(&db.0);
+        assert_eq!(threads.len(), 379);
+        assert!(complete, "379 rows is below the cap: the scan must be complete");
+    }
+
+    /// DF-01 B: exactly MAX_SESSIONS rows with nothing beyond them is complete (`LIMIT MAX+1`
+    /// returns MAX rows, never the (MAX+1)th, so nothing proves more exist).
+    #[test]
+    fn exactly_the_cap_is_complete_when_no_more_rows_exist() {
+        let db = TempDb::new();
+        create_valid_schema(&db.0);
+        insert_ordinary_rows(&db.0, MAX_SESSIONS);
+        let (threads, complete) = scan_ok(&db.0);
+        assert_eq!(threads.len(), MAX_SESSIONS);
+        assert!(complete, "exactly the cap, with no (MAX+1)th row, must be complete");
+    }
+
+    /// DF-01 C: MAX_SESSIONS + 1 rows returns at most MAX_SESSIONS and is incomplete.
+    #[test]
+    fn one_row_over_the_cap_is_truncated_and_incomplete() {
+        let db = TempDb::new();
+        create_valid_schema(&db.0);
+        insert_ordinary_rows(&db.0, MAX_SESSIONS + 1);
+        let (threads, complete) = scan_ok(&db.0);
+        assert_eq!(threads.len(), MAX_SESSIONS);
+        assert!(!complete, "a (MAX+1)th row proves more exist: this must be incomplete");
+    }
+
     #[test]
     fn row_count_is_bounded() {
         let db = TempDb::new();
         create_valid_schema(&db.0);
-        let conn = Connection::open(&db.0).unwrap();
-        for i in 0..(MAX_SESSIONS + 10) {
-            conn.execute(
-                "INSERT INTO threads (id, cwd, created_at, updated_at, cli_version, archived, git_origin_url)
-                 VALUES (?1, 'C:\\work', ?2, ?2, '0.1.0', 0, NULL)",
-                rusqlite::params![format!("t-{i}"), i as i64],
-            )
-            .unwrap();
-        }
-        drop(conn);
-        let result = scan(&db.0, QUERY_TIMEOUT);
-        let CodexDiscovery::Ok { threads, complete } = result else { panic!("expected Ok, got {result:?}") };
+        insert_ordinary_rows(&db.0, MAX_SESSIONS + 10);
+        let (threads, complete) = scan_ok(&db.0);
         assert_eq!(threads.len(), MAX_SESSIONS);
         assert!(!complete, "more rows exist than the cap: this must be marked incomplete (RF-P4B1-02 §5)");
     }

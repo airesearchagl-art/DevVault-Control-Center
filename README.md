@@ -11,10 +11,11 @@ action — so a ChatGPT review surface can be closed and any review resumed late
 restarting the app.
 
 > Status: Phase 1 (Review Hub v0.1), Phase 2 (Evidence / Freshness v0.2), the Localization
-> Foundation (v0.2.1), Phase 3 (Review Workflow v0.3) and Phase 4a (IDE Handoff v0.4a) are merged
-> (PR #5). Phase 4b-1 (read-only IDE session discovery) is under development on
-> `feat/session-discovery-v0.4b1`; no pull request has been opened for it yet. Discovery does not
-> resume, launch or control anything. Not released; no installer is published.
+> Foundation (v0.2.1), Phase 3 (Review Workflow v0.3), Phase 4a (IDE Handoff v0.4a, merged via
+> PR #5) and Phase 4b-1 (read-only IDE session discovery v0.4b1, merged via PR #6; `main` after
+> PR #6: `93a703e6a7eba5ec1c66a5eaf43f0c0edbf2f69d`) are merged. Phase 4b-2 (Human-selected resume)
+> is not implemented and is deferred. Discovery does not resume, launch or control anything. Not
+> released; no installer is published.
 
 ## What it does
 
@@ -82,16 +83,18 @@ restarting the app.
   already-open Claude Code / Codex / other session. Nothing is persisted or appended to the event
   log, and the local root, project notes, ChatGPT thread pointer and any response body or verdict
   note are never included. DVCC does not open, discover, resume or control that session.
-- **IDE Sessions** (Phase 4b-1, under development on `feat/session-discovery-v0.4b1`) — Human-triggered,
+- **IDE Sessions** (Phase 4b-1, merged via PR #6) — Human-triggered,
   read-only discovery of local Claude Code and Codex sessions, deterministically bound to a
   registered Project only on exact, provable identity (an exact canonical workspace path, or an
   exact repository identity resolving to exactly one Project) — never by display name, basename or
   fuzzy matching. States are `MATCHED` / `NO_MATCH` / `AMBIGUOUS` / `UNAVAILABLE` /
   `UNSUPPORTED_FORMAT`; an ambiguous session is never claimed to belong to the Project. Results live
   only in memory and disappear on restart; nothing is written to `projects.json`, `session.json` or
-  `events.jsonl`. No conversation content, prompt, response, title, transcript or provider-owned
-  absolute path is read or shown. DVCC does not launch, resume, discover-and-open, or control any
-  IDE/session process, invoke a provider CLI, or add a shell/terminal capability.
+  `events.jsonl`. No conversation content, prompt, response, title or transcript is read or shown.
+  A session's workspace path is read internally, only to decide the binding; it is never displayed or
+  persisted, and neither is any provider storage path. DVCC does not launch, resume,
+  discover-and-open, or control any IDE/session process, invoke a provider CLI, or add a
+  shell/terminal capability.
 - **Japanese and English** — the interface is Japanese by default; the language selector in the top
   bar switches to English and back at once, without touching any review, project or Git state. The
   choice is remembered in `settings.json` in the data folder and restored at the next start. Both
