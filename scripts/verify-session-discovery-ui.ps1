@@ -251,10 +251,12 @@ function Get-CodexIdLabels {
   return @($json | ConvertFrom-Json)
 }
 
-# The IDE Sessions card's only control is Refresh: no Resume (or any other) action exists on it.
+# The IDE Sessions card's only controls are Refresh and, since Phase 4b-2a, the per-row copy-only
+# "Copy Resume Command" (which copies text and never runs anything): no launch, attach, fork or other
+# action exists on it.
 function Assert-NoResumeControl([string] $label) {
-  $controls = Invoke-Cdp "document.querySelectorAll('[data-testid=detail-ide-sessions] button, [data-testid=detail-ide-sessions] a, [data-testid=detail-ide-sessions] [role=button]').length"
-  Check "$label : the IDE Sessions card has no control other than Refresh (no Resume)" ($controls -eq 1) "controls=$controls"
+  $other = Invoke-Cdp "Array.from(document.querySelectorAll('[data-testid=detail-ide-sessions] button, [data-testid=detail-ide-sessions] a, [data-testid=detail-ide-sessions] [role=button]')).filter((el) => el.dataset.testid !== 'action-refresh-ide-sessions' && el.dataset.testid !== 'action-copy-resume').length"
+  Check "$label : the IDE Sessions card has no control other than Refresh and Copy Resume Command (nothing that runs a session)" ($other -eq 0) "other controls=$other"
 }
 
 function Refresh-AndWait {

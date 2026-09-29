@@ -65,6 +65,7 @@ import { I18nContext, type I18n } from "../i18n/context";
 import { appReducer, initialAppState, type ToastKind } from "./appState";
 import { describeError } from "./format";
 import { copyIdeHandoffAction } from "./ideHandoffAction";
+import { copyResumeCommandAction } from "./copyResumeCommandAction";
 import "./App.css";
 
 const launcher = tauriLauncher;
@@ -623,6 +624,11 @@ export default function App() {
         ideSessionsStale={state.ideSessions.status === "loaded" && isIdeSessionsStale(state.ideSessions.fingerprint, state.projects)}
         onRefreshIdeSessions={() => {
           void refreshIdeSessions();
+        }}
+        onCopyResume={(session) => {
+          // Re-evaluated at click time from the current state: never trust the button alone.
+          const stale = state.ideSessions.status !== "loaded" || isIdeSessionsStale(state.ideSessions.fingerprint, state.projects);
+          void copyResumeCommandAction(session, selectedProject?.projectId ?? null, stale, t, copyText, notify);
         }}
         priorReviews={priorReviewsFor(loadedSessions, {
           reviewSessionId: selectedSession.reviewSessionId,

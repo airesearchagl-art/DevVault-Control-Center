@@ -29,6 +29,7 @@ import {
 import { useT } from "../../i18n/context";
 import type { ReviewArtifacts } from "../../services/persistence";
 import type { IdeSessionsState } from "../../app/appState";
+import type { DiscoveredIdeSession } from "../../domain/ideSessionDiscovery";
 import { ReviewEvidence } from "./ReviewEvidence";
 import { ReviewFreshness } from "./ReviewFreshness";
 import { ReviewHandoff } from "./ReviewHandoff";
@@ -75,6 +76,8 @@ interface ReviewDetailProps {
   /** True once the Project registry has changed since `ideSessions` was computed (RF-P4B1-01). */
   ideSessionsStale: boolean;
   onRefreshIdeSessions: () => void;
+  /** Phase 4b-2a: copy-only Resume Handoff for one full discovered session (never its display label). */
+  onCopyResume: (session: DiscoveredIdeSession) => void;
   /** Every round that could already have reviewed this head; the current round is excluded. */
   priorReviews: readonly PriorReview[];
   onRecordEvidence: (decisions: RoundEvidenceDecision[]) => void;
@@ -119,6 +122,7 @@ export function ReviewDetail({
   ideSessions,
   ideSessionsStale,
   onRefreshIdeSessions,
+  onCopyResume,
   priorReviews,
   onRecordEvidence,
   onSaveNextAction,
@@ -475,6 +479,7 @@ export function ReviewDetail({
         stale={ideSessionsStale}
         busy={busy}
         onRefresh={onRefreshIdeSessions}
+        onCopyResume={onCopyResume}
       />
 
       <section className="card">

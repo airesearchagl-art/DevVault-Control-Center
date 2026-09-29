@@ -49,8 +49,11 @@ describe("README status", () => {
     expect(status).toMatch(/Phase 4a[\s\S]*merged via[\s>]+PR #5/);
     expect(status).toMatch(/Phase 4b-1[\s\S]*merged via[\s>]+PR #6/);
     expect(status).toMatch(/93a703e6a7eba5ec1c66a5eaf43f0c0edbf2f69d/);
-    expect(status).toMatch(/Phase 4b-2[\s\S]*not implemented[\s\S]*deferred/);
+    expect(status).toMatch(/Phase 4b-1\.1[\s\S]*merged via[\s>]+PR #7/);
+    expect(status).toMatch(/Phase 4b-2a[\s\S]*under development/);
+    expect(status).toMatch(/Phase 4b-2b[\s\S]*deferred[\s>]+and[\s>]+not[\s>]+implemented/);
+    expect(status).toMatch(/does not run, resume, launch or control any session/);
     expect(status).toMatch(/Not[\s>]+released; no installer is published\./);
-    expect(status).not.toMatch(/under development|under review|no pull request has been opened/);
+    expect(status).not.toMatch(/under review|no pull request has been opened/);
   });
 });

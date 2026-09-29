@@ -12,9 +12,11 @@ restarting the app.
 
 > Status: Phase 1 (Review Hub v0.1), Phase 2 (Evidence / Freshness v0.2), the Localization
 > Foundation (v0.2.1), Phase 3 (Review Workflow v0.3), Phase 4a (IDE Handoff v0.4a, merged via
-> PR #5) and Phase 4b-1 (read-only IDE session discovery v0.4b1, merged via PR #6; `main` after
-> PR #6: `93a703e6a7eba5ec1c66a5eaf43f0c0edbf2f69d`) are merged. Phase 4b-2 (Human-selected resume)
-> is not implemented and is deferred. Discovery does not resume, launch or control anything. Not
+> PR #5), Phase 4b-1 (read-only IDE session discovery v0.4b1, merged via PR #6; `main` after
+> PR #6: `93a703e6a7eba5ec1c66a5eaf43f0c0edbf2f69d`) and Phase 4b-1.1 (dogfood findings repair,
+> merged via PR #7) are merged. Phase 4b-2a (copy-only Resume Handoff) is under development on
+> `feat/session-resume-handoff-v0.4b2a`; Phase 4b-2b (actually launching or resuming a session) is
+> deferred and not implemented. DVCC does not run, resume, launch or control any session. Not
 > released; no installer is published.
 
 ## What it does
@@ -95,6 +97,14 @@ restarting the app.
   persisted, and neither is any provider storage path. DVCC does not launch, resume,
   discover-and-open, or control any IDE/session process, invoke a provider CLI, or add a
   shell/terminal capability.
+- **Resume Handoff** (Phase 4b-2a, under development) — for a Codex session that is `MATCHED` to the
+  selected Project and not archived, **Copy Resume Command** copies exactly one line,
+  `codex resume <session-id>`, built from the full, strictly validated session ID. **DVCC copies the
+  command; it does not run it** — you paste and run it yourself, in a terminal opened at the
+  Project's workspace (no path, `cd` or `-C` is ever included). Every other row shows why it has no
+  command: not an exact match, stale discovery, archived, an unverifiable ID, or a Claude Code session
+  that appears to be active (no Claude Code command is offered in this phase). Nothing is persisted,
+  no event is written, and there is no launcher, attach, fork or unarchive action.
 - **Japanese and English** — the interface is Japanese by default; the language selector in the top
   bar switches to English and back at once, without touching any review, project or Git state. The
   choice is remembered in `settings.json` in the data folder and restored at the next start. Both

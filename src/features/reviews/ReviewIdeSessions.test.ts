@@ -41,15 +41,16 @@ function ok(sessions: DiscoveredIdeSession[], complete: boolean): ProviderScanRe
   return { status: "ok", sessions, complete };
 }
 
-function card(locale: Locale, claude: ProviderScanResult, codex: ProviderScanResult): string {
+function card(locale: Locale, claude: ProviderScanResult, codex: ProviderScanResult, stale = false): string {
   return render(
     locale,
     createElement(ReviewIdeSessions, {
       project,
       ideSessions: { status: "loaded", scan: { claude, codex }, fingerprint: [] as unknown as never },
-      stale: false,
+      stale,
       busy: false,
       onRefresh: () => undefined,
+      onCopyResume: () => undefined,
     }),
   );
 }
@@ -95,9 +96,10 @@ describe("ReviewIdeSessions — incomplete-scan semantics (RF-P4B1-02 final clos
       expect(markup).toContain('data-testid="ide-session-row"');
     });
 
-    it(`(${locale}): no Resume action is ever rendered on the IDE Sessions card`, () => {
+    it(`(${locale}): with no session row, no resume control is rendered at all`, () => {
       const markup = card(locale, ok([], false), ok([], false));
-      expect(markup.toLowerCase()).not.toContain("resume");
+      expect(markup).not.toContain('data-testid="action-copy-resume"');
+      expect(markup).not.toContain('data-testid="resume-notes"');
     });
   }
 });
@@ -160,4 +162,97 @@ describe("ReviewIdeSessions — session ID labels (DF-03, LRP-20260929-DVCC-007)
       expect(id.endsWith(tail)).toBe(true);
     });
   });
+});
+
+describe("ReviewIdeSessions — copy-only Resume Handoff (Phase 4b-2a, LRP-20260929-DVCC-008)", () => {
+  const CODEX_ID = "019c1a2b-3c4d-7e5f-8a9b-0c1d2e3f4a5b";
+  const CLAUDE_ID = "3f2a9c1e-7b4d-4e8a-9c2f-1a2b3c4d5e6f";
+
+  function row(overrides: Partial<DiscoveredIdeSession>): DiscoveredIdeSession {
+    return {
+      provider: "CODEX",
+      sessionId: CODEX_ID,
+      sourceKind: "HISTORICAL",
+      binding: "MATCHED",
+      matchedProjectId: "project-alpha",
+      candidateProjectIds: [],
+      createdAt: null,
+      updatedAt: null,
+      providerVersion: null,
+      archived: false,
+      reason: { key: "ideSessions.reason.matchedRepositoryIdentity" },
+      ...overrides,
+    };
+  }
+
+  function resumeStates(markup: string): string[] {
+    return [...markup.matchAll(/data-testid="ide-session-resume" data-resume="([A-Z_]+)"/g)].map((m) => m[1]);
+  }
+
+  for (const locale of LOCALES) {
+    const t = createTranslator(locale);
+
+    it(`(${locale}): an eligible Codex MATCHED row has an enabled Copy Resume Command and the three UI-only notes`, () => {
+      const markup = card(locale, ok([], true), ok([row({})], true));
+      expect(resumeStates(markup)).toEqual(["ELIGIBLE"]);
+      const button = markup.match(/<button[^>]*data-testid="action-copy-resume"[^>]*>([^<]*)<\/button>/)!;
+      expect(button[0]).not.toContain("disabled");
+      expect(button[0]).not.toContain("aria-disabled");
+      expect(button[1]).toBe(t("resume.action.copy"));
+      for (const [id, key] of [
+        ["resume-note-copy-only", "resume.note.copyOnly"],
+        ["resume-note-run-from-workspace", "resume.note.runFromWorkspace"],
+        ["resume-note-codex-may-be-open", "resume.note.codexMayBeOpen"],
+      ] as const) {
+        expect(markup).toContain(`data-testid="${id}">${t(key)}</p>`);
+      }
+    });
+
+    it(`(${locale}): the notes carry no path, and no full session ID appears as visible text`, () => {
+      const markup = card(locale, ok([], true), ok([row({})], true));
+      const notesMarkup = markup.slice(markup.indexOf('data-testid="resume-notes"'), markup.indexOf('data-testid="ide-session-row"'));
+      const notes = notesMarkup.slice(notesMarkup.indexOf(">") + 1).replace(/<[^>]+>/g, " ");
+      expect(notes.trim().length).toBeGreaterThan(0);
+      expect(notes).not.toMatch(/[A-Za-z]:\|\\|\/|\.codex|\.claude/);
+      expect(markup).not.toContain(`>${CODEX_ID}<`);
+    });
+
+    const DISABLED: [string, DiscoveredIdeSession, "claude" | "codex", string, string][] = [
+      ["AMBIGUOUS Codex", row({ binding: "AMBIGUOUS", matchedProjectId: null, candidateProjectIds: ["project-alpha", "other"] }), "codex", "NOT_MATCHED", "resume.refusal.notMatched"],
+      ["archived Codex", row({ archived: true }), "codex", "ARCHIVED", "resume.refusal.archived"],
+      ["invalid-ID Codex", row({ sessionId: "019c1a2b; calc" }), "codex", "INVALID_SESSION_ID", "resume.refusal.invalidSessionId"],
+      ["Claude LIVE MATCHED", row({ provider: "CLAUDE_CODE", sourceKind: "LIVE", sessionId: CLAUDE_ID, archived: null, reason: { key: "ideSessions.reason.matchedExactWorkspace" } }), "claude", "ALREADY_ACTIVE", "resume.refusal.alreadyActive"],
+      ["Claude historical AMBIGUOUS", row({ provider: "CLAUDE_CODE", sessionId: CLAUDE_ID, binding: "AMBIGUOUS", matchedProjectId: null, candidateProjectIds: ["project-alpha"], archived: null }), "claude", "NOT_MATCHED", "resume.refusal.notMatched"],
+    ];
+
+    for (const [name, session, where, state, key] of DISABLED) {
+      it(`(${locale}): ${name} -> disabled action with the localized ${state} reason, and no notes`, () => {
+        const markup = where === "codex" ? card(locale, ok([], true), ok([session], true)) : card(locale, ok([session], true), ok([], true));
+        expect(resumeStates(markup)).toEqual([state]);
+        expect(markup).toMatch(/<button[^>]*aria-disabled="true"[^>]*data-testid="action-copy-resume"/);
+        expect(markup).toContain(`data-testid="action-copy-resume-reason">${t(key as never)}</span>`);
+        expect(markup).not.toContain('data-testid="resume-notes"');
+      });
+    }
+
+    it(`(${locale}): stale discovery renders no session row and no resume action at all`, () => {
+      const markup = card(locale, ok([], true), ok([row({})], true), true);
+      expect(markup).toContain('data-testid="ide-sessions-stale"');
+      expect(markup).not.toContain('data-testid="action-copy-resume"');
+    });
+
+    it(`(${locale}): an incomplete scan keeps its warning AND leaves an individually MATCHED row eligible`, () => {
+      const markup = card(locale, ok([], true), ok([row({})], false));
+      expect(markup).toContain('data-provider-status="incompleteWithResults"');
+      expect(markup).toContain('data-testid="ide-sessions-incomplete-note"');
+      expect(resumeStates(markup)).toEqual(["ELIGIBLE"]);
+    });
+
+    it(`(${locale}): the card's controls are Refresh plus one Copy Resume Command per row — nothing that runs, attaches or forks`, () => {
+      const markup = card(locale, ok([row({ provider: "CLAUDE_CODE", sourceKind: "LIVE", sessionId: CLAUDE_ID, archived: null })], true), ok([row({})], true));
+      const buttons = [...markup.matchAll(/<button[^>]*data-testid="([^"]+)"/g)].map((m) => m[1]);
+      expect(buttons).toEqual(["action-refresh-ide-sessions", "action-copy-resume", "action-copy-resume"]);
+      expect(markup).not.toMatch(/codex resume|claude --resume|attach|fork/i);
+    });
+  }
 });

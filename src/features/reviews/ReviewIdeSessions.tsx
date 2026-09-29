@@ -3,12 +3,14 @@ import { Row } from "../../components/DetailRow";
 import type { IdeSessionsState } from "../../app/appState";
 import type { DiscoveredIdeSession, ProviderKind, ProviderScanResult } from "../../domain/ideSessionDiscovery";
 import type { Project } from "../../domain/project";
+import { evaluateResume } from "../../domain/resumeIntent";
 import { sessionIdLabels } from "../../domain/sessionIdLabels";
 import {
   formatTimestamp,
   IDE_SESSION_BINDING_KEYS,
   IDE_SESSION_PROVIDER_KEYS,
   IDE_SESSION_SOURCE_KEYS,
+  RESUME_REFUSAL_KEYS,
   translate,
   type Translator,
 } from "../../i18n";
@@ -21,6 +23,8 @@ export interface ReviewIdeSessionsProps {
   stale: boolean;
   busy: boolean;
   onRefresh: () => void;
+  /** Phase 4b-2a: receives the full discovered session — never its display label (the label is presentation only). */
+  onCopyResume: (session: DiscoveredIdeSession) => void;
 }
 
 /** Sessions worth showing for `project`: exactly MATCHED to it, or AMBIGUOUS with it as a candidate — never a flat, unfiltered dump (Task Packet §21: "Do not claim ambiguous sessions belong to the Project"). */
@@ -31,8 +35,17 @@ function relevantSessions(result: ProviderScanResult, projectId: string): Discov
   );
 }
 
+interface SectionProps {
+  provider: ProviderKind;
+  result: ProviderScanResult;
+  project: Project;
+  stale: boolean;
+  busy: boolean;
+  onCopyResume: (session: DiscoveredIdeSession) => void;
+  t: Translator;
+}
 
-function ProviderSection({ provider, result, project, t }: { provider: ProviderKind; result: ProviderScanResult; project: Project; t: Translator }) {
+function ProviderSection({ provider, result, project, stale, busy, onCopyResume, t }: SectionProps) {
   const label = t(IDE_SESSION_PROVIDER_KEYS[provider]);
   if (result.status === "unavailable") {
     return (
@@ -67,6 +80,8 @@ function ProviderSection({ provider, result, project, t }: { provider: ProviderK
     );
   }
   const labels = sessionIdLabels(sessions.map((session) => session.sessionId));
+  const resumeBySession = new Map(sessions.map((session) => [session.sessionId, evaluateResume(session, project.projectId, stale)]));
+  const anyEligible = [...resumeBySession.values()].some((resume) => resume.eligible);
   return (
     <div data-testid={`ide-sessions-provider-${provider}`} data-provider-status={result.complete ? "ok" : "incompleteWithResults"}>
       <h4 className="subhead">{label}</h4>
@@ -75,7 +90,17 @@ function ProviderSection({ provider, result, project, t }: { provider: ProviderK
           {t("ideSessions.reason.incompleteWithResults")}
         </p>
       )}
-      {sessions.map((session) => (
+      {anyEligible && (
+        // UI-only notes (HD-4B2-02/03): never copied, and they carry no path.
+        <div className="muted small" data-testid="resume-notes">
+          <p data-testid="resume-note-copy-only">{t("resume.note.copyOnly")}</p>
+          <p data-testid="resume-note-run-from-workspace">{t("resume.note.runFromWorkspace")}</p>
+          <p data-testid="resume-note-codex-may-be-open">{t("resume.note.codexMayBeOpen")}</p>
+        </div>
+      )}
+      {sessions.map((session) => {
+        const resume = resumeBySession.get(session.sessionId)!;
+        return (
         <div key={session.sessionId} className="ide-session-row" data-testid="ide-session-row" data-binding={session.binding}>
           <dl>
             <Row label={t("ideSessions.field.sessionId")} mono testId="ide-session-id">
@@ -91,13 +116,23 @@ function ProviderSection({ provider, result, project, t }: { provider: ProviderK
           <p className="muted small" data-testid="ide-session-reason">
             {translate(t, session.reason)}
           </p>
+          <div data-testid="ide-session-resume" data-resume={resume.eligible ? "ELIGIBLE" : resume.reason}>
+            <ActionButton
+              label={t("resume.action.copy")}
+              testId="action-copy-resume"
+              enabled={resume.eligible && !busy}
+              onClick={() => onCopyResume(session)}
+              disabledReason={resume.eligible ? null : t(RESUME_REFUSAL_KEYS[resume.reason])}
+            />
+          </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-export function ReviewIdeSessions({ project, ideSessions, stale, busy, onRefresh }: ReviewIdeSessionsProps) {
+export function ReviewIdeSessions({ project, ideSessions, stale, busy, onRefresh, onCopyResume }: ReviewIdeSessionsProps) {
   const t = useT();
   if (project === null) return null;
 
@@ -129,8 +164,8 @@ export function ReviewIdeSessions({ project, ideSessions, stale, busy, onRefresh
       )}
       {ideSessions.status === "loaded" && !stale && (
         <>
-          <ProviderSection provider="CLAUDE_CODE" result={ideSessions.scan.claude} project={project} t={t} />
-          <ProviderSection provider="CODEX" result={ideSessions.scan.codex} project={project} t={t} />
+          <ProviderSection provider="CLAUDE_CODE" result={ideSessions.scan.claude} project={project} stale={stale} busy={busy} onCopyResume={onCopyResume} t={t} />
+          <ProviderSection provider="CODEX" result={ideSessions.scan.codex} project={project} stale={stale} busy={busy} onCopyResume={onCopyResume} t={t} />
         </>
       )}
     </section>
