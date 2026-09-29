@@ -10,6 +10,7 @@ import type { GitStatus } from "../domain/git";
 import type { UnknownCause } from "../domain/freshnessCause";
 import type { HeadBinding, ObservedHeadRelation } from "../domain/headBinding";
 import type { ProviderKind, SessionBindingState, SessionSourceKind } from "../domain/ideSessionDiscovery";
+import type { ResumeRefusal } from "../domain/resumeIntent";
 import type { ResourceState, ReviewState, Verdict } from "../domain/states";
 import { en } from "./en";
 import { ja } from "./ja";
@@ -236,6 +237,15 @@ export const IDE_SESSION_PROVIDER_KEYS: Record<ProviderKind, TranslationKey> = {
 export const IDE_SESSION_SOURCE_KEYS: Record<SessionSourceKind, TranslationKey> = {
   LIVE: "ideSessions.source.live",
   HISTORICAL: "ideSessions.source.historical",
+};
+
+export const RESUME_REFUSAL_KEYS: Record<ResumeRefusal, TranslationKey> = {
+  STALE_DISCOVERY: "resume.refusal.staleDiscovery",
+  NOT_MATCHED: "resume.refusal.notMatched",
+  ALREADY_ACTIVE: "resume.refusal.alreadyActive",
+  ARCHIVED: "resume.refusal.archived",
+  INVALID_SESSION_ID: "resume.refusal.invalidSessionId",
+  PROVIDER_NOT_SUPPORTED: "resume.refusal.providerNotSupported",
 };
 
 export const IDE_SESSION_BINDING_KEYS: Record<SessionBindingState, TranslationKey> = {
