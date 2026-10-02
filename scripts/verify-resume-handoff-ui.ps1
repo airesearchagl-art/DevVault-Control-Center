@@ -292,8 +292,8 @@ try {
   Stop-App $appPid
   $left = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $script:started -contains $_.Id })
   Check "no spawned process is left running" ($left.Count -eq 0) ("alive=" + $left.Count)
-  Check "the Claude Code fixture is byte-identical" (Same-Tree $claudeBefore (Get-Tree $claudeHome)) "unchanged"
-  Check "the Codex fixture is byte-identical" (Same-Tree $codexBefore (Get-Tree $codexHome)) "unchanged"
+  Check "this synthetic Claude Code fixture is byte-identical" (Same-Tree $claudeBefore (Get-Tree $claudeHome)) "unchanged"
+  Check "this synthetic (non-WAL) Codex fixture is byte-identical" (Same-Tree $codexBefore (Get-Tree $codexHome)) "unchanged"
 }
 finally {
   Remove-Item Env:\DVCC_CLAUDE_HOME_DIR -ErrorAction SilentlyContinue

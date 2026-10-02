@@ -568,3 +568,22 @@ silently rewritten.
   (2026-09-29), when the build/check chain run on merged `main` reported 35 / 913. The correction is
   carried by run LR-20260929-DVCC-007 (finding DF-04).
 - Both prior NOT READY Independent Review results recorded above remain unchanged as history.
+
+---
+
+## Errata — appended by LR-20260930-DVCC-009 (Phase 4b-1.2, DF-06 / HD-4B12-02)
+
+Append-only clarification; nothing above has been rewritten.
+
+The statements above that the synthetic Codex SQLite fixture was "byte-identical before/after"
+(including "its absence of a `-wal` checkpoint side effect") and that there was "no provider file
+modification" remain accurate **as observations of that run's synthetic fixture**, which was a
+non-WAL (default rollback-journal) database with no live writer. They do **not** establish a general
+invariant that every provider-owned SQLite file stays byte- or metadata-identical during a read.
+
+The general contract is now DF-06 / HD-4B12-02: DVCC does not modify provider application data; the
+Codex database and WAL application data are read without modification. When SQLite reads a live
+WAL-mode database it may update the provider-owned `-shm` shared-memory coordination file
+(read-mark / lock bytes, filesystem metadata). The `-shm` file holds no database content and is not
+required for recovery. See `.agent-run/LR-20260930-DVCC-009/` for the WAL-mode smoke that checks
+this contract.

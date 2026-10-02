@@ -14,10 +14,11 @@ restarting the app.
 > Foundation (v0.2.1), Phase 3 (Review Workflow v0.3), Phase 4a (IDE Handoff v0.4a, merged via
 > PR #5), Phase 4b-1 (read-only IDE session discovery v0.4b1, merged via PR #6; `main` after
 > PR #6: `93a703e6a7eba5ec1c66a5eaf43f0c0edbf2f69d`) and Phase 4b-1.1 (dogfood findings repair,
-> merged via PR #7) are merged. Phase 4b-2a (copy-only Resume Handoff) is under development on
-> `feat/session-resume-handoff-v0.4b2a`; Phase 4b-2b (actually launching or resuming a session) is
-> deferred and not implemented. DVCC does not run, resume, launch or control any session. Not
-> released; no installer is published.
+> merged via PR #7) and Phase 4b-2a (copy-only Resume Handoff, merged via PR #8; `main` after PR #8:
+> `fda753d147d136f961e5c45d51c32f42cbe28bfc`) are merged. Phase 4b-2b (actually launching or
+> resuming a session) is deferred and not implemented. DVCC copies a Resume command for you to run;
+> it does not execute it, and does not run, resume, launch or control any session. Not released; no
+> installer is published.
 
 ## What it does
 
@@ -97,7 +98,17 @@ restarting the app.
   persisted, and neither is any provider storage path. DVCC does not launch, resume,
   discover-and-open, or control any IDE/session process, invoke a provider CLI, or add a
   shell/terminal capability.
-- **Resume Handoff** (Phase 4b-2a, under development) — for a Codex session that is `MATCHED` to the
+  Claude Code history is matched by the provider's ordinary folder naming (every ASCII character other
+  than a letter or digit becomes `-`, compared case-insensitively) and is only ever `AMBIGUOUS`, never
+  `MATCHED`. For a workspace path with non-ASCII characters, or one too long for that naming, history
+  cannot be bound safely: DVCC says so instead of showing "No match", and live exact matches are
+  unaffected.
+- **Provider data boundary** — DVCC does not modify provider application data. For Codex session
+  discovery the database is opened **read-only** (and DVCC never checkpoints it). When that database
+  is live in SQLite WAL mode, SQLite itself may update Codex's `-shm` coordination file (read-mark /
+  lock bytes and filesystem metadata such as its modified time) while coordinating the read; that file
+  holds no application database content. DVCC does not claim every provider file stays byte-identical.
+- **Resume Handoff** (Phase 4b-2a, merged via PR #8) — for a Codex session that is `MATCHED` to the
   selected Project and not archived, **Copy Resume Command** copies exactly one line,
   `codex resume <session-id>`, built from the full, strictly validated session ID. **DVCC copies the
   command; it does not run it** — you paste and run it yourself, in a terminal opened at the

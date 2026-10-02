@@ -5,9 +5,14 @@
 # DVCC_CLAUDE_HOME_DIR / DVCC_CODEX_HOME_DIR test-only overrides. Drives "Refresh IDE Sessions" in
 # both languages and asserts: no discovery before the click, correct MATCHED / AMBIGUOUS / UNAVAILABLE
 # outcomes, every content sentinel (first_user_message, preview, transcript body) absent from the
-# rendered page, and that both the provider fixtures and DVCC's own data files are byte-identical
-# before and after. Nothing is copied to the clipboard by this feature, but the operator's clipboard
-# fingerprint is still checked, for the same reason every other smoke checks it.
+# rendered page, and that these synthetic (non-WAL) provider fixtures and DVCC's own data files are
+# byte-identical before and after. That byte-identity is a fact about these fixtures, not a general
+# provider invariant: the WAL-mode scenario at the end (DF-06 / HD-4B12-02) checks the actual
+# contract, where the database and WAL must be unchanged but SQLite's -shm coordination file may
+# legitimately change. Phase 4b-1.2 (DF-05) adds the ordinary ASCII naming rule (underscore/space
+# roots) and the unsupported-history warning for non-ASCII roots. Nothing is copied to the clipboard
+# by this feature, but the operator's clipboard fingerprint is still checked, for the same reason
+# every other smoke checks it.
 
 param(
   [string] $Exe = "",
@@ -88,9 +93,16 @@ $CODEX_PREVIEW_SENTINEL_BULK = "CODEX_BULK_PREVIEW_MUST_NOT_APPEAR"
 $projectARoot = Join-Path $projectsRoot "project-a"
 $projectCRoot = Join-Path $projectsRoot "project-c"
 $projectERoot = Join-Path $projectsRoot "Project-E"
-New-Item -ItemType Directory -Path $projectARoot -Force | Out-Null
-New-Item -ItemType Directory -Path $projectCRoot -Force | Out-Null
-New-Item -ItemType Directory -Path $projectERoot -Force | Out-Null
+# DF-05: an underscore + space root the old narrow encoder (':', '\', '.') would have missed.
+$projectFRoot = Join-Path $projectsRoot "project_f name"
+# DF-05 / HD-4B12-01: non-ASCII roots have no supported historical key. Built from code points so
+# this (BOM-less) script stays ASCII. G has a live exact session; H has none.
+$nonAscii = -join [char[]](0x30D7, 0x30ED, 0x30B8, 0x30A7, 0x30AF, 0x30C8)
+$projectGRoot = Join-Path $projectsRoot ($nonAscii + "-g")
+$projectHRoot = Join-Path $projectsRoot ($nonAscii + "-h")
+foreach ($dir in @($projectARoot, $projectCRoot, $projectERoot, $projectFRoot, $projectGRoot, $projectHRoot)) {
+  New-Item -ItemType Directory -Path $dir -Force | Out-Null
+}
 
 # --- DVCC projects ---------------------------------------------------------------------------------
 $T0 = "2026-09-28T00:00:00.000Z"
@@ -108,7 +120,10 @@ Write-Json (Join-Path $dataDir "projects.json") ([ordered]@{
     (Project "project-b" "Smoke B" $null "https://github.com/example-org/shared"),
     (Project "project-c" "Smoke C" $projectCRoot $null),
     (Project "project-d" "Smoke D" $null "https://github.com/example-org/shared"),
-    (Project "project-e" "Smoke E" $projectERoot $null)
+    (Project "project-e" "Smoke E" $projectERoot $null),
+    (Project "project-f" "Smoke F" $projectFRoot $null),
+    (Project "project-g" "Smoke G" $projectGRoot $null),
+    (Project "project-h" "Smoke H" $projectHRoot $null)
   )
 })
 function Round1([string] $expected) { return [ordered]@{ round = 1; expectedHead = $expected; reviewedHead = $null; requestSavedAt = $null; resultCapturedAt = $null; verdict = $null; verdictConfirmedAt = $null; verdictNote = $null } }
@@ -124,9 +139,13 @@ Seed-Session "rv-20260928-sessa1" "project-a"
 Seed-Session "rv-20260928-sessc1" "project-c"
 Seed-Session "rv-20260928-sessb1" "project-b"
 Seed-Session "rv-20260929-sesse1" "project-e"
+Seed-Session "rv-20260930-sessf1" "project-f"
+Seed-Session "rv-20260930-sessg1" "project-g"
+Seed-Session "rv-20260930-sessh1" "project-h"
 
 # --- Claude Code fixture (never opened by the reader except for names/metadata) --------------------
-function EncodeClaudePath([string] $path) { return ($path -replace "/", "\") -replace "[:\\.]", "-" }
+# The ordinary provider naming rule (HD-4B12-01): every ASCII character outside [A-Za-z0-9] -> '-'.
+function EncodeClaudePath([string] $path) { return $path -creplace "[^A-Za-z0-9]", "-" }
 New-Item -ItemType Directory -Path (Join-Path $claudeHome ".claude\sessions") -Force | Out-Null
 $liveSessionId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 Write-Json (Join-Path $claudeHome ".claude\sessions\12345.json") ([ordered]@{
@@ -143,6 +162,18 @@ $encodedELower = EncodeClaudePath ($projectERoot.Substring(0, 1).ToLowerInvarian
 if ($encodedELower -ceq (EncodeClaudePath $projectERoot)) { throw "fixture error: the lowercase-drive key must differ by case" }
 New-Item -ItemType Directory -Path (Join-Path $claudeHome ".claude\projects\$encodedELower") -Force | Out-Null
 Write-Text (Join-Path $claudeHome ".claude\projects\$encodedELower\$historicalSessionIdE.jsonl") "$CLAUDE_TRANSCRIPT_SENTINEL`n"
+# DF-05: Project F's history directory under the ordinary rule; the old narrow encoder would have
+# kept '_' and ' ' and therefore never found it (NO_MATCH).
+$historicalSessionIdF = "ffffffff-ffff-ffff-ffff-ffffffffffff"
+$encodedF = EncodeClaudePath $projectFRoot
+$oldNarrowF = ($projectFRoot -replace "/", "\") -replace "[:\\.]", "-"
+if ($encodedF -eq $oldNarrowF) { throw "fixture error: Project F must differ between the old and new encoders" }
+New-Item -ItemType Directory -Path (Join-Path $claudeHome ".claude\projects\$encodedF") -Force | Out-Null
+Write-Text (Join-Path $claudeHome ".claude\projects\$encodedF\$historicalSessionIdF.jsonl") "$CLAUDE_TRANSCRIPT_SENTINEL`n"
+# DF-05 / HD-4B12-01: Project G (non-ASCII) has a live exact session; Project H (non-ASCII) has none.
+Write-Json (Join-Path $claudeHome ".claude\sessions\12346.json") ([ordered]@{
+  pid = 12346; sessionId = "99999999-9999-9999-9999-999999999999"; cwd = $projectGRoot; startedAt = 0; version = "2.1.283"
+})
 
 # --- Codex fixture: a real SQLite state file, built by Node (node:sqlite), never by DVCC -----------
 New-Item -ItemType Directory -Path (Join-Path $codexHome ".codex") -Force | Out-Null
@@ -230,6 +261,74 @@ Write-Text $buildIncompleteDbFile $buildIncompleteDbScript
 & node.exe $buildIncompleteDbFile
 if ($LASTEXITCODE -ne 0) { throw "failed to build the synthetic over-cap Codex state DB" }
 
+# --- Codex fixture (DF-06 / HD-4B12-02): a live WAL-mode state file, held open by a test-only Node
+# helper. Fixture infrastructure only: it writes while building, signals ready, then stays idle
+# (no write) until told to stop. Synthetic data only.
+$codexHomeWal = Join-Path $root "codex-home-wal"
+New-Item -ItemType Directory -Path (Join-Path $codexHomeWal ".codex") -Force | Out-Null
+$codexDbWal = Join-Path $codexHomeWal ".codex\state_5.sqlite"
+$walReadyFile = Join-Path $root "wal-helper.ready"
+$walStopFile = Join-Path $root "wal-helper.stop"
+$jsEsc = { param($p) $p -replace "\\", "\\\\" }
+$walHelperScript = @"
+const { DatabaseSync } = require("node:sqlite");
+const fs = require("node:fs");
+const db = new DatabaseSync("$(& $jsEsc $codexDbWal)");
+const mode = db.prepare("PRAGMA journal_mode=WAL").get();
+if (String(Object.values(mode)[0]).toLowerCase() !== "wal") { console.error("not WAL"); process.exit(2); }
+db.exec("PRAGMA wal_autocheckpoint=0");
+db.exec(``CREATE TABLE threads (
+  id TEXT PRIMARY KEY, cwd TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+  cli_version TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0, git_origin_url TEXT,
+  first_user_message TEXT NOT NULL DEFAULT '', preview TEXT NOT NULL DEFAULT ''
+)``);
+db.prepare("INSERT INTO threads (id, cwd, created_at, updated_at, cli_version, archived, git_origin_url, first_user_message, preview) VALUES (?,?,?,?,?,?,?,?,?)")
+  .run("codex-wal-1", "C:\\\\nowhere\\\\wal", 5000, 5000, "0.155.0", 0, "https://github.com/example-org/repo-a.git", "$CODEX_PROMPT_SENTINEL_1", "$CODEX_PREVIEW_SENTINEL_1");
+fs.writeFileSync("$(& $jsEsc $walReadyFile)", "ready");
+// Idle: hold the connection (and so the WAL + -shm) open, never write again.
+setInterval(() => { if (fs.existsSync("$(& $jsEsc $walStopFile)")) process.exit(0); }, 100);
+"@
+$walHelperFile = Join-Path $root "wal-helper.cjs"
+Write-Text $walHelperFile $walHelperScript
+
+function Start-WalHelper {
+  $proc = Start-Process -FilePath "node.exe" -ArgumentList @("`"$walHelperFile`"") -WindowStyle Hidden -PassThru
+  $deadline = (Get-Date).AddSeconds(20)
+  while (-not (Test-Path -LiteralPath $walReadyFile)) {
+    if ($proc.HasExited) { throw "the WAL fixture helper exited early (code $($proc.ExitCode))" }
+    if ((Get-Date) -gt $deadline) { throw "the WAL fixture helper never became ready" }
+    Start-Sleep -Milliseconds 100
+  }
+  Start-Sleep -Milliseconds 500 # stabilize
+  return $proc
+}
+function Stop-WalHelper($proc) {
+  Write-Text $walStopFile "stop"
+  if (-not $proc.WaitForExit(5000)) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+}
+# Hash with FileShare.ReadWrite: the helper still has the files open. A -shm range locked by SQLite
+# may be unreadable; that is recorded, not failed on (it is coordination state, not data).
+function Get-SharedFileFacts([string] $path) {
+  if (-not (Test-Path -LiteralPath $path)) { return [pscustomobject]@{ present = $false; length = 0; mtime = 0; hash = "ABSENT" } }
+  $item = Get-Item -LiteralPath $path
+  try {
+    $fs = [System.IO.FileStream]::new($path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
+    try { $hash = [BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash($fs)) -replace "-", "" } finally { $fs.Dispose() }
+  } catch { $hash = "UNREADABLE:" + $_.Exception.GetType().Name }
+  return [pscustomobject]@{ present = $true; length = $item.Length; mtime = $item.LastWriteTimeUtc.Ticks; hash = $hash }
+}
+function Get-WalFacts {
+  return [pscustomobject]@{
+    db = Get-SharedFileFacts $codexDbWal
+    wal = Get-SharedFileFacts ($codexDbWal + "-wal")
+    shm = Get-SharedFileFacts ($codexDbWal + "-shm")
+  }
+}
+function Same-WalApp($a, $b) {
+  return ($a.db.hash -eq $b.db.hash) -and ($a.db.length -eq $b.db.length) -and ($a.wal.hash -eq $b.wal.hash) -and ($a.wal.length -eq $b.wal.length)
+}
+$walHelper = $null
+
 $clipboardAtStart = Get-ClipboardFingerprint
 Write-Output ("clipboard at start: " + $clipboardAtStart)
 [DvccDesktop]::Create($desktopName)
@@ -257,6 +356,38 @@ function Get-CodexIdLabels {
 function Assert-NoResumeControl([string] $label) {
   $other = Invoke-Cdp "Array.from(document.querySelectorAll('[data-testid=detail-ide-sessions] button, [data-testid=detail-ide-sessions] a, [data-testid=detail-ide-sessions] [role=button]')).filter((el) => el.dataset.testid !== 'action-refresh-ide-sessions' && el.dataset.testid !== 'action-copy-resume').length"
   Check "$label : the IDE Sessions card has no control other than Refresh and Copy Resume Command (nothing that runs a session)" ($other -eq 0) "other controls=$other"
+}
+
+function Get-ClaudeSection {
+  $json = Invoke-Cdp "JSON.stringify((() => { const s = document.querySelector('[data-testid=ide-sessions-provider-CLAUDE_CODE]'); return s ? { status: s.dataset.providerStatus, warning: s.querySelector('[data-testid=ide-sessions-history-unsupported]') !== null, text: s.textContent } : null; })())"
+  return ($json | ConvertFrom-Json)
+}
+
+# DF-05 / HD-4B12-01 (LRP-20260930-DVCC-009): F = ordinary-rule underscore/space history candidate,
+# G = non-ASCII root with a live exact session, H = non-ASCII root with no live session.
+function Check-Df05([string] $L) {
+  Select-Review "rv-20260930-sessf1"
+  Refresh-AndWait
+  Assert-NoForbiddenContent "$L/project-f"
+  $statesF = Get-BindingStates "CLAUDE_CODE"
+  Check "$L/project-f : underscore/space Claude history candidate is AMBIGUOUS, never MATCHED (DF-05)" ((@($statesF) -contains "AMBIGUOUS") -and (@($statesF) -notcontains "MATCHED")) ("states=" + ($statesF -join ","))
+  Check "$L/project-f : a supported root shows no unsupported-history warning" (-not (Get-ClaudeSection).warning) "warning absent"
+
+  Select-Review "rv-20260930-sessg1"
+  Refresh-AndWait
+  Assert-NoForbiddenContent "$L/project-g"
+  $statesG = Get-BindingStates "CLAUDE_CODE"
+  $sectionG = Get-ClaudeSection
+  Check "$L/project-g : non-ASCII root keeps its live exact MATCHED row (DF-05 J)" (@($statesG) -contains "MATCHED") ("states=" + ($statesG -join ","))
+  Check "$L/project-g : ... and shows the unsupported-history warning" ($sectionG.warning) ("status=" + $sectionG.status)
+  Check "$L/project-g : no localRoot / encoded name leaks into the Claude section" ((-not $sectionG.text.Contains($nonAscii)) -and (-not $sectionG.text.Contains("projects-"))) "no path"
+
+  Select-Review "rv-20260930-sessh1"
+  Refresh-AndWait
+  Assert-NoForbiddenContent "$L/project-h"
+  $sectionH = Get-ClaudeSection
+  Check "$L/project-h : non-ASCII root with no live session is never an ordinary No match (DF-05 I)" (($sectionH.status -eq "historyUnsupported") -and $sectionH.warning) ("status=" + $sectionH.status)
+  Check "$L/project-h : no localRoot leaks into the Claude section" (-not $sectionH.text.Contains($nonAscii)) "no path"
 }
 
 function Refresh-AndWait {
@@ -324,6 +455,8 @@ try {
   Check "JA/project-e : case-varied Claude history candidate is AMBIGUOUS, not NO_MATCH/MATCHED (DF-02)" ((@($claudeStatesE) -contains "AMBIGUOUS") -and (@($claudeStatesE) -notcontains "MATCHED")) ("states=" + ($claudeStatesE -join ","))
   Assert-NoResumeControl "JA/project-e"
 
+  Check-Df05 "JA"
+
   # --- English: the same facts, translated -----------------------------------------------------
   Invoke-Cdp ($switchScript -replace "__LOCALE__", "en") | Out-Null
   if (-not (Wait-For "document.documentElement.lang === 'en'" 15)) { throw "the interface never switched to English" }
@@ -351,6 +484,8 @@ try {
   $claudeStatesEEn = Get-BindingStates "CLAUDE_CODE"
   Check "EN/project-e : case-varied Claude history candidate is Ambiguous, not No match/Matched (DF-02)" ((@($claudeStatesEEn) -contains "AMBIGUOUS") -and (@($claudeStatesEEn) -notcontains "MATCHED")) ("states=" + ($claudeStatesEEn -join ","))
 
+  Check-Df05 "EN"
+
   Stop-App $appPid
   Test-Clean "no spawned process is left running"
 
@@ -358,8 +493,8 @@ try {
   $claudeAfter = Get-Tree $claudeHome
   $codexAfter = Get-Tree $codexHome
   Check "DVCC's own data files are byte-identical (nothing persisted by discovery)" (Same-Tree $before $after) ("files=" + $after.Count)
-  Check "the Claude Code fixture is byte-identical (never modified)" (Same-Tree $claudeBefore $claudeAfter) ("files=" + $claudeAfter.Count)
-  Check "the Codex fixture is byte-identical (never modified, no WAL checkpoint left behind)" (Same-Tree $codexBefore $codexAfter) ("files=" + $codexAfter.Count)
+  Check "this synthetic Claude Code fixture is byte-identical" (Same-Tree $claudeBefore $claudeAfter) ("files=" + $claudeAfter.Count)
+  Check "this synthetic (non-WAL) Codex fixture is byte-identical" (Same-Tree $codexBefore $codexAfter) ("files=" + $codexAfter.Count)
 
   # --- RF-P4B1-04: unsupported Codex schema -------------------------------------------------------
   $codexBrokenBefore = Get-Tree $codexHomeBroken
@@ -389,7 +524,7 @@ try {
 
   $codexBrokenAfter = Get-Tree $codexHomeBroken
   $afterUnsupported = Get-Tree $dataDir
-  Check "the broken-schema Codex fixture is byte-identical (never modified)" (Same-Tree $codexBrokenBefore $codexBrokenAfter) ("files=" + $codexBrokenAfter.Count)
+  Check "this synthetic (non-WAL) broken-schema Codex fixture is byte-identical" (Same-Tree $codexBrokenBefore $codexBrokenAfter) ("files=" + $codexBrokenAfter.Count)
   Check "DVCC's own data files are still byte-identical after the unsupported-schema run" (Same-Tree $before $afterUnsupported) ("files=" + $afterUnsupported.Count)
 
   # --- RF-P4B1-02 final closure: an incomplete Codex scan (cap hit) with no relevant session must
@@ -421,13 +556,53 @@ try {
 
   $codexIncompleteAfter = Get-Tree $codexHomeIncomplete
   $afterIncomplete = Get-Tree $dataDir
-  Check "the over-cap Codex fixture is byte-identical (never modified)" (Same-Tree $codexIncompleteBefore $codexIncompleteAfter) ("files=" + $codexIncompleteAfter.Count)
+  Check "this synthetic (non-WAL) over-cap Codex fixture is byte-identical" (Same-Tree $codexIncompleteBefore $codexIncompleteAfter) ("files=" + $codexIncompleteAfter.Count)
   Check "DVCC's own data files are still byte-identical after the incomplete-scan run" (Same-Tree $before $afterIncomplete) ("files=" + $afterIncomplete.Count)
+
+  # --- DF-06 / HD-4B12-02 (LRP-20260930-DVCC-009): a live WAL-mode Codex fixture -----------------
+  # A test-only Node helper creates the DB in WAL mode with auto-checkpoint disabled, so every table
+  # and row lives only in the -wal file, then holds its connection open (keeping WAL + -shm present)
+  # and performs no write during the measured window. Contract: the database and WAL application
+  # data must be unchanged; SQLite's -shm coordination file MAY change (read-mark/lock bytes,
+  # metadata) and is only recorded, never failed on, and never required to change.
+  $walHelper = Start-WalHelper
+  $walBefore = Get-WalFacts
+  Check "WAL fixture : the -wal file is present and holds the data (not checkpointed)" ($walBefore.wal.present -and $walBefore.wal.length -gt 0) ("walBytes=" + $walBefore.wal.length)
+  Check "WAL fixture : database and WAL are readable for hashing" (($walBefore.db.hash -notlike "UNREADABLE*") -and ($walBefore.wal.hash -notlike "UNREADABLE*")) "readable"
+  $afterWalStable = Get-WalFacts
+  Check "WAL fixture : stable before the measured window (helper performs no writes)" ((Same-WalApp $walBefore $afterWalStable)) "stable"
+
+  $env:DVCC_CODEX_HOME_DIR = $codexHomeWal
+  $appPid4 = Start-App "wal-mode start"
+  if (-not (Wait-For "document.querySelector('[data-testid=queue-item]') !== null" 20)) { throw "the queue never rendered (wal-mode run)" }
+  Select-Review "rv-20260928-sessa1"
+  if (-not (Wait-For "document.querySelector('[data-testid=detail-ide-sessions]') !== null" 15)) { throw "the IDE Sessions card never appeared (wal-mode run)" }
+  Refresh-AndWait
+  Assert-NoForbiddenContent "WAL/project-a"
+  $codexStatusWal = Invoke-Cdp "document.querySelector('[data-testid=ide-sessions-provider-CODEX]')?.dataset.providerStatus"
+  $codexStatesWal = @(Get-BindingStates "CODEX")
+  Check "WAL A : the WAL-only Codex row is read (MATCHED for project-a, complete scan)" (($codexStatusWal -eq "ok") -and ($codexStatesWal.Count -eq 1) -and ($codexStatesWal -contains "MATCHED")) ("status=$codexStatusWal states=" + ($codexStatesWal -join ","))
+  Stop-App $appPid4
+  Test-Clean "WAL G : no spawned process is left running (wal-mode run)"
+  Remove-Item Env:\DVCC_CODEX_HOME_DIR -ErrorAction SilentlyContinue
+
+  $walAfter = Get-WalFacts
+  Check "WAL B : the database file is unchanged (hash + length)" (($walBefore.db.hash -eq $walAfter.db.hash) -and ($walBefore.db.length -eq $walAfter.db.length)) ("db " + $walBefore.db.length + " -> " + $walAfter.db.length)
+  Check "WAL C : the WAL file is unchanged (hash + length)" (($walBefore.wal.hash -eq $walAfter.wal.hash) -and ($walBefore.wal.length -eq $walAfter.wal.length)) ("wal " + $walBefore.wal.length + " -> " + $walAfter.wal.length)
+  Check "WAL D : no checkpoint / truncate / migration (WAL still present, same size, DB same size)" ($walAfter.wal.present -and ($walAfter.wal.length -eq $walBefore.wal.length) -and ($walAfter.db.length -eq $walBefore.db.length)) "no checkpoint"
+  $shmBytesChanged = $walBefore.shm.hash -ne $walAfter.shm.hash
+  $shmMtimeChanged = $walBefore.shm.mtime -ne $walAfter.shm.mtime
+  Write-Output ("RECORD WAL E : -shm present before/after=" + $walBefore.shm.present + "/" + $walAfter.shm.present + " bytesChanged=" + $shmBytesChanged + " mtimeChanged=" + $shmMtimeChanged + " (allowed by the DF-06 contract; not a failure)")
+  $afterWal = Get-Tree $dataDir
+  Check "WAL F : DVCC's own data files are still byte-identical after the wal-mode run" (Same-Tree $before $afterWal) ("files=" + $afterWal.Count)
+  Stop-WalHelper $walHelper
+  $walHelper = $null
 }
 finally {
   Remove-Item Env:\DVCC_CLAUDE_HOME_DIR -ErrorAction SilentlyContinue
   Remove-Item Env:\DVCC_CODEX_HOME_DIR -ErrorAction SilentlyContinue
   Stop-Started
+  if ($null -ne $walHelper) { Stop-WalHelper $walHelper }
 }
 
 Test-OperatorClipboard $clipboardAtStart

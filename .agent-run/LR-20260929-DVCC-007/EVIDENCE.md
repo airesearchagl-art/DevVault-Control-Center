@@ -214,3 +214,16 @@ checks: 46 passed, 0 failed, 0 inconclusive
 ## Independent Review
 
 **Pending.** This run's implementer cannot review its own work (Independence Gate).
+
+---
+
+## Errata — appended by LR-20260930-DVCC-009 (Phase 4b-1.2, DF-06 / HD-4B12-02)
+
+Append-only clarification. "Provider modification: none" and "its DB, WAL and SHM were
+byte-identical before and after" above remain the historical observation of that run's bounded
+windows. They are not the general contract: LR-20260929-DVCC-008 later observed the Codex
+`state_5.sqlite-shm` last-write time change during discovery while the database and WAL did not.
+The general contract is now DF-06 / HD-4B12-02: DVCC does not modify provider application data (the
+database and WAL application data); SQLite may update the live WAL database's `-shm` coordination
+file (read-mark / lock bytes, filesystem metadata), which holds no database content. See
+`.agent-run/LR-20260930-DVCC-009/`.

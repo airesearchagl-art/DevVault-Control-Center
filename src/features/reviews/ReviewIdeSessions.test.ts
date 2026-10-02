@@ -1,7 +1,7 @@
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { DiscoveredIdeSession, ProviderScanResult } from "../../domain/ideSessionDiscovery";
+import { bindClaudeSessions, type DiscoveredIdeSession, type ProviderScanResult } from "../../domain/ideSessionDiscovery";
 import type { Project } from "../../domain/project";
 import { createTranslator, type Locale } from "../../i18n";
 import { I18nContext } from "../../i18n/context";
@@ -253,6 +253,67 @@ describe("ReviewIdeSessions — copy-only Resume Handoff (Phase 4b-2a, LRP-20260
       const buttons = [...markup.matchAll(/<button[^>]*data-testid="([^"]+)"/g)].map((m) => m[1]);
       expect(buttons).toEqual(["action-refresh-ide-sessions", "action-copy-resume", "action-copy-resume"]);
       expect(markup).not.toMatch(/codex resume|claude --resume|attach|fork/i);
+    });
+  }
+});
+
+describe("ReviewIdeSessions — unsupported Claude historical binding (DF-05 / HD-4B12-01)", () => {
+  const unsupportedRoot = "C:\\work\\プロジェクト";
+  const jp: Project = { ...project, projectId: "project-jp", localRoot: unsupportedRoot };
+
+  function jpCard(locale: Locale, claude: ProviderScanResult): string {
+    return render(
+      locale,
+      createElement(ReviewIdeSessions, {
+        project: jp,
+        ideSessions: { status: "loaded", scan: { claude, codex: ok([], true) }, fingerprint: [] as unknown as never },
+        stale: false,
+        busy: false,
+        onRefresh: () => undefined,
+        onCopyResume: () => undefined,
+      }),
+    );
+  }
+
+  function claudeSectionOf(markup: string): string {
+    return markup.slice(markup.indexOf('data-testid="ide-sessions-provider-CLAUDE_CODE"'), markup.indexOf('data-testid="ide-sessions-provider-CODEX"'));
+  }
+
+  for (const locale of LOCALES) {
+    const t = createTranslator(locale);
+
+    it(`I (${locale}): unsupported history + no live session shows the warning, never the ordinary No match conclusion`, () => {
+      const claude = bindClaudeSessions(
+        { status: "ok", complete: true, historical: [{ encodedDirName: "C--work------", sessionId: "h-1", updatedAtMs: null }], live: [] },
+        [jp],
+        new Map(),
+      );
+      const section = claudeSectionOf(jpCard(locale, claude));
+      expect(section).toContain('data-provider-status="historyUnsupported"');
+      expect(section).toContain('data-testid="ide-sessions-history-unsupported"');
+      expect(section).toContain(t("ideSessions.reason.historicalBindingUnsupported"));
+      expect(section).not.toContain('data-provider-status="empty"');
+      expect(section).not.toContain(t("ideSessions.reason.noMatch"));
+      // No path leakage: neither the root nor any encoded directory name is rendered.
+      expect(section).not.toContain(unsupportedRoot);
+      expect(section).not.toContain("C--work");
+    });
+
+    it(`J (${locale}): unsupported history + live exact session shows the MATCHED row plus the warning`, () => {
+      const claude = bindClaudeSessions(
+        { status: "ok", complete: true, historical: [], live: [{ sessionId: "live-1", cwd: unsupportedRoot, updatedAtMs: 1, version: null }] },
+        [jp],
+        new Map([[unsupportedRoot, unsupportedRoot]]),
+      );
+      const section = claudeSectionOf(jpCard(locale, claude));
+      expect(section).toContain('data-binding="MATCHED"');
+      expect(section).toContain('data-testid="ide-sessions-history-unsupported"');
+      expect(section).not.toContain(unsupportedRoot);
+    });
+
+    it(`(${locale}): a supported root renders no unsupported-history warning`, () => {
+      const markup = card(locale, ok([], true), ok([], true));
+      expect(markup).not.toContain('data-testid="ide-sessions-history-unsupported"');
     });
   }
 });

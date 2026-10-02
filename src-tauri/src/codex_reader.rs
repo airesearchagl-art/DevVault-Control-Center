@@ -1,13 +1,24 @@
 //! Phase 4b-1: read-only discovery of local Codex sessions from Codex's own SQLite state file.
 //!
-//! Everything here is defense-in-depth read-only: the connection is opened with
-//! `SQLITE_OPEN_READ_ONLY` (no `CREATE`; any write is refused by SQLite itself, not just by this
-//! code not issuing one), `query_only` is set as a second, independent guard, and every SQL
+//! The primary read-only boundary is the open flag: the connection is opened with
+//! `SQLITE_OPEN_READ_ONLY` (no `CREATE`; a write to the application database is refused by SQLite
+//! itself, not just by this code not issuing one). `query_only` is defense in depth against
+//! ordinary data-changing SQL only — it is not a complete filesystem-level read-only guarantee and
+//! does not by itself rule out every operation (checkpoint-related behavior among them). Every SQL
 //! statement is a fixed string with an explicit column list — never `SELECT *`, never built from
 //! caller input. `first_user_message` and `preview` (the two content-bearing columns Human Decision
 //! HD-P4B-08 / Task Packet §8 names) are never referenced anywhere in this file.
 //!
-//! DVCC never creates, migrates or repairs this file: it belongs to Codex.
+//! DVCC never creates, migrates or repairs this file, and never issues a checkpoint: it belongs to
+//! Codex.
+//!
+//! DF-06 / HD-4B12-02 contract: DVCC does not modify provider application data — the database and
+//! its WAL application data are read without modification. When SQLite reads a live WAL-mode
+//! database, SQLite itself may update the provider-owned `-shm` shared-memory coordination file
+//! (read-mark / lock bytes, filesystem metadata such as mtime). That file holds no database
+//! content and is not needed for recovery, so such an update is reader coordination, not a
+//! modification of provider application data. Do not describe every provider file as byte- or
+//! metadata-identical after a live WAL read.
 
 use rusqlite::types::ValueRef;
 use rusqlite::{Connection, ErrorCode, OpenFlags, Row};
@@ -183,9 +194,11 @@ fn missing_required_columns(present: &[String]) -> Vec<&'static str> {
         .collect()
 }
 
-/// Opens `path` strictly read-only. `query_only` is a second, independent guard on top of the
-/// open flag: even a future code change that somehow issued a write would still be refused by
-/// SQLite itself, not merely by this function not calling one.
+/// Opens `path` with `SQLITE_OPEN_READ_ONLY`, the primary application-database read-only
+/// boundary. `query_only` is added as defense in depth against ordinary data-changing SQL (an
+/// accidental `INSERT`/`UPDATE`/`DELETE`/DDL in a future change), but it is not itself a complete
+/// filesystem read-only guarantee. On a live WAL database SQLite may still update the `-shm`
+/// coordination file's read-mark/lock bytes or metadata (see the module docs, DF-06).
 fn open_read_only(path: &std::path::Path) -> rusqlite::Result<Connection> {
     let conn = Connection::open_with_flags(
         path,

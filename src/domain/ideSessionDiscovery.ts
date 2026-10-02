@@ -69,7 +69,18 @@ export type ProviderScanResult =
    * nothing: a renderer must never read an empty/short `sessions` list here as a confirmed
    * `NO_MATCH` for the whole provider.
    */
-  | { status: "ok"; sessions: DiscoveredIdeSession[]; complete: boolean }
+  | {
+      status: "ok";
+      sessions: DiscoveredIdeSession[];
+      complete: boolean;
+      /**
+       * Claude only (HD-4B12-01): Projects whose `localRoot` has no supported historical key
+       * (non-ASCII, or too long for the ordinary rule). Historical sessions can never be tied to
+       * them, so a renderer must surface a warning rather than read "no historical row" as a
+       * conclusive NO_MATCH. Live exact matching for these Projects is unaffected. Runtime only.
+       */
+      historicalBindingUnsupportedProjectIds?: string[];
+    }
   | { status: "unavailable"; reason: Message }
   | { status: "unsupportedFormat"; reason: Message };
 
@@ -138,22 +149,39 @@ function projectIdsMatchingCanonicalKey(byRoot: ReadonlyMap<string, string>, key
 // --- Claude Code: the lossy, non-reversible directory-name encoding ----------------------------
 
 /**
- * The encoding observed in `<home>/.claude/projects/<encoded>/`: colons, backslashes and dots are
- * each replaced with a hyphen. This is Claude Code's own (undocumented) rule, inferred from direct
- * observation, not from its source — and it is lossy: two different real paths can encode to the
- * same string. Forward-encoding a registered `Project.localRoot` and comparing strings is the only
- * safe direction; the encoded directory name is never reverse-decoded to claim an exact path.
+ * Longest ordinary encoded directory name DVCC will use as a historical candidate key. Beyond it,
+ * Claude Code switches to a truncated/hashed form DVCC does not know, so the key is unsupported —
+ * never truncated or hash-guessed (HD-4B12-01).
  */
-export function encodeClaudeWorkspacePath(localRoot: string): string {
-  return localRoot.replace(/\//g, "\\").replace(/[:\\.]/g, "-");
+export const CLAUDE_HISTORICAL_KEY_MAX_LEN = 200;
+
+export type ClaudeHistoricalKeyResult =
+  | { status: "supported"; key: string }
+  | { status: "unsupported"; reason: "NON_ASCII" | "LONG_NAME_HASH_UNKNOWN" };
+
+/**
+ * The ordinary naming rule of `<home>/.claude/projects/<encoded>/` (HD-4B12-01 / DF-05): every
+ * ASCII character outside `[A-Za-z0-9]` becomes `-`; letters and digits are kept with their case.
+ * Only the supported subset is implemented: a non-ASCII `localRoot`, or one whose ordinary encoded
+ * form would exceed {@link CLAUDE_HISTORICAL_KEY_MAX_LEN}, is `unsupported` — no Unicode
+ * classification, truncation, hash guess or normalization is attempted. The rule is lossy (two
+ * different real paths can encode to the same string), so forward-encoding a registered
+ * `Project.localRoot` and comparing is the only safe direction; a provider directory name is never
+ * reverse-decoded to claim an exact path.
+ */
+export function claudeHistoricalProjectKey(localRoot: string): ClaudeHistoricalKeyResult {
+  if (/[^\x00-\x7f]/.test(localRoot)) return { status: "unsupported", reason: "NON_ASCII" };
+  const key = localRoot.replace(/[^A-Za-z0-9]/g, "-");
+  if (key.length > CLAUDE_HISTORICAL_KEY_MAX_LEN) return { status: "unsupported", reason: "LONG_NAME_HASH_UNKNOWN" };
+  return { status: "supported", key };
 }
 
 /**
- * The comparison key for a Claude historical directory name: the forward-encoded form, lowercased.
- * Windows paths are case-insensitive, and Claude keeps whatever casing the session's cwd had (a
- * VS Code launch can record `c:\…`), so a case-sensitive comparison would drop a real candidate to
- * NO_MATCH (DF-02). Comparison only — the key is still a lossy candidate signal, never decoded, and
- * a match on it can only ever yield AMBIGUOUS.
+ * The comparison key for a Claude historical directory name (provider side) or a supported
+ * Project-side key: lowercased. Windows paths are case-insensitive, and Claude keeps whatever
+ * casing the session's cwd had (a VS Code launch can record `c:\…`), so a case-sensitive comparison
+ * would drop a real candidate to NO_MATCH (DF-02). Comparison only — the key is still a lossy
+ * candidate signal, never decoded, and a match on it can only ever yield AMBIGUOUS.
  */
 export function claudeHistoricalKey(encoded: string): string {
   return encoded.toLowerCase();
@@ -196,9 +224,15 @@ export function bindClaudeSessions(raw: ClaudeDiscoveryRaw, projects: readonly P
 
   const canonicalRootsByProject = projectIdsByCanonicalRoot(projects, canonicalPaths);
   const encodedToProjectIds = new Map<string, string[]>();
+  const historicalBindingUnsupportedProjectIds: string[] = [];
   for (const project of projects) {
     if (project.localRoot === null) continue;
-    const key = claudeHistoricalKey(encodeClaudeWorkspacePath(project.localRoot));
+    const forward = claudeHistoricalProjectKey(project.localRoot);
+    if (forward.status === "unsupported") {
+      historicalBindingUnsupportedProjectIds.push(project.projectId);
+      continue;
+    }
+    const key = claudeHistoricalKey(forward.key);
     const list = encodedToProjectIds.get(key) ?? [];
     list.push(project.projectId);
     encodedToProjectIds.set(key, list);
@@ -277,7 +311,7 @@ export function bindClaudeSessions(raw: ClaudeDiscoveryRaw, projects: readonly P
     });
   }
 
-  return { status: "ok", sessions, complete: raw.complete };
+  return { status: "ok", sessions, complete: raw.complete, historicalBindingUnsupportedProjectIds };
 }
 
 export function bindCodexSessions(raw: CodexDiscoveryRaw, projects: readonly Project[], canonicalPaths: CanonicalPaths): ProviderScanResult {

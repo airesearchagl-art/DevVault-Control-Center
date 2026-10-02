@@ -62,7 +62,24 @@ function ProviderSection({ provider, result, project, stale, busy, onCopyResume,
     );
   }
   const sessions = relevantSessions(result, project.projectId);
+  // HD-4B12-01: this Project's localRoot has no supported Claude historical key, so the absence of
+  // a historical row proves nothing. Informational and fail-closed; never shows the path itself.
+  const historyUnsupported = result.historicalBindingUnsupportedProjectIds?.includes(project.projectId) ?? false;
+  const historyUnsupportedNote = historyUnsupported && (
+    <p className="muted small" data-testid="ide-sessions-history-unsupported">
+      {t("ideSessions.reason.historicalBindingUnsupported")}
+    </p>
+  );
   if (sessions.length === 0) {
+    if (historyUnsupported) {
+      return (
+        <div data-testid={`ide-sessions-provider-${provider}`} data-provider-status="historyUnsupported">
+          <p className="muted small">{label}</p>
+          {historyUnsupportedNote}
+          {!result.complete && <p className="muted small">{t("ideSessions.reason.incomplete")}</p>}
+        </div>
+      );
+    }
     if (!result.complete) {
       // An incomplete scan found no relevant session, but that is not proof none exists: a cap or
       // timeout stopped enumeration early, so claiming NO_MATCH here would fabricate a conclusion the
@@ -85,6 +102,7 @@ function ProviderSection({ provider, result, project, stale, busy, onCopyResume,
   return (
     <div data-testid={`ide-sessions-provider-${provider}`} data-provider-status={result.complete ? "ok" : "incompleteWithResults"}>
       <h4 className="subhead">{label}</h4>
+      {historyUnsupportedNote}
       {!result.complete && (
         <p className="muted small" data-testid="ide-sessions-incomplete-note">
           {t("ideSessions.reason.incompleteWithResults")}
