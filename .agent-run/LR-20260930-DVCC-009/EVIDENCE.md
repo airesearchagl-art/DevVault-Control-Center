@@ -148,3 +148,19 @@ LR-008 and every prior Task Packet snapshot untouched.
 - Phase 4b-2b research: **READY** — DF-05 boundary explicit and tested; DF-06 reconciled; no false
   MATCHED; no DB/WAL modification attributable to DVCC; no new privacy/security regression.
   Phase 4b-2b implementation not started.
+
+
+## Task Packet snapshot timing — DEVIATION_ACCEPTED_BY_HUMAN (appended)
+
+Appended reconciliation; the earlier ordering note is not rewritten.
+
+- Task Packet snapshot timing: **DEVIATION_ACCEPTED_BY_HUMAN** (this run only).
+- Required timing: before implementation.
+- Actual timing: after the first DF-05 domain edit had been applied to the uncommitted working tree.
+- No commit existed yet at capture time.
+- Snapshot content is the verbatim Task Packet.
+- SHA-256 `a55c60b18c01ef64ac3f6f5e46e826e192c41605feba8496c894b5937b91c077` was fixed immediately
+  after capture; the snapshot was never modified afterward.
+- Independent Review did NOT silently waive the rule; the Human explicitly accepted this one run's
+  deviation (Required Fix P3-01).
+- Future runs retain the original requirement: Task Packet snapshot BEFORE implementation.

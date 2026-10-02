@@ -1,7 +1,9 @@
 # Task Queue — LR-20260930-DVCC-009
 
 - [x] Fresh Gate; branch `feat/session-discovery-v0.4b1.2` from exact `main`
-- [x] Task Packet snapshot + SHA-256
+- [x] Task Packet snapshot artifact + SHA-256 verification (verbatim; hash immutable)
+- [~] Task Packet snapshot timing — late capture (after the first uncommitted DF-05 edit);
+      explicitly accepted by Human Gate (DEVIATION_ACCEPTED_BY_HUMAN, this run only)
 - [x] DF-05 pure domain key + binding (`src/domain/ideSessionDiscovery.ts`)
 - [x] DF-05 UI warning + JA/EN strings
 - [x] DF-05 unit + UI tests (A–K, I/J)
@@ -17,3 +19,5 @@
 - [x] Evidence convergence, commit, push
 - [ ] Independent FULL Review (Human-arranged)
 - [ ] Draft PR — only after READY CANDIDATE with Required Fixes: none
+- [x] Evidence-only reconciliation of snapshot timing (Required Fix P3-01)
+- [ ] Independent Focused Evidence Re-review
