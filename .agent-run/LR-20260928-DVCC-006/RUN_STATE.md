@@ -151,3 +151,14 @@ correction was established during the Phase 4b-1 post-merge dogfood (finding DF-
 in this run's EVIDENCE.md "Post-merge erratum". PR #6 has since merged (`main` @
 `93a703e6a7eba5ec1c66a5eaf43f0c0edbf2f69d`) after a READY CANDIDATE Independent Review; both prior
 NOT READY reviews recorded above remain unchanged as history.
+
+---
+
+## Errata — appended by LR-20260930-DVCC-009 (Phase 4b-1.2, DF-06 / HD-4B12-02)
+
+Append-only clarification; the checklist above is not rewritten. AC4B1-21 ("no provider file
+modification (smoke: both fixtures byte-identical before/after)") was met for that run's synthetic,
+non-WAL fixtures. It is not a general invariant over every provider-owned file: under the DF-06
+contract, SQLite may update a live WAL database's `-shm` coordination file (read-mark / lock bytes,
+filesystem metadata) during a read, which is not a modification of provider application data. The
+database and WAL application data must remain unchanged. See `.agent-run/LR-20260930-DVCC-009/`.

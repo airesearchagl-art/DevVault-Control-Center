@@ -50,10 +50,37 @@ describe("README status", () => {
     expect(status).toMatch(/Phase 4b-1[\s\S]*merged via[\s>]+PR #6/);
     expect(status).toMatch(/93a703e6a7eba5ec1c66a5eaf43f0c0edbf2f69d/);
     expect(status).toMatch(/Phase 4b-1\.1[\s\S]*merged via[\s>]+PR #7/);
-    expect(status).toMatch(/Phase 4b-2a[\s\S]*under development/);
+    expect(status).toMatch(/Phase 4b-2a[\s\S]*merged via[\s>]+PR #8/);
+    expect(status).toMatch(/fda753d147d136f961e5c45d51c32f42cbe28bfc/);
     expect(status).toMatch(/Phase 4b-2b[\s\S]*deferred[\s>]+and[\s>]+not[\s>]+implemented/);
+    expect(status).toMatch(/DVCC copies a Resume command[\s\S]*it does not execute it/);
     expect(status).toMatch(/does not run, resume, launch or control any session/);
-    expect(status).toMatch(/Not[\s>]+released; no installer is published\./);
-    expect(status).not.toMatch(/under review|no pull request has been opened/);
+    expect(status).toMatch(/Not[\s>]+released; no[\s>]+installer is published\./);
+    expect(status).not.toMatch(/under review|no pull request has been opened|under development/);
+  });
+
+  it("no feature is still described as under development once merged (PR #8 reconciliation)", () => {
+    expect(readme).not.toMatch(/under development/);
+    expect(readme).toMatch(/\*\*Resume Handoff\*\* \(Phase 4b-2a, merged via PR #8\)/);
+    expect(readme).toMatch(/DVCC copies the\s+command; it does not run it/);
+  });
+});
+
+describe("README provider data boundary (DF-06 / HD-4B12-02)", () => {
+  const boundary = readme.slice(readme.indexOf("**Provider data boundary**"), readme.indexOf("**Resume Handoff**"));
+
+  it("states the read-only Codex contract and permits SQLite -shm coordination updates", () => {
+    expect(boundary).toMatch(/does not modify provider application data/);
+    expect(boundary).toMatch(/opened \*\*read-only\*\*/);
+    expect(boundary).toMatch(/WAL mode/);
+    expect(boundary).toMatch(/`-shm` coordination file/);
+    expect(boundary).toMatch(/read-mark \/\s+lock bytes/);
+    expect(boundary).toMatch(/filesystem metadata/);
+  });
+
+  it("never regresses into claiming every provider file is unchanged", () => {
+    expect(boundary).toMatch(/does not claim every provider file stays byte-identical/);
+    expect(readme).not.toMatch(/all provider files (are|remain|stay) (unchanged|untouched|byte-identical)/i);
+    expect(readme).not.toMatch(/provider files are never (modified|touched)/i);
   });
 });

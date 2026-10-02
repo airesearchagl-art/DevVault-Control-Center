@@ -5,7 +5,8 @@ import {
   bindCodexSessions,
   claudeHistoricalKey,
   computeProjectBindingFingerprint,
-  encodeClaudeWorkspacePath,
+  claudeHistoricalProjectKey,
+  CLAUDE_HISTORICAL_KEY_MAX_LEN,
   isCodexManagedMirrorPath,
   isIdeSessionsStale,
   normalizeRepositoryIdentity,
@@ -37,11 +38,127 @@ function canon(pairs: Record<string, string>): CanonicalPaths {
   return new Map(Object.entries(pairs));
 }
 
-describe("encodeClaudeWorkspacePath", () => {
-  it("replaces ':', '\\' and '.' with '-', matching the observed provider rule", () => {
-    expect(encodeClaudeWorkspacePath("C:\\Users\\alice\\.claude\\projects\\Alpha")).toBe(
-      "C--Users-alice--claude-projects-Alpha",
-    );
+/** Test helper: the supported ordinary key, failing the test if the path is unsupported. */
+function supportedKey(localRoot: string): string {
+  const result = claudeHistoricalProjectKey(localRoot);
+  if (result.status !== "supported") throw new Error(`expected a supported key, got ${result.reason}`);
+  return result.key;
+}
+
+function claudeHistoricalOnly(encodedDirName: string, sessionId = "55555555-5555-5555-5555-555555555555"): ClaudeDiscoveryRaw {
+  return { status: "ok", complete: true, historical: [{ encodedDirName, sessionId, updatedAtMs: null }], live: [] };
+}
+
+function sessionsOf(result: ReturnType<typeof bindClaudeSessions>): DiscoveredIdeSession[] {
+  return (result as { sessions: DiscoveredIdeSession[] }).sessions;
+}
+
+describe("claudeHistoricalProjectKey (DF-05 / HD-4B12-01 ordinary naming rule)", () => {
+  // Expected provider directory names below are literals, never derived from the function under test.
+  it("C: ':', '\\', '/' and '.' each map to '-'", () => {
+    expect(supportedKey("C:\\Users\\alice\\.claude\\projects\\Alpha")).toBe("C--Users-alice--claude-projects-Alpha");
+    expect(supportedKey("C:/work/alpha")).toBe("C--work-alpha");
+  });
+
+  it("every ASCII character outside [A-Za-z0-9] maps to '-', letters and digits keep their case", () => {
+    expect(supportedKey("C:\\work\\project_name")).toBe("C--work-project-name");
+    expect(supportedKey("C:\\work\\project name")).toBe("C--work-project-name");
+    expect(supportedKey("C:\\a-b~c!d@e#f$g%h^i&j(k)l+m=n[o]p{q}r;s'u,v`w")).toBe("C--a-b-c-d-e-f-g-h-i-j-k-l-m-n-o-p-q-r-s-u-v-w");
+    expect(supportedKey("C:\\Repo2026\\AbC")).toBe("C--Repo2026-AbC");
+  });
+
+  it("G: a non-ASCII path is unsupported, with no guessed key", () => {
+    for (const path of ["C:\\work\\プロジェクト", "C:\\work\\café", "C:\\work\\a\u00a0b"]) {
+      expect(claudeHistoricalProjectKey(path)).toEqual({ status: "unsupported", reason: "NON_ASCII" });
+    }
+  });
+
+  it("H: an ordinary encoded key longer than the limit is unsupported, with no truncation or hash guess", () => {
+    const atLimit = `C:\\${"a".repeat(CLAUDE_HISTORICAL_KEY_MAX_LEN - 3)}`;
+    expect(CLAUDE_HISTORICAL_KEY_MAX_LEN).toBe(200);
+    expect(supportedKey(atLimit)).toHaveLength(200);
+    expect(claudeHistoricalProjectKey(`${atLimit}b`)).toEqual({ status: "unsupported", reason: "LONG_NAME_HASH_UNKNOWN" });
+  });
+});
+
+describe("bindClaudeSessions — DF-05 compatibility (LRP-20260930-DVCC-009)", () => {
+  it("A: an underscore root finds its provider directory as a candidate -> AMBIGUOUS, not MATCHED", () => {
+    const p = project({ projectId: "p", localRoot: "C:\\work\\project_name" });
+    const [session] = sessionsOf(bindClaudeSessions(claudeHistoricalOnly("C--work-project-name"), [p], canon({})));
+    expect(session.binding).toBe("AMBIGUOUS");
+    expect(session.candidateProjectIds).toEqual(["p"]);
+    expect(session.matchedProjectId).toBeNull();
+  });
+
+  it("B: a space root finds its provider directory as a candidate -> AMBIGUOUS", () => {
+    const p = project({ projectId: "p", localRoot: "C:\\work\\project name" });
+    const [session] = sessionsOf(bindClaudeSessions(claudeHistoricalOnly("C--work-project-name"), [p], canon({})));
+    expect(session.binding).toBe("AMBIGUOUS");
+    expect(session.candidateProjectIds).toEqual(["p"]);
+  });
+
+  it("D/E: drive-letter and component casing differences stay case-insensitive", () => {
+    const p = project({ projectId: "p", localRoot: "C:\\Work\\Project_Name" });
+    for (const dir of ["c--work-project-name", "C--WORK-PROJECT-NAME", "c--Work-Project-Name"]) {
+      const [session] = sessionsOf(bindClaudeSessions(claudeHistoricalOnly(dir), [p], canon({})));
+      expect(session.binding).toBe("AMBIGUOUS");
+      expect(session.candidateProjectIds).toEqual(["p"]);
+    }
+  });
+
+  it("F: two distinct roots collapsing to one key (underscore vs space) are AMBIGUOUS with both candidates", () => {
+    const a = project({ projectId: "a", localRoot: "C:\\work\\project_name" });
+    const b = project({ projectId: "b", localRoot: "C:\\work\\project name" });
+    const [session] = sessionsOf(bindClaudeSessions(claudeHistoricalOnly("C--work-project-name"), [a, b], canon({})));
+    expect(session.binding).toBe("AMBIGUOUS");
+    expect(session.reason.key).toBe("ideSessions.reason.ambiguousEncodingCollision");
+    expect(session.candidateProjectIds.sort()).toEqual(["a", "b"]);
+  });
+
+  it("G/H: unsupported roots never become candidates and are reported Project-level, with no manufactured row", () => {
+    const nonAscii = project({ projectId: "jp", localRoot: "C:\\work\\プロジェクト" });
+    const long = project({ projectId: "long", localRoot: `C:\\${"x".repeat(250)}` });
+    const ok = project({ projectId: "ok", localRoot: "C:\\work\\alpha" });
+    const raw: ClaudeDiscoveryRaw = {
+      status: "ok", complete: true,
+      historical: [
+        // Directory names a naive Unicode-classifying or truncating encoder could have produced.
+        { encodedDirName: "C--work------", sessionId: "h-1", updatedAtMs: null },
+        { encodedDirName: `C--${"x".repeat(197)}`, sessionId: "h-2", updatedAtMs: null },
+      ],
+      live: [],
+    };
+    const result = bindClaudeSessions(raw, [nonAscii, long, ok], canon({}));
+    expect(result.status).toBe("ok");
+    expect((result as { historicalBindingUnsupportedProjectIds?: string[] }).historicalBindingUnsupportedProjectIds).toEqual(["jp", "long"]);
+    const sessions = sessionsOf(result);
+    expect(sessions).toHaveLength(2);
+    for (const session of sessions) {
+      expect(session.binding).toBe("NO_MATCH");
+      expect(session.candidateProjectIds).toEqual([]);
+    }
+  });
+
+  it("J: an unsupported-history Project still gets its live exact MATCHED row", () => {
+    const jp = project({ projectId: "jp", localRoot: "C:\\work\\プロジェクト" });
+    const raw: ClaudeDiscoveryRaw = {
+      status: "ok", complete: true, historical: [],
+      live: [{ sessionId: "live-1", cwd: "C:\\work\\プロジェクト", updatedAtMs: 1, version: "2.1.283" }],
+    };
+    const result = bindClaudeSessions(raw, [jp], canon({ "C:\\work\\プロジェクト": "C:\\work\\プロジェクト" }));
+    expect(sessionsOf(result)).toEqual([expect.objectContaining({ sourceKind: "LIVE", binding: "MATCHED", matchedProjectId: "jp" })]);
+    expect((result as { historicalBindingUnsupportedProjectIds?: string[] }).historicalBindingUnsupportedProjectIds).toEqual(["jp"]);
+  });
+
+  it("K: a historical session is never MATCHED from the directory key alone, even with an exact canonical root", () => {
+    const p = project({ projectId: "p", localRoot: "C:\\work\\project_name" });
+    const paths = canon({ "C:\\work\\project_name": "C:\\work\\project_name" });
+    for (const dir of ["C--work-project-name", "c--work-project-name"]) {
+      for (const session of sessionsOf(bindClaudeSessions(claudeHistoricalOnly(dir), [p], paths))) {
+        expect(session.binding).not.toBe("MATCHED");
+        expect(session.matchedProjectId).toBeNull();
+      }
+    }
   });
 });
 
@@ -92,7 +209,7 @@ describe("bindClaudeSessions", () => {
 
   it("B: a historical forward-encoded candidate is AMBIGUOUS, never MATCHED", () => {
     const alpha = project({ projectId: "alpha", localRoot: "C:\\work\\alpha" });
-    const encoded = encodeClaudeWorkspacePath("C:\\work\\alpha");
+    const encoded = supportedKey("C:\\work\\alpha");
     const raw: ClaudeDiscoveryRaw = {
       status: "ok", complete: true,
       historical: [{ encodedDirName: encoded, sessionId: "11111111-1111-1111-1111-111111111111", updatedAtMs: 1000 }],
@@ -109,8 +226,8 @@ describe("bindClaudeSessions", () => {
     // A differently-shaped but real absolute path that collides after encoding with the one above
     // (a folder literally named "work.alpha" vs a "work" folder containing an "alpha" folder).
     const b = project({ projectId: "b", localRoot: "C:\\work.alpha" });
-    const encoded = encodeClaudeWorkspacePath("C:\\work\\alpha");
-    expect(encodeClaudeWorkspacePath("C:\\work.alpha")).toBe(encoded);
+    const encoded = supportedKey("C:\\work\\alpha");
+    expect(supportedKey("C:\\work.alpha")).toBe(encoded);
     const raw: ClaudeDiscoveryRaw = {
       status: "ok", complete: true,
       historical: [{ encodedDirName: encoded, sessionId: "22222222-2222-2222-2222-222222222222", updatedAtMs: null }],
@@ -154,7 +271,7 @@ describe("bindClaudeSessions", () => {
 
   it("deduplicates a session id that appears both live and historically, keeping the live (exact) evidence", () => {
     const alpha = project({ projectId: "alpha", localRoot: "C:\\work\\alpha" });
-    const encoded = encodeClaudeWorkspacePath("C:\\work\\alpha");
+    const encoded = supportedKey("C:\\work\\alpha");
     const raw: ClaudeDiscoveryRaw = {
       status: "ok", complete: true,
       historical: [{ encodedDirName: encoded, sessionId: "same-id", updatedAtMs: 1 }],
@@ -179,8 +296,8 @@ describe("Claude historical key case handling (DF-02, LRP-20260929-DVCC-007)", (
 
   it("A: a provider key derived from a lowercase drive letter is a candidate for the uppercase Project root -> AMBIGUOUS", () => {
     const stock = project({ projectId: "stock", localRoot: "C:\\work\\StockPilot" });
-    const providerKey = encodeClaudeWorkspacePath("c:\\work\\StockPilot");
-    expect(providerKey).not.toBe(encodeClaudeWorkspacePath("C:\\work\\StockPilot")); // really differs only by case
+    const providerKey = supportedKey("c:\\work\\StockPilot");
+    expect(providerKey).not.toBe(supportedKey("C:\\work\\StockPilot")); // really differs only by case
     const sessions = (bindClaudeSessions(historicalOnly(providerKey), [stock], canon({})) as { sessions: DiscoveredIdeSession[] }).sessions;
     expect(sessions[0].binding).toBe("AMBIGUOUS");
     expect(sessions[0].candidateProjectIds).toEqual(["stock"]);
@@ -189,7 +306,7 @@ describe("Claude historical key case handling (DF-02, LRP-20260929-DVCC-007)", (
 
   it("B: path-component casing differences compare equivalently", () => {
     const stock = project({ projectId: "stock", localRoot: "C:\\Work\\STOCKPILOT" });
-    const providerKey = encodeClaudeWorkspacePath("c:\\work\\StockPilot");
+    const providerKey = supportedKey("c:\\work\\StockPilot");
     const sessions = (bindClaudeSessions(historicalOnly(providerKey), [stock], canon({})) as { sessions: DiscoveredIdeSession[] }).sessions;
     expect(sessions[0].binding).toBe("AMBIGUOUS");
     expect(sessions[0].candidateProjectIds).toEqual(["stock"]);

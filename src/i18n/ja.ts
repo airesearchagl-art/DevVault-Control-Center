@@ -346,6 +346,7 @@ export const ja = {
   "ideSessions.reason.ambiguousEncodingCollision": "複数の登録済みProjectが同じ変換結果になるため断定できません",
   "ideSessions.reason.incomplete": "探索が完了しなかったため、一致なしとは断定できません",
   "ideSessions.reason.incompleteWithResults": "探索は完了していません。表示中の結果以外にも一致がある可能性があります",
+  "ideSessions.reason.historicalBindingUnsupported": "このワークスペースパスではClaude Codeの履歴セッションを安全に紐付けできません。LIVEの完全一致には影響しません。",
   "resume.action.copy": "再開コマンドをコピー",
   "resume.note.copyOnly": "DVCCはコマンドをコピーするだけです。Codexを実行することはありません。",
   "resume.note.runFromWorkspace": "Projectのワークスペースで開いたターミナルで実行してください。",

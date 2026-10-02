@@ -337,6 +337,7 @@ export const en: Dictionary = {
   "ideSessions.reason.ambiguousEncodingCollision": "Two or more registered Projects share the same encoded identity",
   "ideSessions.reason.incomplete": "Discovery was incomplete; absence could not be confirmed.",
   "ideSessions.reason.incompleteWithResults": "Discovery did not finish; there may be more matches than shown.",
+  "ideSessions.reason.historicalBindingUnsupported": "Historical Claude Code binding is not supported for this workspace path. Live exact matches are unaffected.",
   "resume.action.copy": "Copy Resume Command",
   "resume.note.copyOnly": "DVCC only copies the command. It does not run Codex.",
   "resume.note.runFromWorkspace": "Run it in a terminal opened at the Project workspace.",
