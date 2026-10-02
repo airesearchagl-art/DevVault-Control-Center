@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Locale } from "../i18n/locale";
 import { MemoryStorage } from "../test/memoryStorage";
-import { createLocaleStore, loadSettings, parseSettings, saveLocale, serializeSettings } from "./settings";
+import { createLocaleStore, loadSettings, parseSettings, parseSettingsValues, saveLocale, serializeSettings } from "./settings";
 import { SETTINGS_TARGET, StorageError, type StorageTarget, type WritePrecondition } from "./storage";
 
 /**
@@ -28,7 +28,7 @@ class ScriptedStorage extends MemoryStorage {
 describe("loadSettings", () => {
   it("uses Japanese when the file does not exist (fresh install)", async () => {
     const storage = new MemoryStorage();
-    await expect(loadSettings(storage)).resolves.toEqual({ locale: "ja", problem: null, raw: null });
+    await expect(loadSettings(storage)).resolves.toEqual({ locale: "ja", codexExecutablePath: null, problem: null, raw: null });
   });
 
   it("returns the stored locale", async () => {
@@ -65,7 +65,7 @@ describe("loadSettings", () => {
     await storage.write(SETTINGS_TARGET, serializeSettings("en"));
     storage.failingReads.set("settings.json", "IO_ERROR");
     const loaded = await loadSettings(storage);
-    expect(loaded).toEqual({ locale: "ja", problem: "unreadable", raw: null });
+    expect(loaded).toEqual({ locale: "ja", codexExecutablePath: null, problem: "unreadable", raw: null });
   });
 
   it("reads no other file", async () => {
@@ -388,5 +388,104 @@ describe("createLocaleStore", () => {
       expect(ui).toBe(store.persisted);
       expect(ui).toBe(onDisk.locale);
     });
+  });
+});
+
+describe("Codex executable path setting (Phase 4b-2b, LRP-20261002-DVCC-010 §5/§25)", () => {
+  // Synthetic paths only: never a real user path in a committed fixture.
+  const SYNTHETIC = "C:\\synthetic\\tools\\codex.exe";
+
+  async function adopted(storage: MemoryStorage) {
+    const loaded = await loadSettings(storage);
+    const store = createLocaleStore(storage, loaded.locale);
+    store.adopt(loaded);
+    return { store, loaded };
+  }
+
+  it("a legacy locale-only file stays valid and means not configured", async () => {
+    const storage = new MemoryStorage();
+    storage.files.set("settings.json", '{\n  "schemaVersion": 1,\n  "locale": "en"\n}\n');
+    const loaded = await loadSettings(storage);
+    expect(loaded).toMatchObject({ locale: "en", codexExecutablePath: null, problem: null });
+  });
+
+  it("a file with locale and a Codex path loads both; null or empty means not configured", async () => {
+    expect(parseSettingsValues(JSON.stringify({ schemaVersion: 1, locale: "ja", codexExecutablePath: SYNTHETIC }))).toEqual({
+      locale: "ja",
+      codexExecutablePath: SYNTHETIC,
+    });
+    expect(parseSettingsValues('{"schemaVersion":1,"locale":"ja","codexExecutablePath":null}')).toEqual({ locale: "ja", codexExecutablePath: null });
+    expect(parseSettingsValues('{"schemaVersion":1,"locale":"ja","codexExecutablePath":""}')).toEqual({ locale: "ja", codexExecutablePath: null });
+  });
+
+  it.each([
+    ["a number", '{"schemaVersion":1,"locale":"ja","codexExecutablePath":3}'],
+    ["an object", '{"schemaVersion":1,"locale":"ja","codexExecutablePath":{}}'],
+    ["an array", '{"schemaVersion":1,"locale":"ja","codexExecutablePath":["x"]}'],
+  ])("a Codex path that is %s makes the file invalid, and it is left untouched", async (_label, content) => {
+    const storage = new MemoryStorage();
+    storage.files.set("settings.json", content);
+    const { store, loaded } = await adopted(storage);
+    expect(loaded.problem).toBe("invalid");
+    expect(store.writable).toBe(false);
+    const result = await store.saveCodexExecutablePath(SYNTHETIC);
+    expect(result).toMatchObject({ ok: false, refusal: "blocked", codexExecutablePath: null });
+    expect(storage.files.get("settings.json")).toBe(content);
+  });
+
+  it("an unreadable file is never overwritten by a path save", async () => {
+    const storage = new MemoryStorage();
+    await storage.write(SETTINGS_TARGET, serializeSettings("en"));
+    const before = storage.files.get("settings.json");
+    storage.failingReads.set("settings.json", "IO_ERROR");
+    const { store } = await adopted(storage);
+    expect((await store.saveCodexExecutablePath(SYNTHETIC)).ok).toBe(false);
+    expect(storage.files.get("settings.json")).toBe(before);
+  });
+
+  it("saving the path preserves the locale, and a locale change preserves the path", async () => {
+    const storage = new MemoryStorage();
+    await storage.write(SETTINGS_TARGET, serializeSettings("en"));
+    const { store } = await adopted(storage);
+
+    expect(await store.saveCodexExecutablePath(SYNTHETIC)).toEqual({ ok: true, codexExecutablePath: SYNTHETIC });
+    expect(await loadSettings(storage)).toMatchObject({ locale: "en", codexExecutablePath: SYNTHETIC });
+
+    expect((await store.save("ja")).ok).toBe(true);
+    expect(await loadSettings(storage)).toMatchObject({ locale: "ja", codexExecutablePath: SYNTHETIC });
+
+    expect((await store.saveCodexExecutablePath(null)).ok).toBe(true);
+    const cleared = await loadSettings(storage);
+    expect(cleared).toMatchObject({ locale: "ja", codexExecutablePath: null });
+    // Not configured again: the file keeps exactly the legacy shape.
+    expect(JSON.parse(storage.files.get("settings.json") ?? "")).toEqual({ schemaVersion: 1, locale: "ja" });
+  });
+
+  it("an interleaved locale switch and path save both survive (one queue, one precondition chain)", async () => {
+    const storage = new MemoryStorage();
+    const { store } = await adopted(storage);
+    await Promise.all([store.save("en"), store.saveCodexExecutablePath(SYNTHETIC)]);
+    expect(await loadSettings(storage)).toMatchObject({ locale: "en", codexExecutablePath: SYNTHETIC });
+  });
+
+  it("a write conflict fails closed and stops further writes", async () => {
+    const storage = new MemoryStorage();
+    await storage.write(SETTINGS_TARGET, serializeSettings("en"));
+    const { store } = await adopted(storage);
+    // Another program changes the file after it was read.
+    storage.files.set("settings.json", '{"schemaVersion":1,"locale":"ja"}');
+    const result = await store.saveCodexExecutablePath(SYNTHETIC);
+    expect(result).toMatchObject({ ok: false, refusal: "blocked", codexExecutablePath: null });
+    expect(storage.files.get("settings.json")).toBe('{"schemaVersion":1,"locale":"ja"}');
+    expect(store.writable).toBe(false);
+  });
+
+  it("touches no Project, review or event file", async () => {
+    const storage = new MemoryStorage();
+    await storage.write({ kind: "projects" }, '{"schemaVersion":1,"projects":[]}');
+    const { store } = await adopted(storage);
+    await store.saveCodexExecutablePath(SYNTHETIC);
+    expect([...storage.files.keys()].sort()).toEqual(["projects.json", "settings.json"].sort());
+    expect(storage.files.get("projects.json")).toBe('{"schemaVersion":1,"projects":[]}');
   });
 });

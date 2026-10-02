@@ -1,4 +1,5 @@
 mod claude_reader;
+mod codex_launcher;
 mod codex_reader;
 mod git;
 mod instance;
@@ -85,6 +86,11 @@ fn build_app(_gate: &instance::StartupGate) -> tauri::App {
             git::inspect_git_repository,
             claude_reader::discover_claude_sessions,
             codex_reader::discover_codex_sessions,
+            // Phase 4b-2b: one semantic launch action plus its two read-only checks. No shell,
+            // generic spawn or argument-list command exists.
+            codex_launcher::validate_codex_executable_path,
+            codex_launcher::preflight_codex_resume,
+            codex_launcher::launch_codex_resume,
         ])
         .build(tauri::generate_context!())
         .expect("error while building DevVault Control Center")

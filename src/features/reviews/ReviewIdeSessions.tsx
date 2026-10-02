@@ -3,18 +3,30 @@ import { Row } from "../../components/DetailRow";
 import type { IdeSessionsState } from "../../app/appState";
 import type { DiscoveredIdeSession, ProviderKind, ProviderScanResult } from "../../domain/ideSessionDiscovery";
 import type { Project } from "../../domain/project";
-import { evaluateResume } from "../../domain/resumeIntent";
+import { evaluateLaunch, evaluateResume } from "../../domain/resumeIntent";
 import { sessionIdLabels } from "../../domain/sessionIdLabels";
 import {
   formatTimestamp,
   IDE_SESSION_BINDING_KEYS,
   IDE_SESSION_PROVIDER_KEYS,
   IDE_SESSION_SOURCE_KEYS,
+  LAUNCH_REFUSAL_KEYS,
   RESUME_REFUSAL_KEYS,
   translate,
   type Translator,
 } from "../../i18n";
 import { useT } from "../../i18n/context";
+
+/**
+ * Phase 4b-2b "Resume in Codex". The row button only asks for a confirmation (`onRequest`); it never
+ * starts anything itself. Offered on Codex rows only — no Claude Code launcher exists.
+ */
+export interface ResumeLaunchProps {
+  /** The Human-configured executable; only whether it is set matters here (never displayed). */
+  codexExecutablePath: string | null;
+  /** Receives the full session and its presentation-only label. */
+  onRequest: (session: DiscoveredIdeSession, label: string) => void;
+}
 
 export interface ReviewIdeSessionsProps {
   project: Project | null;
@@ -25,6 +37,7 @@ export interface ReviewIdeSessionsProps {
   onRefresh: () => void;
   /** Phase 4b-2a: receives the full discovered session — never its display label (the label is presentation only). */
   onCopyResume: (session: DiscoveredIdeSession) => void;
+  resumeLaunch?: ResumeLaunchProps;
 }
 
 /** Sessions worth showing for `project`: exactly MATCHED to it, or AMBIGUOUS with it as a candidate — never a flat, unfiltered dump (Task Packet §21: "Do not claim ambiguous sessions belong to the Project"). */
@@ -42,10 +55,11 @@ interface SectionProps {
   stale: boolean;
   busy: boolean;
   onCopyResume: (session: DiscoveredIdeSession) => void;
+  resumeLaunch?: ResumeLaunchProps;
   t: Translator;
 }
 
-function ProviderSection({ provider, result, project, stale, busy, onCopyResume, t }: SectionProps) {
+function ProviderSection({ provider, result, project, stale, busy, onCopyResume, resumeLaunch, t }: SectionProps) {
   const label = t(IDE_SESSION_PROVIDER_KEYS[provider]);
   if (result.status === "unavailable") {
     return (
@@ -143,6 +157,20 @@ function ProviderSection({ provider, result, project, stale, busy, onCopyResume,
               disabledReason={resume.eligible ? null : t(RESUME_REFUSAL_KEYS[resume.reason])}
             />
           </div>
+          {resumeLaunch && session.provider === "CODEX" && (() => {
+            const launch = evaluateLaunch(session, project, stale, resumeLaunch.codexExecutablePath);
+            return (
+              <div data-testid="ide-session-launch" data-launch={launch.eligible ? "ELIGIBLE" : launch.reason}>
+                <ActionButton
+                  label={t("resume.action.launch")}
+                  testId="action-launch-resume"
+                  enabled={launch.eligible && !busy}
+                  onClick={() => resumeLaunch.onRequest(session, labels.get(session.sessionId) ?? "")}
+                  disabledReason={launch.eligible ? null : t(LAUNCH_REFUSAL_KEYS[launch.reason])}
+                />
+              </div>
+            );
+          })()}
         </div>
         );
       })}
@@ -150,7 +178,7 @@ function ProviderSection({ provider, result, project, stale, busy, onCopyResume,
   );
 }
 
-export function ReviewIdeSessions({ project, ideSessions, stale, busy, onRefresh, onCopyResume }: ReviewIdeSessionsProps) {
+export function ReviewIdeSessions({ project, ideSessions, stale, busy, onRefresh, onCopyResume, resumeLaunch }: ReviewIdeSessionsProps) {
   const t = useT();
   if (project === null) return null;
 
@@ -183,7 +211,16 @@ export function ReviewIdeSessions({ project, ideSessions, stale, busy, onRefresh
       {ideSessions.status === "loaded" && !stale && (
         <>
           <ProviderSection provider="CLAUDE_CODE" result={ideSessions.scan.claude} project={project} stale={stale} busy={busy} onCopyResume={onCopyResume} t={t} />
-          <ProviderSection provider="CODEX" result={ideSessions.scan.codex} project={project} stale={stale} busy={busy} onCopyResume={onCopyResume} t={t} />
+          <ProviderSection
+            provider="CODEX"
+            result={ideSessions.scan.codex}
+            project={project}
+            stale={stale}
+            busy={busy}
+            onCopyResume={onCopyResume}
+            resumeLaunch={resumeLaunch}
+            t={t}
+          />
         </>
       )}
     </section>

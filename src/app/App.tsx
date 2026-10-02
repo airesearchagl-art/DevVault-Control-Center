@@ -66,10 +66,16 @@ import { appReducer, initialAppState, type ToastKind } from "./appState";
 import { describeError } from "./format";
 import { copyIdeHandoffAction } from "./ideHandoffAction";
 import { copyResumeCommandAction } from "./copyResumeCommandAction";
+import { confirmResumeLaunch, requestResumeLaunch, type LaunchContext, type ResumeLaunchRequest } from "./launchCodexResumeAction";
+import { tauriCodexLauncher } from "../services/codexLauncher";
+import { ResumeLaunchDialog } from "../features/reviews/ResumeLaunchDialog";
+import { CodexExecutableDialog } from "../features/settings/CodexExecutableDialog";
+import type { DiscoveredIdeSession } from "../domain/ideSessionDiscovery";
 import "./App.css";
 
 const launcher = tauriLauncher;
 const gitObserver = tauriGitObserver;
+const codexLauncher = tauriCodexLauncher;
 
 type DialogState =
   | null
@@ -77,7 +83,9 @@ type DialogState =
   | { kind: "editProject"; projectId: string }
   | { kind: "createReview"; projectId: string }
   | { kind: Exclude<DetailDialog, "editProject">; reviewId: string }
-  | { kind: "setAsideProjects" };
+  | { kind: "setAsideProjects" }
+  | { kind: "codexExecutable" }
+  | { kind: "resumeLaunch"; request: ResumeLaunchRequest };
 
 // User-facing text for a failed save; conflicts explain that nothing was overwritten.
 function saveFailed(t: Translator, error: unknown): Message {
@@ -96,6 +104,9 @@ export default function App() {
   // The selector waits for the file to be read: a write must never be judged against a file this
   // run has not seen yet.
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  // Phase 4b-2b: the Human-configured Codex executable (settings.json only; never shown outside its
+  // own configuration dialog).
+  const [codexExecutablePath, setCodexExecutablePath] = useState<string | null>(null);
   const t = useMemo(() => createTranslator(locale), [locale]);
   const loadStarted = useRef(false);
   const hubRef = useRef<ReviewHub | null>(null);
@@ -106,6 +117,14 @@ export default function App() {
   const notify = useCallback((kind: ToastKind, message: string) => dispatch({ type: "toast", kind, message }), []);
   const dismissToast = useCallback((id: number) => dispatch({ type: "dismissToast", id }), []);
   const closeDialog = useCallback(() => setDialog(null), []);
+  const validateCodexExecutable = useCallback(
+    (path: string) =>
+      codexLauncher.validateExecutable(path).then(
+        () => true,
+        () => false,
+      ),
+    [],
+  );
 
   // The UI shows exactly the state the hub committed (F-4), in commit order.
   useEffect(() => hub.subscribe((snapshot) => dispatch({ type: "hubCommitted", snapshot })), [hub]);
@@ -150,6 +169,7 @@ export default function App() {
         if (cancelled) return;
         localeStore.adopt(settings);
         setLocaleState(settings.locale);
+        setCodexExecutablePath(settings.codexExecutablePath);
         setSettingsLoaded(true);
         if (settings.problem !== null) {
           dispatch({
@@ -206,6 +226,39 @@ export default function App() {
   const projectById = useMemo(() => new Map(state.projects.map((project) => [project.projectId, project])), [state.projects]);
   const selectedProject = selectedSession ? (projectById.get(selectedSession.projectId) ?? null) : null;
   const projectsWritable = isWritable(state.projectsHealth);
+
+  /** The live launch facts for a session, looked up from the current state at the moment of a Human action. */
+  const launchContextFor = (session: DiscoveredIdeSession): LaunchContext => {
+    const stale = state.ideSessions.status !== "loaded" || isIdeSessionsStale(state.ideSessions.fingerprint, state.projects);
+    return { session, project: selectedProject, stale, codexExecutablePath };
+  };
+
+  /** The same session, by full ID, in the discovery result as it is now (`null` once it is gone). */
+  const currentCodexSession = (sessionId: string): DiscoveredIdeSession | null => {
+    if (state.ideSessions.status !== "loaded" || state.ideSessions.scan.codex.status !== "ok") return null;
+    return state.ideSessions.scan.codex.sessions.find((session) => session.sessionId === sessionId) ?? null;
+  };
+
+  const saveCodexExecutable = async (path: string | null): Promise<boolean> => {
+    if (path !== null) {
+      const valid = await codexLauncher.validateExecutable(path).then(
+        () => true,
+        () => false,
+      );
+      if (!valid) {
+        notify("warning", t("codexSettings.toast.invalid"));
+        return false;
+      }
+    }
+    const result = await localeStore.saveCodexExecutablePath(path);
+    if (!result.ok) {
+      notify(result.refusal === "blocked" ? "warning" : "error", t(result.refusal === "blocked" ? "codexSettings.toast.notWritable" : "codexSettings.toast.saveFailed", { file: "settings.json" }));
+      return false;
+    }
+    setCodexExecutablePath(result.codexExecutablePath);
+    notify("info", t(result.codexExecutablePath === null ? "codexSettings.toast.cleared" : "codexSettings.toast.saved"));
+    return true;
+  };
   const loadedSessions = useMemo(
     () => state.reviews.flatMap((review) => (review.session ? [review.session] : [])),
     [state.reviews],
@@ -630,6 +683,15 @@ export default function App() {
           const stale = state.ideSessions.status !== "loaded" || isIdeSessionsStale(state.ideSessions.fingerprint, state.projects);
           void copyResumeCommandAction(session, selectedProject?.projectId ?? null, stale, t, copyText, notify);
         }}
+        resumeLaunch={{
+          codexExecutablePath,
+          onRequest: (session, label) => {
+            // Step 1 of 2: only ever opens the confirmation, after a fresh re-evaluation + preflight.
+            void requestResumeLaunch(launchContextFor(session), label, t, codexLauncher, notify).then((request) => {
+              if (request) setDialog({ kind: "resumeLaunch", request });
+            });
+          },
+        }}
         priorReviews={priorReviewsFor(loadedSessions, {
           reviewSessionId: selectedSession.reviewSessionId,
           round: selectedSession.reviewRound,
@@ -708,6 +770,9 @@ export default function App() {
         </h1>
         <div className="topbar-actions">
           <LanguageSelector disabled={busy || !settingsLoaded} />
+          <button type="button" onClick={() => setDialog({ kind: "codexExecutable" })} disabled={!settingsLoaded} data-testid="btn-codex-executable">
+            {t("codexSettings.action.open")}
+          </button>
           <button type="button" onClick={() => setDialog({ kind: "createProject" })} disabled={!projectsWritable} data-testid="btn-new-project">
             {t("app.actions.newProject")}
           </button>
@@ -934,6 +999,28 @@ export default function App() {
           danger
           testId="close-dialog"
           onConfirm={() => withDialogClose(runAction(dialogSession, { type: "close", confirmedByHuman: true }, t("toast.reviewClosed")))}
+          onCancel={closeDialog}
+        />
+      )}
+      {dialog?.kind === "codexExecutable" && (
+        <CodexExecutableDialog
+          storedPath={codexExecutablePath}
+          validate={validateCodexExecutable}
+          onSave={saveCodexExecutable}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog?.kind === "resumeLaunch" && (
+        <ResumeLaunchDialog
+          request={dialog.request}
+          onConfirm={async (acknowledged) => {
+            // Step 2 of 2: re-evaluated against the state as it is now, by full session ID.
+            const session = currentCodexSession(dialog.request.sessionId);
+            const current = session === null ? null : launchContextFor(session);
+            const attempted = acknowledged;
+            await confirmResumeLaunch(dialog.request, current, acknowledged, t, codexLauncher, notify);
+            if (attempted) closeDialog();
+          }}
           onCancel={closeDialog}
         />
       )}

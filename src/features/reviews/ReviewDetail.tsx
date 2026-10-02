@@ -34,7 +34,7 @@ import { ReviewEvidence } from "./ReviewEvidence";
 import { ReviewFreshness } from "./ReviewFreshness";
 import { ReviewHandoff } from "./ReviewHandoff";
 import { ReviewIdeHandoff } from "./ReviewIdeHandoff";
-import { ReviewIdeSessions } from "./ReviewIdeSessions";
+import { ReviewIdeSessions, type ResumeLaunchProps } from "./ReviewIdeSessions";
 import { ReviewWorkflow } from "./ReviewWorkflow";
 
 export type DetailDialog =
@@ -78,6 +78,8 @@ interface ReviewDetailProps {
   onRefreshIdeSessions: () => void;
   /** Phase 4b-2a: copy-only Resume Handoff for one full discovered session (never its display label). */
   onCopyResume: (session: DiscoveredIdeSession) => void;
+  /** Phase 4b-2b: "Resume in Codex" (opens a confirmation only; see `ReviewIdeSessions`). */
+  resumeLaunch?: ResumeLaunchProps;
   /** Every round that could already have reviewed this head; the current round is excluded. */
   priorReviews: readonly PriorReview[];
   onRecordEvidence: (decisions: RoundEvidenceDecision[]) => void;
@@ -123,6 +125,7 @@ export function ReviewDetail({
   ideSessionsStale,
   onRefreshIdeSessions,
   onCopyResume,
+  resumeLaunch,
   priorReviews,
   onRecordEvidence,
   onSaveNextAction,
@@ -480,6 +483,7 @@ export function ReviewDetail({
         busy={busy}
         onRefresh={onRefreshIdeSessions}
         onCopyResume={onCopyResume}
+        resumeLaunch={resumeLaunch}
       />
 
       <section className="card">

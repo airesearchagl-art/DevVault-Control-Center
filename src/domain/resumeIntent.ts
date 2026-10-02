@@ -70,6 +70,40 @@ export function evaluateResume(session: DiscoveredIdeSession, selectedProjectId:
 }
 
 /**
+ * Phase 4b-2b "Resume in Codex": every Phase 4b-2a condition, unchanged and evaluated first, plus
+ * what an actual launch needs — the selected Project's local folder and a Human-configured Codex
+ * executable. This is the frontend half only; the native command re-validates every fact
+ * independently (the executable, the ID, the thread, the folder) and is the real boundary.
+ */
+export type LaunchRefusal = ResumeRefusal | "NO_LOCAL_ROOT" | "CODEX_EXECUTABLE_NOT_CONFIGURED";
+
+export interface LaunchIntent extends ResumeIntent {
+  projectRoot: string;
+  codexExecutablePath: string;
+}
+
+export type LaunchEligibility = { eligible: true; intent: LaunchIntent } | { eligible: false; reason: LaunchRefusal };
+
+export interface LaunchProject {
+  projectId: string;
+  localRoot: string | null;
+}
+
+export function evaluateLaunch(
+  session: DiscoveredIdeSession,
+  project: LaunchProject | null,
+  stale: boolean,
+  codexExecutablePath: string | null,
+): LaunchEligibility {
+  if (project === null) return { eligible: false, reason: "NOT_MATCHED" };
+  const resume = evaluateResume(session, project.projectId, stale);
+  if (!resume.eligible) return resume;
+  if (project.localRoot === null || project.localRoot.trim() === "") return { eligible: false, reason: "NO_LOCAL_ROOT" };
+  if (codexExecutablePath === null || codexExecutablePath.trim() === "") return { eligible: false, reason: "CODEX_EXECUTABLE_NOT_CONFIGURED" };
+  return { eligible: true, intent: { ...resume.intent, projectRoot: project.localRoot, codexExecutablePath } };
+}
+
+/**
  * Exactly one line, `codex resume <uuid>`: no quoting (the validated ID cannot need any), no path,
  * no `-C`, no `cd`, no compound shell expression, no project or repository information.
  */

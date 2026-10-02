@@ -341,6 +341,89 @@ fn scan(path: &std::path::Path, query_timeout: Duration) -> CodexDiscovery {
     }
 }
 
+/// Phase 4b-2b: the launch-time recheck of one thread, read again immediately before a Codex process
+/// is created (Task Packet §10). Same read-only boundary as `scan` (`open_read_only`, schema gate,
+/// bounded text) and a fixed statement with a bound parameter that names only `id`, `cwd` and
+/// `archived` — never a content column, never a value spliced into SQL.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ThreadLaunchLookup {
+    Found { cwd: String, archived: bool },
+    NotFound,
+    /// The state file is missing, unopenable, interrupted, or not in the recognized shape.
+    Unavailable(String),
+}
+
+const LAUNCH_LOOKUP_COLUMNS: &[&str] = &["id", "cwd", "archived"];
+
+pub fn lookup_thread_for_launch(path: &std::path::Path, session_id: &str) -> ThreadLaunchLookup {
+    if !path.exists() {
+        return ThreadLaunchLookup::Unavailable("the Codex state file does not exist".to_string());
+    }
+    let conn = match open_read_only(path) {
+        Ok(conn) => conn,
+        Err(error) => return ThreadLaunchLookup::Unavailable(format!("could not open the Codex state file read-only: {error}")),
+    };
+    match table_exists(&conn, "threads") {
+        Ok(true) => {}
+        Ok(false) => return ThreadLaunchLookup::Unavailable("the 'threads' table is not present".to_string()),
+        Err(error) => return ThreadLaunchLookup::Unavailable(format!("could not read schema metadata: {error}")),
+    }
+    match threads_columns(&conn) {
+        Ok(present) if LAUNCH_LOOKUP_COLUMNS.iter().all(|c| present.iter().any(|p| p == c)) => {}
+        Ok(_) => return ThreadLaunchLookup::Unavailable("a required column is missing".to_string()),
+        Err(error) => return ThreadLaunchLookup::Unavailable(format!("could not read column metadata: {error}")),
+    }
+    let interrupt_handle = conn.get_interrupt_handle();
+    std::thread::spawn(move || {
+        std::thread::sleep(QUERY_TIMEOUT);
+        interrupt_handle.interrupt();
+    });
+    // `LIMIT 2`: `id` is the primary key, so a second row would mean an unrecognized shape.
+    let mut statement = match conn.prepare("SELECT id, cwd, archived FROM threads WHERE id = ?1 LIMIT 2") {
+        Ok(statement) => statement,
+        Err(error) => return ThreadLaunchLookup::Unavailable(format!("query failed: {error}")),
+    };
+    let mut rows = match statement.query([session_id]) {
+        Ok(rows) => rows,
+        Err(error) => return ThreadLaunchLookup::Unavailable(format!("query failed: {error}")),
+    };
+    let mut found: Option<(String, bool)> = None;
+    loop {
+        match rows.next() {
+            Ok(Some(row)) => {
+                if found.is_some() {
+                    return ThreadLaunchLookup::Unavailable("more than one row has this id".to_string());
+                }
+                let id_matches = matches!(checked_text(row, 0), Ok(CheckedText::Value(ref id)) if id == session_id);
+                let cwd = match checked_text(row, 1) {
+                    Ok(CheckedText::Value(value)) => value,
+                    _ => return ThreadLaunchLookup::Unavailable("the thread's cwd is not plausible metadata".to_string()),
+                };
+                let archived = match row.get::<_, i64>(2) {
+                    Ok(value) => value != 0,
+                    Err(_) => return ThreadLaunchLookup::Unavailable("the thread's archived flag is not an integer".to_string()),
+                };
+                if !id_matches {
+                    return ThreadLaunchLookup::Unavailable("the returned id does not match".to_string());
+                }
+                found = Some((cwd, archived));
+            }
+            Ok(None) => break,
+            Err(error) => return ThreadLaunchLookup::Unavailable(format!("query failed: {error}")),
+        }
+    }
+    match found {
+        Some((cwd, archived)) => ThreadLaunchLookup::Found { cwd, archived },
+        None => ThreadLaunchLookup::NotFound,
+    }
+}
+
+/// The real state file, honoring the same `DVCC_CODEX_HOME_DIR` override discovery already uses
+/// (no new runtime override is introduced for launching).
+pub fn launch_state_db_path() -> Option<PathBuf> {
+    state_db_path()
+}
+
 #[tauri::command]
 pub async fn discover_codex_sessions() -> CodexDiscovery {
     match state_db_path() {

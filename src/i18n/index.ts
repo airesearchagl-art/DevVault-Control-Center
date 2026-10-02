@@ -10,7 +10,8 @@ import type { GitStatus } from "../domain/git";
 import type { UnknownCause } from "../domain/freshnessCause";
 import type { HeadBinding, ObservedHeadRelation } from "../domain/headBinding";
 import type { ProviderKind, SessionBindingState, SessionSourceKind } from "../domain/ideSessionDiscovery";
-import type { ResumeRefusal } from "../domain/resumeIntent";
+import type { LaunchRefusal, ResumeRefusal } from "../domain/resumeIntent";
+import type { LaunchErrorCode } from "../services/codexLauncher";
 import type { ResourceState, ReviewState, Verdict } from "../domain/states";
 import { en } from "./en";
 import { ja } from "./ja";
@@ -246,6 +247,31 @@ export const RESUME_REFUSAL_KEYS: Record<ResumeRefusal, TranslationKey> = {
   ARCHIVED: "resume.refusal.archived",
   INVALID_SESSION_ID: "resume.refusal.invalidSessionId",
   PROVIDER_NOT_SUPPORTED: "resume.refusal.providerNotSupported",
+};
+
+/** Phase 4b-2b: why "Resume in Codex" is disabled for a row (frontend eligibility). */
+export const LAUNCH_REFUSAL_KEYS: Record<LaunchRefusal, TranslationKey> = {
+  ...RESUME_REFUSAL_KEYS,
+  NO_LOCAL_ROOT: "resume.refusal.noLocalRoot",
+  CODEX_EXECUTABLE_NOT_CONFIGURED: "resume.refusal.codexNotConfigured",
+};
+
+/** Phase 4b-2b: the native command's stable refusal / failure codes. */
+export const LAUNCH_ERROR_KEYS: Record<LaunchErrorCode, TranslationKey> = {
+  STALE_DISCOVERY: "resume.launch.error.STALE_DISCOVERY",
+  NOT_MATCHED: "resume.launch.error.NOT_MATCHED",
+  ARCHIVED: "resume.launch.error.ARCHIVED",
+  INVALID_SESSION_ID: "resume.launch.error.INVALID_SESSION_ID",
+  NO_LOCAL_ROOT: "resume.launch.error.NO_LOCAL_ROOT",
+  UNSAFE_PROJECT_ROOT: "resume.launch.error.UNSAFE_PROJECT_ROOT",
+  CODEX_EXECUTABLE_NOT_CONFIGURED: "resume.launch.error.CODEX_EXECUTABLE_NOT_CONFIGURED",
+  CODEX_EXECUTABLE_UNTRUSTED: "resume.launch.error.CODEX_EXECUTABLE_UNTRUSTED",
+  UNSUPPORTED_CODEX_LAUNCHER: "resume.launch.error.UNSUPPORTED_CODEX_LAUNCHER",
+  SESSION_NOT_FOUND: "resume.launch.error.SESSION_NOT_FOUND",
+  CWD_MISMATCH: "resume.launch.error.CWD_MISMATCH",
+  INTERACTIVE_CONSOLE_UNAVAILABLE: "resume.launch.error.INTERACTIVE_CONSOLE_UNAVAILABLE",
+  PROVIDER_UNAVAILABLE: "resume.launch.error.PROVIDER_UNAVAILABLE",
+  PROCESS_LAUNCH_FAILED: "resume.launch.error.PROCESS_LAUNCH_FAILED",
 };
 
 export const IDE_SESSION_BINDING_KEYS: Record<SessionBindingState, TranslationKey> = {
