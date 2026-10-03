@@ -1,7 +1,11 @@
 # Evidence — LR-20261002-DVCC-010 (Phase 4b-2b, Resume in Codex)
 
-No real path, real session ID, executable absolute path or provider content appears here. Real
-Codex was NOT launched in this run (AC4B2B-28).
+No real path, real session ID, executable absolute path or provider content appears here.
+
+Timeline: implementation, mutation, regression, and synthetic running-app verification were
+completed without launching real Codex (AC4B2B-28). After Independent FULL Review returned READY
+CANDIDATE with Required Fixes none, the Human authorized exactly one real Codex launch for
+REAL_CODEX_LAUNCH_DOGFOOD_GATE. That one-shot dogfood completed PASS (sections at the end).
 
 ## Ordering (AC4B2B-01/02)
 
@@ -125,21 +129,68 @@ also admits the confirmation-gated `action-launch-resume`), resume handoff 63/63
 27/27, IDE handoff 38/38, review workflow 113/113. Not re-run (untouched areas):
 `verify-clipboard-interceptor.ps1`, `verify-single-instance.ps1`.
 
-## Hard checks (§34)
+## Hard checks (§34) — pre-dogfood Independent FULL Review state
+
+Recorded at the reviewed code head before the dogfood gate. The dogfood did not re-run the
+Independent Review or these checks.
 
 Security PASS (no shell, no generic launcher, strict validation both sides, shims refused) ·
 Privacy PASS (no provider output captured; only `id`/`cwd`/`archived` read; no path / full ID /
 exe in dialog, toast, evidence) · Auth PASS (no credential involved) · Permission PASS (no
 capability / plugin change; dedicated commands only) · Data integrity PASS (settings compat + fail
 closed; no Project/Review/event write) · Irreversible-data safety PASS (provider DB read-only; no
-unarchive; real Codex never launched).
+unarchive; no real Codex launch during the implementation run).
+
+## Independent FULL Review
+
+```
+reviewed exact code head: 74fa8667d0e1bdb3c99ed7caedd517c3f9203d81
+judgment:                 READY CANDIDATE
+Required Fixes:           none
+```
+
+## REAL_CODEX_LAUNCH_DOGFOOD_GATE (2026-10-03)
+
+Gate: **PASS**. Human authorization: one real launch only. Second launch: none.
+
+Setup (Human, release build started normally, normal data): one real Project registered with
+repository URL and local root; one Review created; a native console `codex.exe` (not a shim)
+configured and validated; IDE Sessions refreshed; a Codex row MATCHED to the Project with
+"Resume in Codex" enabled. Observation: Human screenshots and `/status` output, plus a bounded
+read-only process monitor (lineage and command line of new processes) started and verified
+before the Human was told to launch. Two earlier monitoring windows had no Human launch
+(no click; then no Project/Review data) and recorded zero DVCC launches; the one-shot was not
+consumed by them.
+
+Observed:
+
+- confirmation dialog showed provider / Project / abbreviated label / action, the "already open?"
+  and "process only" warnings, no workspace warning, and confirm gated by the checkbox
+- exactly one DVCC-initiated `codex.exe` process
+- direct DVCC parent; no shell intermediary (no `cmd / powershell / pwsh / bash / wt` in lineage)
+- native resume argument form: `resume <full selected session ID>`
+- new interactive console: a console host attached to `codex.exe`; Windows Terminal (default
+  terminal hand-off by the OS, outside the process lineage) displayed it as a new tab
+- Codex TUI displayed (OpenAI Codex v0.153.4)
+- selected session ID matched Codex `/status`
+- configured Project root matched the child cwd (TUI and `/status` directory)
+- provider output remained in the Codex console; DVCC displayed none
+- Codex remained running after DVCC exited (Human closed DVCC; monitor recorded the exit)
+- no second DVCC launch observed through the end of monitoring
+- helper processes started by Codex itself were children of `codex.exe`, not of DVCC
+
+Product-code delta caused by dogfood: none (head unchanged at `74fa8667…`, worktree clean).
+Raw monitor logs containing real identifiers stay outside the repository.
 
 ## Unverified items
 
-- Real `codex.exe` was not launched (gate below). Its interactive TUI in a `CREATE_NEW_CONSOLE`
-  console, Windows Terminal hand-off behavior, and Codex's own workspace prompt are not observed.
-- Mapped network drive rejection for the executable is covered by the shared boundary's existing
-  ignored test only (needs a temporary mapping).
+- Conversation history restoration for a session that actually contains prior conversation
+  content was not exercised: the selected dogfood session had no conversation body, so history
+  re-display was not tested. (Resume of the selected session itself was confirmed via `/status`.)
+- Exact DVCC toast wording was not captured during the real dogfood (wording is covered by unit
+  tests and the synthetic smoke).
 - Behavior when Codex Desktop holds the same thread open is unknown (warning + acknowledgement only).
+- Mapped network drive rejection for the executable is covered only by the previously documented
+  limitation: the shared boundary's existing ignored test (needs a temporary mapping).
 
-REAL_CODEX_LAUNCH_DOGFOOD_GATE: **PENDING**
+REAL_CODEX_LAUNCH_DOGFOOD_GATE: **PASS**

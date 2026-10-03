@@ -1,8 +1,27 @@
 # Run State — LR-20261002-DVCC-010
 
 Status: implementation, tests, mutations, full regression and synthetic running-app smoke
-complete; committed and pushed to `feat/session-resume-launcher-v0.4b2b`. **STOPPED for
-Independent FULL Review.** No Draft PR. Real Codex never launched.
+complete; committed and pushed to `feat/session-resume-launcher-v0.4b2b`. Independent FULL Review
+returned READY CANDIDATE; the Human-authorized REAL_CODEX_LAUNCH_DOGFOOD_GATE then completed PASS.
+**STOPPED for Evidence Closeout / Focused Re-review.** No Draft PR.
+
+```
+Independent FULL Review:         READY CANDIDATE
+Required Fixes:                  none
+reviewed exact code head:        74fa8667d0e1bdb3c99ed7caedd517c3f9203d81
+
+REAL_CODEX_LAUNCH_DOGFOOD_GATE:  PASS (2026-10-03, Human-observed)
+real launch count:               1 Human-authorized launch
+second launch:                   none
+product-code delta from dogfood: none
+
+current state:                   STOPPED for Evidence Closeout / Focused Re-review
+Draft PR:                        not created
+```
+
+Timeline: no real Codex launch during the implementation run (implementation, mutation campaign,
+full regression, synthetic running-app smoke — AC4B2B-28). After READY CANDIDATE, the Human
+authorized exactly one real launch for the dogfood gate; it was performed once and passed.
 
 Task Packet snapshot timing: compliant — snapshot + SHA-256 first, on `main`, before the branch
 and before any implementation edit.
@@ -36,9 +55,16 @@ and before any implementation edit.
 - [x] AC4B2B-25 M-P4B2B-01..13 killed, restored byte-identical
 - [x] AC4B2B-26 native synthetic tests PASS
 - [x] AC4B2B-27 running-app synthetic smoke PASS (75/75)
-- [x] AC4B2B-28 real Codex NOT launched
+- [x] AC4B2B-28 real Codex NOT launched during implementation run (implementation, mutation,
+      full regression, synthetic smoke — all before the Human-authorized dogfood gate)
 - [x] AC4B2B-29 copy-only 4b-2a still functional (resume-handoff smoke 63/63)
 - [x] AC4B2B-30 no Claude launcher
-- [x] AC4B2B-31 hard checks PASS
+- [x] AC4B2B-31 hard checks PASS (pre-dogfood Independent FULL Review)
 
-REAL_CODEX_LAUNCH_DOGFOOD_GATE: **PENDING**
+## Post-review gates
+
+- [x] Independent FULL Review — READY CANDIDATE / Required Fixes: none — reviewed exact code head
+      `74fa8667d0e1bdb3c99ed7caedd517c3f9203d81`
+- [x] REAL_CODEX_LAUNCH_DOGFOOD_GATE — one Human-authorized real launch — PASS (see EVIDENCE.md)
+
+REAL_CODEX_LAUNCH_DOGFOOD_GATE: **PASS**

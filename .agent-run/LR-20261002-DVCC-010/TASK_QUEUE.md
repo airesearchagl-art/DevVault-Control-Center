@@ -16,6 +16,9 @@
 - [x] Full regression
 - [x] Synthetic running-app smoke + regression smokes
 - [x] Evidence convergence, commit, push
-- [ ] Independent FULL Review
-- [ ] REAL_CODEX_LAUNCH_DOGFOOD_GATE (Human: authorize one real launch, or waive)
-- [ ] Draft PR — only after READY CANDIDATE (Required Fixes: none) AND the gate is resolved
+- [x] Independent FULL Review — READY CANDIDATE / Required Fixes: none — reviewed exact code head
+      `74fa8667d0e1bdb3c99ed7caedd517c3f9203d81`
+- [x] REAL_CODEX_LAUNCH_DOGFOOD_GATE — Human-authorized one real launch — PASS
+- [x] Evidence Closeout (evidence-only; no product-code change)
+- [ ] Draft PR — only after READY CANDIDATE (Required Fixes: none) AND the gate is resolved;
+      not created in this closeout (next gate: Evidence-only Focused Re-review)
