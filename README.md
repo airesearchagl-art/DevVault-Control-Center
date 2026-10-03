@@ -15,13 +15,17 @@ restarting the app.
 > PR #5), Phase 4b-1 (read-only IDE session discovery v0.4b1, merged via PR #6; `main` after
 > PR #6: `93a703e6a7eba5ec1c66a5eaf43f0c0edbf2f69d`), Phase 4b-1.1 (dogfood findings repair,
 > merged via PR #7), Phase 4b-2a (copy-only Resume Handoff, merged via PR #8; `main` after PR #8:
-> `fda753d147d136f961e5c45d51c32f42cbe28bfc`) and Phase 4b-1.2 (discovery compatibility / read-only
+> `fda753d147d136f961e5c45d51c32f42cbe28bfc`), Phase 4b-1.2 (discovery compatibility / read-only
 > contract closeout, merged via PR #9; `main` after PR #9:
-> `a54a77e12d2b144027d4dec96c1f14236f3715fd`) are merged. Phase 4b-2b (Resume in Codex — a
-> Human-confirmed launch of one native Codex process) is under development on
-> `feat/session-resume-launcher-v0.4b2b` and not merged. On `main`, DVCC copies a Resume command for
-> you to run; it does not execute it, and does not run, resume, launch or control any session. Not
-> released; no installer is published.
+> `a54a77e12d2b144027d4dec96c1f14236f3715fd`) and Phase 4b-2b (Resume in Codex — a Human-confirmed
+> launch of one native Codex process, merged via PR #10; `main` after PR #10:
+> `2000a68fbc1c6ad1c573a30e820554c9110b4ce0`) are merged. Before merge, Phase 4b-2b passed its
+> real-launch dogfood gate (`REAL_CODEX_LAUNCH_DOGFOOD_GATE`: PASS — exactly one Human-authorized
+> launch, no second launch). On `main`, DVCC copies a Resume command for you to run, and — only
+> after your explicit confirmation — can start one native Codex process for an eligible Codex
+> session; it runs no shell, captures no provider output, and does not observe or control the
+> session after the process starts. Not released; no installer is published. Production: not
+> performed.
 
 ## What it does
 
@@ -119,7 +123,7 @@ restarting the app.
   command: not an exact match, stale discovery, archived, an unverifiable ID, or a Claude Code session
   that appears to be active (no Claude Code command is offered in this phase). Nothing is persisted,
   no event is written, and there is no launcher, attach, fork or unarchive action.
-- **Resume in Codex** (Phase 4b-2b, under development) — for the same eligible Codex rows, a
+- **Resume in Codex** (Phase 4b-2b, merged via PR #10) — for the same eligible Codex rows, a
   second, separate action starts **one native Codex process, only after Human confirmation**: the row
   button opens a dialog (provider, Project name, abbreviated session label, an "already open?"
   warning that must be acknowledged with a checkbox), and only its confirm button launches. You
