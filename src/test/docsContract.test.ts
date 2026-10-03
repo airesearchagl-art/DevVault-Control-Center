@@ -52,17 +52,40 @@ describe("README status", () => {
     expect(status).toMatch(/Phase 4b-1\.1[\s\S]*merged via[\s>]+PR #7/);
     expect(status).toMatch(/Phase 4b-2a[\s\S]*merged via[\s>]+PR #8/);
     expect(status).toMatch(/fda753d147d136f961e5c45d51c32f42cbe28bfc/);
-    expect(status).toMatch(/Phase 4b-2b[\s\S]*deferred[\s>]+and[\s>]+not[\s>]+implemented/);
-    expect(status).toMatch(/DVCC copies a Resume command[\s\S]*it does not execute it/);
-    expect(status).toMatch(/does not run, resume, launch or control any session/);
+    // Phase 4b-1.2 (LRP-20261002-DVCC-010 §32): merged via PR #9, with the new main SHA.
+    expect(status).toMatch(/Phase 4b-1\.2[\s\S]*merged via[\s>]+PR #9/);
+    expect(status).toMatch(/a54a77e12d2b144027d4dec96c1f14236f3715fd/);
+    // Phase 4b-2b is on its branch: under development, not merged, not released.
+    expect(status).toMatch(/Phase 4b-2b[\s\S]*under development[\s\S]*not merged/);
+    expect(status).toMatch(/On `main`, DVCC copies a Resume command[\s\S]*it does not execute it/);
     expect(status).toMatch(/Not[\s>]+released; no[\s>]+installer is published\./);
-    expect(status).not.toMatch(/under review|no pull request has been opened|under development/);
+    expect(status).not.toMatch(/under review|no pull request has been opened|released via|merged via[\s>]+PR #10/);
   });
 
-  it("no feature is still described as under development once merged (PR #8 reconciliation)", () => {
-    expect(readme).not.toMatch(/under development/);
+  it("only Phase 4b-2b is described as under development (PR #8 / PR #9 reconciliation)", () => {
+    const positions = [...readme.matchAll(/under development/g)].map((match) => match.index ?? 0);
+    expect(positions.length).toBeGreaterThan(0);
+    // Each mention belongs to Phase 4b-2b: it is named within the same sentence just before.
+    for (const at of positions) expect(readme.slice(Math.max(0, at - 160), at)).toMatch(/Phase 4b-2b/);
     expect(readme).toMatch(/\*\*Resume Handoff\*\* \(Phase 4b-2a, merged via PR #8\)/);
     expect(readme).toMatch(/DVCC copies the\s+command; it does not run it/);
+  });
+});
+
+describe("README Resume in Codex boundary (Phase 4b-2b, LRP-20261002-DVCC-010 §32)", () => {
+  const section = readme.slice(readme.indexOf("**Resume in Codex**"), readme.indexOf("**Japanese and English**"));
+
+  it("states the launch boundary explicitly", () => {
+    expect(section).toMatch(/one native Codex process, only after Human confirmation/);
+    expect(section).toMatch(/no shell, no terminal launcher/);
+    expect(section).toMatch(/no provider output is\s+captured/);
+    expect(section).toMatch(/Copy Resume Command remains available/);
+    expect(section).toMatch(/DVCC does not observe whether Codex resumed the session/);
+    expect(section).toMatch(/no Claude Code launcher exists/);
+  });
+
+  it("never claims the launch resumed the session or that anything is released", () => {
+    expect(section).not.toMatch(/resumed successfully|is released|installer is available/i);
   });
 });
 

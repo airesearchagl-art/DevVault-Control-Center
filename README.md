@@ -13,12 +13,15 @@ restarting the app.
 > Status: Phase 1 (Review Hub v0.1), Phase 2 (Evidence / Freshness v0.2), the Localization
 > Foundation (v0.2.1), Phase 3 (Review Workflow v0.3), Phase 4a (IDE Handoff v0.4a, merged via
 > PR #5), Phase 4b-1 (read-only IDE session discovery v0.4b1, merged via PR #6; `main` after
-> PR #6: `93a703e6a7eba5ec1c66a5eaf43f0c0edbf2f69d`) and Phase 4b-1.1 (dogfood findings repair,
-> merged via PR #7) and Phase 4b-2a (copy-only Resume Handoff, merged via PR #8; `main` after PR #8:
-> `fda753d147d136f961e5c45d51c32f42cbe28bfc`) are merged. Phase 4b-2b (actually launching or
-> resuming a session) is deferred and not implemented. DVCC copies a Resume command for you to run;
-> it does not execute it, and does not run, resume, launch or control any session. Not released; no
-> installer is published.
+> PR #6: `93a703e6a7eba5ec1c66a5eaf43f0c0edbf2f69d`), Phase 4b-1.1 (dogfood findings repair,
+> merged via PR #7), Phase 4b-2a (copy-only Resume Handoff, merged via PR #8; `main` after PR #8:
+> `fda753d147d136f961e5c45d51c32f42cbe28bfc`) and Phase 4b-1.2 (discovery compatibility / read-only
+> contract closeout, merged via PR #9; `main` after PR #9:
+> `a54a77e12d2b144027d4dec96c1f14236f3715fd`) are merged. Phase 4b-2b (Resume in Codex — a
+> Human-confirmed launch of one native Codex process) is under development on
+> `feat/session-resume-launcher-v0.4b2b` and not merged. On `main`, DVCC copies a Resume command for
+> you to run; it does not execute it, and does not run, resume, launch or control any session. Not
+> released; no installer is published.
 
 ## What it does
 
@@ -95,8 +98,8 @@ restarting the app.
   only in memory and disappear on restart; nothing is written to `projects.json`, `session.json` or
   `events.jsonl`. No conversation content, prompt, response, title or transcript is read or shown.
   A session's workspace path is read internally, only to decide the binding; it is never displayed or
-  persisted, and neither is any provider storage path. DVCC does not launch, resume,
-  discover-and-open, or control any IDE/session process, invoke a provider CLI, or add a
+  persisted, and neither is any provider storage path. Discovery itself never launches, resumes,
+  discovers-and-opens or controls any IDE/session process, invokes a provider CLI, or adds a
   shell/terminal capability.
   Claude Code history is matched by the provider's ordinary folder naming (every ASCII character other
   than a letter or digit becomes `-`, compared case-insensitively) and is only ever `AMBIGUOUS`, never
@@ -116,9 +119,24 @@ restarting the app.
   command: not an exact match, stale discovery, archived, an unverifiable ID, or a Claude Code session
   that appears to be active (no Claude Code command is offered in this phase). Nothing is persisted,
   no event is written, and there is no launcher, attach, fork or unarchive action.
+- **Resume in Codex** (Phase 4b-2b, under development) — for the same eligible Codex rows, a
+  second, separate action starts **one native Codex process, only after Human confirmation**: the row
+  button opens a dialog (provider, Project name, abbreviated session label, an "already open?"
+  warning that must be acknowledged with a checkbox), and only its confirm button launches. You
+  configure the native `codex.exe` once (absolute local path; `.cmd`, `.ps1` and extensionless
+  shims are refused) and it is re-validated at every launch, together with the session ID, the
+  session's presence and non-archived state in Codex's state file (read-only), and the Project folder,
+  which becomes the process's working directory only. DVCC starts `codex.exe resume <session-id>`
+  directly in a new console — **no shell, no terminal launcher**, and **no provider output is
+  captured**. A session whose own workspace is clearly a different local folder is refused; for a
+  Codex-managed mirror the dialog says Codex may ask which workspace to use. Success means only that
+  the process started: **DVCC does not observe whether Codex resumed the session**. Nothing besides the
+  executable path is stored (no event, no launch history). Copy Resume Command remains available, and
+  no Claude Code launcher exists.
 - **Japanese and English** — the interface is Japanese by default; the language selector in the top
   bar switches to English and back at once, without touching any review, project or Git state. The
-  choice is remembered in `settings.json` in the data folder and restored at the next start. Both
+  choice is remembered in `settings.json` in the data folder and restored at the next start (the same
+  local file also holds the optional Codex executable path, nothing else). Both
   languages ship together: a key that exists in one dictionary and not the other does not compile.
   Stored values (review state, resource state, freshness, event type, schema field, file name, error
   code) stay language-neutral, and what you typed is never translated.
@@ -250,6 +268,8 @@ src-tauri/
                    append-only events, recovery restore, quarantine
   src/launcher.rs  Validated URL / folder launcher (opener plugin; local final targets only)
   src/git.rs       Read-only local Git observation (bounded, no shell, no network)
+  src/codex_launcher.rs  Phase 4b-2b: validated Codex resume launch (native codex.exe only, no shell)
+  test-fixtures/   Synthetic console fixture standing in for codex.exe in tests/smoke (never ships)
   capabilities/    core:default + clipboard write only
 contract/       Shared limits (limits.json) used by TypeScript and Rust
 scripts/        Reproducible verification (single instance, localization UI smoke)

@@ -354,8 +354,10 @@ function Get-CodexIdLabels {
 # "Copy Resume Command" (which copies text and never runs anything): no launch, attach, fork or other
 # action exists on it.
 function Assert-NoResumeControl([string] $label) {
-  $other = Invoke-Cdp "Array.from(document.querySelectorAll('[data-testid=detail-ide-sessions] button, [data-testid=detail-ide-sessions] a, [data-testid=detail-ide-sessions] [role=button]')).filter((el) => el.dataset.testid !== 'action-refresh-ide-sessions' && el.dataset.testid !== 'action-copy-resume').length"
-  Check "$label : the IDE Sessions card has no control other than Refresh and Copy Resume Command (nothing that runs a session)" ($other -eq 0) "other controls=$other"
+  # Phase 4b-2b adds "Resume in Codex", which only opens a confirmation (verified by
+  # verify-resume-launcher-ui.ps1); nothing on the card itself runs a session.
+  $other = Invoke-Cdp "Array.from(document.querySelectorAll('[data-testid=detail-ide-sessions] button, [data-testid=detail-ide-sessions] a, [data-testid=detail-ide-sessions] [role=button]')).filter((el) => el.dataset.testid !== 'action-refresh-ide-sessions' && el.dataset.testid !== 'action-copy-resume' && el.dataset.testid !== 'action-launch-resume').length"
+  Check "$label : the IDE Sessions card has no control other than Refresh, Copy Resume Command and Resume in Codex (confirmation-gated)" ($other -eq 0) "other controls=$other"
 }
 
 function Get-ClaudeSection {

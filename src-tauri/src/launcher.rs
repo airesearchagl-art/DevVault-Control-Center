@@ -201,12 +201,28 @@ fn reject_network_links(path: &Path, depth: u32) -> Result<(), CommandError> {
     Ok(())
 }
 
+/// What kind of file-system entry a validated local path must be.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LocalEntryKind {
+    Directory,
+    /// A regular file (Phase 4b-2b: the Human-configured Codex executable).
+    File,
+}
+
 /// Accepts only an absolute local drive path (e.g. `C:\work\project`) of an existing directory.
 /// UNC, device, verbatim, drive-relative and relative paths are rejected by form; link targets
 /// inside the path are checked without following them (E-5); then symbolic links, junctions and
 /// mapped drives are resolved to the final target, which must also be on a local drive (F-9).
 /// The resolved local path is returned and is what gets opened.
 pub fn validate_project_folder(raw: &str) -> Result<PathBuf, CommandError> {
+    validate_local_entry(raw, LocalEntryKind::Directory)
+}
+
+/// The one shared local-path boundary behind `validate_project_folder` (Phase 4b-2b reuses it for
+/// the Codex executable instead of a second, possibly weaker policy). Identical checks in identical
+/// order; only the final entry-type test differs. A path of the wrong kind is `NOT_A_DIRECTORY`
+/// for a directory and `NOT_A_FILE` for a file.
+pub fn validate_local_entry(raw: &str, kind: LocalEntryKind) -> Result<PathBuf, CommandError> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Err(folder_rejected("FOLDER_REJECTED", "folder path is empty"));
@@ -236,7 +252,11 @@ pub fn validate_project_folder(raw: &str) -> Result<PathBuf, CommandError> {
     // Links pointing to network locations are rejected before anything follows them (E-5).
     reject_network_links(path, 0)?;
     match fs::metadata(path) {
-        Ok(metadata) if metadata.is_dir() => {}
+        Ok(metadata) if kind == LocalEntryKind::Directory && metadata.is_dir() => {}
+        Ok(metadata) if kind == LocalEntryKind::File && metadata.is_file() => {}
+        Ok(_) if kind == LocalEntryKind::File => {
+            return Err(folder_rejected("NOT_A_FILE", "path is not a regular file"))
+        }
         Ok(_) => {
             return Err(folder_rejected(
                 "NOT_A_DIRECTORY",
