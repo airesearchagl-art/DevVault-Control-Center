@@ -55,19 +55,31 @@ describe("README status", () => {
     // Phase 4b-1.2 (LRP-20261002-DVCC-010 §32): merged via PR #9, with the new main SHA.
     expect(status).toMatch(/Phase 4b-1\.2[\s\S]*merged via[\s>]+PR #9/);
     expect(status).toMatch(/a54a77e12d2b144027d4dec96c1f14236f3715fd/);
-    // Phase 4b-2b is on its branch: under development, not merged, not released.
-    expect(status).toMatch(/Phase 4b-2b[\s\S]*under development[\s\S]*not merged/);
-    expect(status).toMatch(/On `main`, DVCC copies a Resume command[\s\S]*it does not execute it/);
+    // Phase 4b-2b (post-4b-2b current-state repair): merged via PR #10, with the new main SHA and
+    // the real-launch dogfood gate result.
+    expect(status).toMatch(/Phase 4b-2b[\s\S]*merged via[\s>]+PR #10/);
+    expect(status).toMatch(/2000a68fbc1c6ad1c573a30e820554c9110b4ce0/);
+    expect(status).toMatch(/`REAL_CODEX_LAUNCH_DOGFOOD_GATE`: PASS/);
+    // On `main` the copy action stays copy-only, and the launch needs explicit confirmation and
+    // never becomes a shell, an output capture or session control.
+    expect(status).toMatch(/On `main`, DVCC copies a Resume command for[\s>]+you to run/);
+    expect(status).toMatch(/only[\s>]+after your explicit confirmation/);
+    expect(status).toMatch(/runs no shell, captures no provider output/);
+    expect(status).toMatch(/does not observe or control the[\s>]+session after the process starts/);
+    // Still not released, and nothing has gone to Production.
     expect(status).toMatch(/Not[\s>]+released; no[\s>]+installer is published\./);
-    expect(status).not.toMatch(/under review|no pull request has been opened|released via|merged via[\s>]+PR #10/);
+    expect(status).toMatch(/Production: not[\s>]+performed\./);
+    expect(status).not.toMatch(/under review|no pull request has been opened|released via|is released|installer is available/i);
   });
 
-  it("only Phase 4b-2b is described as under development (PR #8 / PR #9 reconciliation)", () => {
-    const positions = [...readme.matchAll(/under development/g)].map((match) => match.index ?? 0);
-    expect(positions.length).toBeGreaterThan(0);
-    // Each mention belongs to Phase 4b-2b: it is named within the same sentence just before.
-    for (const at of positions) expect(readme.slice(Math.max(0, at - 160), at)).toMatch(/Phase 4b-2b/);
+  it("no current-facing README text describes Phase 4b-2b as under development or not merged", () => {
+    // Every phase the README names is merged. A later in-progress phase must update this test
+    // deliberately rather than inherit stale wording.
+    expect(readme).not.toMatch(/under development/);
+    expect(readme).not.toMatch(/not merged/);
+    expect(readme).not.toMatch(/feat\/session-resume-launcher-v0\.4b2b/);
     expect(readme).toMatch(/\*\*Resume Handoff\*\* \(Phase 4b-2a, merged via PR #8\)/);
+    expect(readme).toMatch(/\*\*Resume in Codex\*\* \(Phase 4b-2b, merged via PR #10\)/);
     expect(readme).toMatch(/DVCC copies the\s+command; it does not run it/);
   });
 });
