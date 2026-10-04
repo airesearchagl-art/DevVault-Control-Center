@@ -1,0 +1,23 @@
+# Task Queue — LR-20261005-DVCC-011
+
+- [x] Fresh Gate (base `7efdc62c…`, clean, no open PR, helpers present, baseline recorded)
+- [x] rev 3.1 Task Packet snapshot + SHA-256 on `main`, before the branch
+- [x] Branch `feat/control-read-contract-v1` from exact `main`
+- [x] STOP on the confirmation-table mismatch → HD-5A-09 (option A) → rev 3.2 + second snapshot
+- [x] Continuation authorization under rev 3.2
+- [x] Contract types / vocabularies (`contract.ts`)
+- [x] EvidenceRef builders, 7 variants, existing validators only (`evidenceRef.ts`)
+- [x] Pure projection over existing domain functions, HD-5A-09 rule (`projection.ts`)
+- [x] `readControl` with the fixed 10-step validation order
+- [x] `ControlReadSource` (5 keys) + `newControlSnapshotId`
+- [x] Copy control snapshot (JSON) action + ReviewDetail wiring + i18n JA/EN
+- [x] `docs/control-read-contract-v1.md` + docsContract coverage + README
+- [x] Tests: evidenceRef / projection / readControl / disclosure / provenance / source / copy action
+- [x] Mutation campaign M-5A-01..36 (37 probes) — all killed, restored byte-identical
+- [x] typecheck / tests / build / cargo check / release build
+- [x] Running-app smoke Case A–D (78 / 0 / 0)
+- [x] Regression smokes (0 failed; 3 clipboard INCONCLUSIVE, external activity)
+- [x] Evidence closeout
+- [ ] Independent FULL Review (`PHASE_5A_INDEPENDENT_FULL_REVIEW`)
+- [ ] Human running-app dogfood (rev 3.2 §19 G4)
+- [ ] Draft PR — only after READY CANDIDATE (Required Fixes: none) and the Human gates

@@ -35,6 +35,10 @@
 
 ## Authorization state
 
-- `PHASE_5A_IMPLEMENTATION_CONTINUATION = HOLD` — the original authorization is paused by the
-  Task Packet STOP condition and is not read as blanket authority under the revised packet.
-- Next gate: `TASK_PACKET_REV3_2_FOCUSED_REVIEW`.
+- After the STOP: `PHASE_5A_IMPLEMENTATION_CONTINUATION = HOLD` — the original authorization was
+  paused by the Task Packet STOP condition and not read as blanket authority under the revised packet.
+- `TASK_PACKET_REV3_2_FOCUSED_REVIEW = PASS` (Required Fixes 0) →
+  `PHASE_5A_IMPLEMENTATION_CONTINUATION = YES` under rev 3.2.
+- Implementation complete; next gate: `PHASE_5A_INDEPENDENT_FULL_REVIEW`. Not authorized: MCP, IPC,
+  new Tauri command, DOT, Phase 5B, Worker / Run, ApprovalGrant / Lease, Data Model change, Jev,
+  Draft PR, Ready, merge, release, Production.

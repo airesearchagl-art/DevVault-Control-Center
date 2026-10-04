@@ -72,7 +72,8 @@ function Refresh-Git {
   Click "action-refresh-git"
   if (-not (Wait-For "document.querySelector('[data-testid=detail-freshness]')?.dataset.state === 'ALIGNED'" 20)) { throw "Git observation did not complete" }
 }
-function Last-Toast { return [string](Invoke-Cdp "(() => { const t = [...document.querySelectorAll('[data-testid=toast]')]; return t.length ? t[t.length - 1].textContent : ''; })()") }
+# The message only (the toast also holds its dismiss button).
+function Last-Toast { return [string](Invoke-Cdp "(() => { const t = [...document.querySelectorAll('[data-testid=toast]')]; return t.length ? (t[t.length - 1].querySelector('span')?.textContent ?? '') : ''; })()") }
 
 # Presses Copy control snapshot and returns the parsed JSON (or $null, INCONCLUSIVE).
 function Copy-Snapshot([string] $label) {
@@ -85,9 +86,11 @@ function Copy-Snapshot([string] $label) {
 # --- synthetic Git repository ---------------------------------------------------------------------
 function Invoke-Git([string] $dir) {
   $gitArgs = @("-C", $dir, "-c", "user.name=dvcc-smoke", "-c", "user.email=smoke@example.invalid", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main") + $args
+  # Git writes progress and hints to stderr; only the exit code decides.
+  $ErrorActionPreference = "Continue"
   $out = & git.exe @gitArgs 2>$null
   if ($LASTEXITCODE -ne 0) { throw "git $($args -join ' ') failed (exit $LASTEXITCODE)" }
-  return $out
+  return ($out | Out-String).Trim()
 }
 
 # --- sentinels (synthetic; none may appear in any copy) -------------------------------------------

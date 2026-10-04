@@ -42,3 +42,39 @@ AC5A-27, §19 HD table). No other contract / architecture / scope change.
 - rev 3.2 is recorded as a second immutable snapshot (`TASK_PACKET_SNAPSHOT_REV3_2.md`,
   SHA-256 `1d663c7c…44d2bd02`), created after branch creation and before Control Read product
   implementation.
+
+## D-03 — Structural, minimal source types in the domain
+
+`ControlReadSource` is declared in `src/domain/controlRead/contract.ts` with structural types
+(`ControlReadSourceProject` = projectId / repositoryUrl / localRoot / createdAt;
+`ControlReadSourceReview.health` = `{ status }` only; `SourceHealthStatus` mirrors the six
+`FileHealth` statuses). The domain does not import `services/persistence`, and the projection cannot
+reach display name, notes, next action, health messages or set-aside names through its types. A new
+`FileHealth` status would stop `AppState` from being assignable (compile-time guard).
+
+## D-04 — Fail-closed edges not spelled out in rev 3.2
+
+- Observed HEAD is OBSERVED only when `headBinding(head) === "EXACT"` (full SHA, the existing
+  workflow test); otherwise `UNKNOWN HEAD_NOT_COMPARABLE`. Observed `dirty` / `detached` null →
+  `UNKNOWN OBSERVATION_FAILED` (the existing `unknownCause` grouping for the same condition).
+- A review whose `session !== null` but whose status is not readable is treated as unattributable
+  (the persistence invariant says this cannot occur; the code does not trust it).
+- `get_review_state` follows the registry gate too (§13: freshness needs the project's local root and
+  creation time).
+- `fields` is omitted when no unrecognized name is listable (all unsafe).
+
+## D-05 — Human UI adapter details
+
+- `onCopyControlSnapshot` is an optional `ReviewDetail` prop; the button renders only when wired, so
+  existing component tests are unchanged.
+- The copied JSON is pretty-printed (2 spaces + final newline) for the Human; the contract content is
+  the `readControl` result unchanged.
+- Refusals toast only the error code; a copy failure toasts a fixed sentence (no underlying message).
+- `snapshot_id` = `snap-` + UUID v4 from `crypto.getRandomValues` (`newControlSnapshotId`).
+
+## D-06 — Mutation probe split and pre-run coverage
+
+M-5A-17 ("projection / copy action writes") was run as 17a (projection writes into its source,
+killed by the frozen-source test) and 17b (copy action writes twice). Two probes (M-5A-10 display-name
+lookup with a valid-looking name, M-5A-18 envelope `complete`) had no killing test before the
+campaign; the identity and truncation tests were added before running it.
