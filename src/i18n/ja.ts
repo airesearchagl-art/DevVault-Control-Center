@@ -91,6 +91,7 @@ export const ja = {
   "detail.actions.openFolder": "プロジェクトフォルダを開く",
   "detail.actions.openFolderMissing": "ローカルルートが未記録です",
   "detail.actions.copyPrompt": "レビュー依頼をコピー（R{round}）",
+  "detail.actions.copyControlSnapshot": "制御スナップショット（JSON）をコピー",
 
   // --- review detail: cards --------------------------------------------------------------------
   "detail.card.review": "レビュー",
@@ -359,6 +360,9 @@ export const ja = {
   "resume.refusal.providerNotSupported": "このプロバイダのセッションには、この段階では再開コマンドを作成しません。",
   "resume.toast.copied": "再開コマンドをクリップボードにコピーしました",
   "resume.toast.copyFailed": "再開コマンドのコピーに失敗しました: {error}",
+  "controlRead.toast.copied": "制御スナップショット（JSON）をクリップボードにコピーしました",
+  "controlRead.toast.copyFailed": "制御スナップショットのコピーに失敗しました",
+  "controlRead.toast.unavailable": "制御スナップショットを作成できません（{code}）",
   "resume.action.launch": "Codexで再開",
   "resume.refusal.noLocalRoot": "Projectのローカルフォルダが設定されていないため、Codexを起動できません。",
   "resume.refusal.codexNotConfigured": "Codex実行ファイルが設定されていません。上部の「Codex実行ファイル」から設定してください。",

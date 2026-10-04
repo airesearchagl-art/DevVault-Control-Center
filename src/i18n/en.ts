@@ -84,6 +84,7 @@ export const en: Dictionary = {
   "detail.actions.openFolder": "Open project folder",
   "detail.actions.openFolderMissing": "No local root recorded",
   "detail.actions.copyPrompt": "Copy review prompt (R{round})",
+  "detail.actions.copyControlSnapshot": "Copy control snapshot (JSON)",
 
   // --- review detail: cards --------------------------------------------------------------------
   "detail.card.review": "Review",
@@ -350,6 +351,9 @@ export const en: Dictionary = {
   "resume.refusal.providerNotSupported": "Resume commands are not offered for this provider's sessions at this stage.",
   "resume.toast.copied": "Copied the resume command to the clipboard",
   "resume.toast.copyFailed": "Copying the resume command failed: {error}",
+  "controlRead.toast.copied": "Copied the control snapshot (JSON) to the clipboard",
+  "controlRead.toast.copyFailed": "Copying the control snapshot failed",
+  "controlRead.toast.unavailable": "The control snapshot cannot be created ({code})",
   "resume.action.launch": "Resume in Codex",
   "resume.refusal.noLocalRoot": "The Project has no local folder, so Codex cannot be started.",
   "resume.refusal.codexNotConfigured": "No Codex executable is configured. Set one with the Codex executable button at the top.",

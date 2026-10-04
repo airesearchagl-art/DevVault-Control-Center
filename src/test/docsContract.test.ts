@@ -1,5 +1,19 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import {
+  BLOCKED_REASONS,
+  CONTROL_READ_CONTRACT,
+  CONTROL_READ_ERROR_CODES,
+  CONTROL_READ_ERROR_REASONS,
+  CONTROL_READ_OPERATIONS,
+  FACT_CLASSES,
+  HUMAN_CONFIRMATIONS,
+  LIMIT_KINDS,
+  OMITTED_SECTIONS,
+  RULE_IDS,
+  UNKNOWN_REASONS,
+} from "../domain/controlRead/contract";
+import { EVIDENCE_REF_KINDS, REVIEW_FIELDS, REVIEW_ROUND_FIELDS } from "../domain/controlRead/evidenceRef";
 import { REVIEW_EVENT_TYPES } from "../domain/events";
 import { EVIDENCE_REASONS, EVIDENCE_SOURCES, EVIDENCE_STATUSES } from "../domain/evidenceReuse";
 import { INVALIDATION_REASONS } from "../domain/revalidation";
@@ -98,6 +112,53 @@ describe("README Resume in Codex boundary (Phase 4b-2b, LRP-20261002-DVCC-010 §
 
   it("never claims the launch resumed the session or that anything is released", () => {
     expect(section).not.toMatch(/resumed successfully|is released|installer is available/i);
+  });
+});
+
+describe("docs/control-read-contract-v1.md (Phase 5A)", () => {
+  const controlRead = readFileSync("docs/control-read-contract-v1.md", "utf8");
+
+  it("names the contract, its version and every stored vocabulary item", () => {
+    expect(controlRead).toContain(`\`${CONTROL_READ_CONTRACT}\`, version \`1\``);
+    for (const name of [
+      ...FACT_CLASSES,
+      ...RULE_IDS,
+      ...UNKNOWN_REASONS,
+      ...BLOCKED_REASONS,
+      ...HUMAN_CONFIRMATIONS,
+      ...CONTROL_READ_OPERATIONS,
+      ...CONTROL_READ_ERROR_CODES,
+      ...CONTROL_READ_ERROR_REASONS,
+      ...OMITTED_SECTIONS,
+      ...LIMIT_KINDS,
+      ...EVIDENCE_REF_KINDS,
+      ...REVIEW_FIELDS,
+      ...REVIEW_ROUND_FIELDS,
+    ]) {
+      expect(controlRead, name).toContain(name);
+    }
+  });
+
+  it("states the boundary: read-only, no transport, no persistence, no eligibility", () => {
+    expect(controlRead).toMatch(/\*\*read-only\*\*/);
+    expect(controlRead).toMatch(/No MCP server, IPC channel, named pipe, HTTP endpoint or\s+Tauri command exists for it/);
+    expect(controlRead).toMatch(/Nothing is written: no storage write, no event, no new file\./);
+    expect(controlRead).toMatch(/never answers what an agent may do/);
+    expect(controlRead).toMatch(/snapshot_id`\s+\(identifier only — never an authority, lock or concurrency token\)/);
+  });
+
+  it("states the HD-5A-09 review state confirmation rule", () => {
+    expect(controlRead).toMatch(/`CLOSED` → `EXPLICIT`/);
+    expect(controlRead).toMatch(/`EXPLICIT` only if the current round's `verdict`\s+equals the review state \*\*and\*\* its `verdictConfirmedAt` is set; otherwise `ENTERED`/);
+    expect(controlRead).toMatch(/No inference from the state name alone, from `suspendedFrom`, or from event history\./);
+  });
+});
+
+describe("README Control Read (Phase 5A)", () => {
+  it("describes the copy-only Human adapter and the read-only, transport-free boundary", () => {
+    expect(readme).toMatch(/\*\*Control snapshot copy\*\* \(Phase 5A\)/);
+    expect(readme).toMatch(/docs\/control-read-contract-v1\.md/);
+    expect(readme).toMatch(/Control Read \(Phase 5A\) is read-only and has no transport: no MCP, IPC or network endpoint/);
   });
 });
 

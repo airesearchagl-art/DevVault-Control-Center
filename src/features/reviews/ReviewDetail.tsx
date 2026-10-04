@@ -71,6 +71,8 @@ interface ReviewDetailProps {
   onCopyFollowup: () => void;
   /** Phase 4a: copies a deterministic IDE Handoff text. Computed and copied only; nothing is persisted. */
   onCopyIdeHandoff: () => void;
+  /** Phase 5A: copies the sanitized Control Read v1 snapshot (JSON) of this review's project. Copy only. */
+  onCopyControlSnapshot?: () => void;
   /** Phase 4b-1: Human-triggered, read-only local session discovery. Runtime-only; see `appState.ts`. */
   ideSessions: IdeSessionsState;
   /** True once the Project registry has changed since `ideSessions` was computed (RF-P4B1-01). */
@@ -121,6 +123,7 @@ export function ReviewDetail({
   onCopyPrompt,
   onCopyFollowup,
   onCopyIdeHandoff,
+  onCopyControlSnapshot,
   ideSessions,
   ideSessionsStale,
   onRefreshIdeSessions,
@@ -265,6 +268,14 @@ export function ReviewDetail({
           disabledReason={requestReason}
           onClick={onCopyPrompt}
         />
+        {onCopyControlSnapshot && (
+          <ActionButton
+            label={t("detail.actions.copyControlSnapshot")}
+            testId="action-copy-control-snapshot"
+            enabled={!busy}
+            onClick={onCopyControlSnapshot}
+          />
+        )}
       </section>
 
       <div className="detail-grid">
