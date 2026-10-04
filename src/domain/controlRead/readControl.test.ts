@@ -79,6 +79,25 @@ describe("readControl — envelope", () => {
     expect(result.data.reviews.map((review) => review.review_session_id)).toEqual([REVIEW_ID]);
   });
 
+  it("reports truncation in the envelope: complete false with the applied limits", () => {
+    const many = Array.from({ length: 53 }, (_, index) => loaded(newSession(`rv-202610${String(index).padStart(2, "0")}-aaaaaa`)));
+    const result = readControl(snapshotRequest, source({ reviews: many }), ENV) as Envelope<ControlSnapshotV1>;
+    expect(result.complete).toBe(false);
+    expect(result.limits_applied).toEqual(["MAX_REVIEWS"]);
+    const projectResult = readControl(request({ operation: "get_project_state", project_id: PROJECT_ID }), source({ reviews: many }), ENV);
+    expect(projectResult).toMatchObject({ complete: false, limits_applied: ["MAX_REVIEWS"] });
+  });
+
+  it("identifies a project by its projectId only — never by display name, folder name or repository name", () => {
+    const named = project({ displayName: "other-name", localRoot: "C:\\example\\folder-name", repositoryUrl: "https://github.com/example-org/repo-name" });
+    for (const alias of ["other-name", "folder-name", "repo-name", "example-org"]) {
+      expect(errorOf(readControl(request({ operation: "get_project_state", project_id: alias }), source({ projects: [named] }), ENV)), alias).toEqual({
+        code: "TARGET_NOT_FOUND",
+      });
+    }
+    expect("error" in readControl(request({ operation: "get_project_state", project_id: PROJECT_ID }), source({ projects: [named] }), ENV)).toBe(false);
+  });
+
   it("serves get_project_state and get_review_state from the same projection", () => {
     const snapshot = readControl(snapshotRequest, source(), ENV) as Envelope<ControlSnapshotV1>;
     const projectResult = readControl(request({ operation: "get_project_state", project_id: PROJECT_ID }), source(), ENV);
