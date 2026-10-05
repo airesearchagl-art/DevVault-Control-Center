@@ -1,5 +1,6 @@
-# Output, audit-core calls and finalization for the G4 real-data audit harness (HD-5A-10, rev 3.4).
-# Dot-sourced by scripts/verify-control-read-real-data-audit.ps1 (and by its tests).
+# Output, one-shot attempt marker, audit-core calls and finalization for the G4 real-data audit
+# harness (HD-5A-10, rev 3.5). Dot-sourced by scripts/verify-control-read-real-data-audit.ps1 (and by
+# its tests).
 #
 # Error boundary: nothing in here lets an exception, its message or a path reach the console. Every
 # function catches its own failures and turns them into a fixed code; Complete-AuditRun is the last
@@ -13,6 +14,38 @@ function Say([string] $text) {
     $text = "[g4] (line withheld)"
   }
   Write-Host $text
+}
+
+# The one-shot attempt marker (rev 3.5). Fixed schema, nothing variable but the two commit SHAs of the
+# DVCC repository: no data value of any kind. Returns $null when a value is outside its schema.
+function Format-AttemptMarker([string] $productHead, [string] $harnessHead) {
+  if ($productHead -notmatch '^[0-9a-f]{40}$' -or $harnessHead -notmatch '^[0-9a-f]{40}$') { return $null }
+  return "schema_version: 1`nproduct_head: $productHead`nharness_head: $harnessHead`nstate: STARTED`n"
+}
+
+# Creates the marker with FileMode.CreateNew: it fails when the file exists, so a marker is never
+# overwritten, and nothing in this harness ever deletes one. Returns $true only when the marker was
+# created and holds exactly the formatted text. A failure after creation leaves the (possibly empty)
+# marker in place: the attempt still counts. Never throws, never prints.
+function New-AttemptMarker([string] $path, [string] $productHead, [string] $harnessHead) {
+  $text = Format-AttemptMarker $productHead $harnessHead
+  if ($null -eq $text) { return $false }
+  $stream = $null
+  try {
+    $bytes = [System.Text.UTF8Encoding]::new($false).GetBytes($text)
+    $stream = [System.IO.File]::Open($path, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+    $stream.Write($bytes, 0, $bytes.Length)
+    $stream.Flush($true)
+    $stream.Dispose()
+    $stream = $null
+    return ((Test-Path -LiteralPath $path -PathType Leaf) -and ((Get-Item -LiteralPath $path).Length -eq $bytes.Length))
+  }
+  catch {
+    return $false
+  }
+  finally {
+    if ($null -ne $stream) { try { $stream.Dispose() } catch { } }
+  }
 }
 
 # Runs a node script with one UTF-8 request on stdin; returns the parsed JSON line, or $null on any

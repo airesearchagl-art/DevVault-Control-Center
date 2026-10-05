@@ -155,6 +155,32 @@ governance evidence only; product code untouched):
 - Report fields `result_reason` and `exact_comparison_overlaps_excluded`: ADOPTED by G4-B; the latter
   now counts resolved + unresolved overlaps.
 
+## D-11 — G4-C one-shot is fixed by an attempt marker (RF-G4B-04, Task Packet rev 3.5)
+
+`G4_HARNESS_REPAIR_FOCUSED_REVIEW` at `0657794d…`: RF-G4B-01 … 03 CLOSED; RF-G4B-04 OPEN — the report's
+existence alone could not stop a second real-data run after a report-write failure, a finalize
+failure, an unhandled exception or a crash.
+
+- Order of the real-data route: non-data preconditions → existing report (`ALREADY_RUN`) → existing
+  attempt marker (`ALREADY_ATTEMPTED`) → `New-AttemptMarker` with `FileMode.CreateNew`
+  (`ATTEMPT_MARKER_CREATE_FAILED` on any failure) → only then the data folder. Nothing before the
+  marker opens the data folder (paths are only joined).
+- Marker `.agent-run/LR-20261005-DVCC-011/G4_REAL_DATA_ATTEMPT.md`, fixed schema: `schema_version: 1`,
+  `product_head` (the reviewed product head), `harness_head` (current exact head), `state: STARTED`;
+  values domain-checked (40 hex) before writing; no timestamp, no data value.
+- Never overwritten (CreateNew), never deleted, no automatic cleanup or resume — whatever the outcome
+  (PASS, FAIL, INCONCLUSIVE, report / finalize failure, crash). A write failure after CreateNew leaves
+  the (possibly empty) marker and still counts as the attempt. Reset is a future Human-gated procedure
+  and is not implemented.
+- The clean-worktree precondition ignores exactly the two one-shot files so that their presence is
+  reported by their own codes. `NO_DATA_DIR` now follows the marker (INCONCLUSIVE, attempt consumed).
+- Synthetic verification uses self-test-only knobs (`-SelfTestRoot`, `-SelfTestNoApp`,
+  `-SelfTestFault MarkerCreateFails | AbortAtDataAccess`), all refused together with `-RealData`.
+- Found while testing: PowerShell variable names are case-insensitive, so the internal
+  `$selfTestRoot` overwrote the new `-SelfTestRoot` parameter (the run fell back to a fresh temp
+  folder; the existing marker was not overwritten). Renamed to `$runRoot`; a static test now refuses
+  any reassignment of a parameter other than the documented `$Exe` / `$Port` defaults.
+
 ## D-06 — Mutation probe split and pre-run coverage
 
 M-5A-17 ("projection / copy action writes") was run as 17a (projection writes into its source,

@@ -433,10 +433,101 @@ typecheck / tests (product code unchanged; delta 0 re-verified above).
 
 Real-data audit (G4-C): **NOT RUN**. `G4_REAL_DATA_AUDIT.md` does not exist.
 
+## RF-G4B-04 repair (rev 3.5; harness repair review at `0657794d…`: RF-G4B-01 … 03 CLOSED)
+
+Finding: the real-data one-shot depended on the report's existence only; a report-write failure,
+a finalize failure, an unhandled exception or a crash after the data was touched would have allowed
+a second run with the same authorization.
+
+Repair (`scripts/verify-control-read-real-data-audit.ps1`, `scripts/lib/control-read-audit-finalize.ps1`,
+tests; product code untouched):
+
+| Step | Real-data route (rev 3.5) | Data folder touched |
+|---|---|---|
+| 1 | non-data preconditions (authorization, Node / harness files, repo / head, clean worktree except the two one-shot files, product delta 0, release build fresh, DVCC not running, no `DVCC_DATA_DIR`, CDP port free) → BLOCKED codes | no |
+| 2 | report exists → `ALREADY_RUN` (BLOCKED) | no |
+| 3 | attempt marker exists → `ALREADY_ATTEMPTED` (BLOCKED) | no |
+| 4–5 | `New-AttemptMarker`: `FileMode.CreateNew`, fixed text, flush, existence + length check; any failure → `ATTEMPT_MARKER_CREATE_FAILED` (BLOCKED) | no |
+| 6+ | data folder (existence check / selection / app / Git Refresh / one copy / audit / report) | yes, only from here |
+
+Marker: `.agent-run/LR-20261005-DVCC-011/G4_REAL_DATA_ATTEMPT.md` (self-test: `G4_SELF_TEST_ATTEMPT.md` in
+the temp run folder), exactly:
+
+```text
+schema_version: 1
+product_head: <40 hex>
+harness_head: <40 hex>
+state: STARTED
+```
+
+Never overwritten, deleted, cleaned up or resumed; no reset path.
+
+Behavioural tests (synthetic / temp roots only; the app is not started; the release-build
+precondition is met by a dummy file that is never executed):
+
+| Case | Result |
+|---|---|
+| fresh root, crash-equivalent (`[Environment]::Exit(9)`) right where data access would begin | exit 9; marker present with the exact schema; data folder absent; re-run → `BLOCKED (ALREADY_ATTEMPTED)`, data folder still absent, marker unchanged |
+| marker already present | `BLOCKED (ALREADY_ATTEMPTED)`; data folder absent; marker content untouched |
+| report already present | `BLOCKED (ALREADY_RUN)`; data folder absent; no marker created |
+| marker cannot be created | `BLOCKED (ATTEMPT_MARKER_CREATE_FAILED)`; data folder absent; run folder empty |
+| report write failure after the marker (`-SelfTestNoApp -SelfTestFault ReportUnwritable`) | `INCONCLUSIVE (REPORT_WRITE_FAILED)`; data phase ran; marker remains; re-run → `ALREADY_ATTEMPTED` without selection |
+| audit finalize failure after the marker (`… AuditCoreUnavailable`) | `INCONCLUSIVE (AUDIT_FINALIZE_FAILED)`; marker remains; re-run → `ALREADY_ATTEMPTED` |
+| completed run (`-SelfTestNoApp`) | report written, marker remains next to it; re-run → `ALREADY_RUN`, marker unchanged |
+| library | `New-AttemptMarker` refuses an existing file and leaves it unchanged; refuses a non-SHA value; writes exactly the schema |
+
+Every run: stderr empty; every stdout line a fixed `[g4]` line; no sentinel, run folder path or
+identifier printed. Static: the report / marker / CreateNew order precedes every data-folder touch;
+all non-data preconditions precede the gate; the only `Remove-Item` / `Move` lines are the environment
+variable, the report's temporary file and its rename; `$attemptMarker` appears only in its six
+allowed statements; the marker text is the fixed literal with 40-hex guards; the only process exit is
+the self-test crash fault; no parameter is reassigned except the `$Exe` / `$Port` defaults.
+
+Found and fixed while testing: the internal `$selfTestRoot` variable overwrote the new
+`-SelfTestRoot` parameter (PowerShell names are case-insensitive), so the first run used a fresh temp
+folder instead of the given one (fail-closed: the existing marker was not overwritten). Renamed to
+`$runRoot`; the new static test fails on the old code and passes on the fix.
+
+Fresh verification:
+
+```
+npx vitest run --config scripts/vitest.audit.config.ts -> 1 file, 59 passed
+git diff --check -> clean
+product code delta (133576c9 -> repair head, product paths) -> empty: 0
+```
+
+Mutation probes (apply → audit tests → restore → SHA-256 byte-identical):
+
+| Probe | Mutation | Result |
+|---|---|---|
+| H-27 | existing attempt-marker check removed | KILLED (7 test failures) |
+| H-28 | attempt marker created after the first data access | KILLED (4 test failures) |
+| H-29 | marker deleted when the run ends with a non-zero code (report write failure) | KILLED (6 test failures) |
+| H-30 | marker creation failure still proceeds to the data | KILLED (4 test failures) |
+| H-01 … H-26 | unchanged probes, re-run against the repaired files | all 26 KILLED by test failures, restored byte-identical |
+
+Synthetic end-to-end self-test (release build from the current tree, product code == `133576c9…`;
+DVCC not running; temp run folders given with `-SelfTestRoot`):
+
+| Run | Result | Exit | Marker | Report | Temp files |
+|---|---|---|---|---|---|
+| `-SelfTest` | `PASS (ALL_CHECKS_PASSED)`, coverage 11/11 after refresh, all leak counts 0 | 0 | present (schema) | written | 0 |
+| `-SelfTestFault AuditCoreUnavailable` | `INCONCLUSIVE (AUDIT_FINALIZE_FAILED)` | 2 | present | none | 0 |
+| `-SelfTestFault ReportUnwritable` | `INCONCLUSIVE (REPORT_WRITE_FAILED)` | 2 | present | none | 0 |
+| `-SelfTestFault RendererThrows` | `INCONCLUSIVE (REPORT_RENDER_FAILED)` | 2 | present | none | 0 |
+| re-run of the PASS folder | `BLOCKED (ALREADY_RUN)` | 2 | unchanged | unchanged | — |
+| re-run of each fault folder | `BLOCKED (ALREADY_ATTEMPTED)` | 2 | unchanged | none | — |
+
+Evidence reused unchanged (per the instruction): product suite, M-5A product mutations, Control Read
+running-app Case A–D, regression smokes.
+
+Real data: the data folder (`%APPDATA%\DevVault-Control`) was **not opened**; the real-data attempt
+marker was **not created**; `G4_REAL_DATA_AUDIT.md` was **not created**; G4-C **NOT RUN**.
+
 ## Unverified items
 
-- G4 on real data (rev 3.4 §19.1): `G4_HARNESS_REPAIR_FOCUSED_REVIEW`, G4-C and G4-D pending; the
-  real-data audit has not been run.
+- G4 on real data (rev 3.5 §19.1): `RF-G4B-04_FOCUSED_REVIEW`, G4-C and G4-D pending; the real-data
+  audit has not been run.
 - `SOURCE_UNAVAILABLE` / `TARGET_UNAVAILABLE` / truncation are fixed by unit / integration tests only;
   the UI cannot reach them through the Copy button in a normal state (rev 3.2 §16).
 - The three regression INCONCLUSIVE clipboard checks above.

@@ -24,6 +24,10 @@
   label change makes the observed path fail closed, not pass). Forbidden values equal to a
   source-bound lawful value are excluded and counted; machine-shaped values without a source-bound
   explanation stop the run (rev 3.4).
+- **QD-5A-10 (attempt marker reset)** — once `G4_REAL_DATA_ATTEMPT.md` exists, G4-C cannot run again;
+  there is deliberately no reset path (rev 3.5). Any retry needs a new Human gate and a separate,
+  reviewed procedure for the marker. The harness's behavioural tests need DVCC closed (the
+  `DVCC_RUNNING` precondition would otherwise block them).
 - **QD-5A-09 (audit tests outside `npm test`)** — the harness tests run with
   `npx vitest run --config scripts/vitest.audit.config.ts`, not in the product suite, so that
   `vite.config.ts` is unchanged.

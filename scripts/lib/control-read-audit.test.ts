@@ -673,6 +673,27 @@ exit $code
     expect(r.leftovers).toEqual([]);
   });
 
+  it("creates the attempt marker with CreateNew only: an existing file is refused and left as it was", () => {
+    const dir = mkdtempSync(path.join(root, "marker-lib-"));
+    const marker = path.join(dir, "marker.md");
+    writeFileSync(marker, "EARLIER\n");
+    const script = `$ErrorActionPreference = "Stop"
+. "${FINALIZE}"
+$h = "${"a".repeat(40)}"
+$existing = New-AttemptMarker "${marker}" $h $h
+$fresh = New-AttemptMarker "${path.join(dir, "fresh.md")}" $h $h
+$bad = New-AttemptMarker "${path.join(dir, "bad.md")}" "C:\\x" $h
+Say ("[g4] " + $existing + " " + $fresh + " " + $bad)
+`;
+    writeFileSync(path.join(dir, "driver.ps1"), script);
+    const out = spawnSync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", path.join(dir, "driver.ps1")], { encoding: "utf8" });
+    expect(out.stderr).toBe("");
+    expect(out.stdout.trim()).toBe("[g4] False True False");
+    expect(readFileSync(marker, "utf8")).toBe("EARLIER\n");
+    expect(readFileSync(path.join(dir, "fresh.md"), "utf8")).toBe(`schema_version: 1\nproduct_head: ${"a".repeat(40)}\nharness_head: ${"a".repeat(40)}\nstate: STARTED\n`);
+    expect(existsSync(path.join(dir, "bad.md"))).toBe(false);
+  });
+
   it("never overwrites an existing report: the rename refuses it and the earlier file stays as it was", () => {
     const r = runCase("ReportExists");
     sanitized(r);
@@ -681,6 +702,103 @@ exit $code
     expect(readFileSync(path.join(r.dir, "report.md"), "utf8")).toBe("EARLIER\n");
     expect(r.leftovers).toEqual([]);
   });
+});
+
+describe.skipIf(process.platform !== "win32")("one-shot attempt marker (harness, behavioural, synthetic roots only, rev 3.5 RF-G4B-04)", () => {
+  const MARKER = "G4_SELF_TEST_ATTEMPT.md";
+  const REPORT = "G4_SELF_TEST_REPORT.md";
+  let fakeExe: string;
+  let harnessHead: string;
+
+  beforeAll(() => {
+    // Satisfies the build-presence / freshness preconditions; none of these runs starts the app.
+    fakeExe = path.join(root, "fake-release.exe");
+    writeFileSync(fakeExe, "");
+    harnessHead = spawnSync("git", ["-C", path.join(__dirname, "..", ".."), "rev-parse", "HEAD"], { encoding: "utf8" }).stdout.trim();
+  });
+
+  const newRoot = () => mkdtempSync(path.join(root, "oneshot-"));
+  const run = (stRoot: string, ...extra: string[]) => {
+    const out = spawnSync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", HARNESS, "-SelfTest", "-SelfTestRoot", stRoot, "-Exe", fakeExe, ...extra], { encoding: "utf8" });
+    expect(out.stderr).toBe("");
+    const lines = out.stdout.split(/\r?\n/).filter((l) => l !== "");
+    for (const line of lines) expect(line).toMatch(/^\[g4\] [A-Za-z0-9 _=./(),:-]*$/);
+    for (const value of [...Object.values(SENTINELS), stRoot, FIXTURE.projectId, FIXTURE.reviewId, FIXTURE.branch]) expect(out.stdout.includes(value), value).toBe(false);
+    return { code: out.status, lines };
+  };
+  const result = (lines: string[]) => lines.find((l) => l.startsWith("[g4] result: "));
+  const dataTouched = (stRoot: string) => existsSync(path.join(stRoot, "data"));
+  const markerText = () => `schema_version: 1\nproduct_head: 133576c944c55b8b50a4bdfec670d8651fdfb11e\nharness_head: ${harnessHead}\nstate: STARTED\n`;
+
+  it("creates the marker before the data phase; a crash right there leaves it, and the next run is ALREADY_ATTEMPTED with no data access", () => {
+    const r = newRoot();
+    const crashed = run(r, "-SelfTestFault", "AbortAtDataAccess");
+    expect(crashed.code).toBe(9);
+    expect(readFileSync(path.join(r, MARKER), "utf8")).toBe(markerText());
+    expect(dataTouched(r)).toBe(false);
+    const again = run(r);
+    expect(again.code).toBe(2);
+    expect(result(again.lines)).toBe("[g4] result: BLOCKED (ALREADY_ATTEMPTED) - no report written");
+    expect(dataTouched(r)).toBe(false);
+    expect(readFileSync(path.join(r, MARKER), "utf8")).toBe(markerText());
+  }, 120_000);
+
+  it("an existing marker blocks before any data access and is not touched", () => {
+    const r = newRoot();
+    writeFileSync(path.join(r, MARKER), "EARLIER\n");
+    const out = run(r);
+    expect(out.code).toBe(2);
+    expect(result(out.lines)).toBe("[g4] result: BLOCKED (ALREADY_ATTEMPTED) - no report written");
+    expect(dataTouched(r)).toBe(false);
+    expect(readFileSync(path.join(r, MARKER), "utf8")).toBe("EARLIER\n");
+    expect(existsSync(path.join(r, REPORT))).toBe(false);
+  }, 120_000);
+
+  it("an existing report blocks (ALREADY_RUN) before any data access, without creating a marker", () => {
+    const r = newRoot();
+    writeFileSync(path.join(r, REPORT), "EARLIER\n");
+    const out = run(r);
+    expect(result(out.lines)).toBe("[g4] result: BLOCKED (ALREADY_RUN) - no report written");
+    expect(dataTouched(r)).toBe(false);
+    expect(existsSync(path.join(r, MARKER))).toBe(false);
+  }, 120_000);
+
+  it("a marker that cannot be created blocks (ATTEMPT_MARKER_CREATE_FAILED) with no data access", () => {
+    const r = newRoot();
+    const out = run(r, "-SelfTestFault", "MarkerCreateFails");
+    expect(out.code).toBe(2);
+    expect(result(out.lines)).toBe("[g4] result: BLOCKED (ATTEMPT_MARKER_CREATE_FAILED) - no report written");
+    expect(dataTouched(r)).toBe(false);
+    expect(readdirSync(r)).toEqual([]);
+  }, 120_000);
+
+  it.each([
+    ["ReportUnwritable", "[g4] result: INCONCLUSIVE (REPORT_WRITE_FAILED) - no report written"],
+    ["AuditCoreUnavailable", "[g4] result: INCONCLUSIVE (AUDIT_FINALIZE_FAILED) - no report written"],
+  ])("%s after the marker: the data phase ran, the marker remains, the next run is ALREADY_ATTEMPTED", (fault, line) => {
+    const r = newRoot();
+    const first = run(r, "-SelfTestNoApp", "-SelfTestFault", fault);
+    expect(first.code).toBe(2);
+    expect(dataTouched(r)).toBe(true);
+    expect(result(first.lines)).toBe(line);
+    expect(readFileSync(path.join(r, MARKER), "utf8")).toBe(markerText());
+    expect(existsSync(path.join(r, REPORT))).toBe(false);
+    const again = run(r);
+    expect(result(again.lines)).toBe("[g4] result: BLOCKED (ALREADY_ATTEMPTED) - no report written");
+    expect(again.lines.some((l) => l.includes("sample selected"))).toBe(false);
+    expect(readFileSync(path.join(r, MARKER), "utf8")).toBe(markerText());
+  }, 180_000);
+
+  it("a completed run keeps its marker next to the report, and the next run is ALREADY_RUN", () => {
+    const r = newRoot();
+    const first = run(r, "-SelfTestNoApp");
+    expect(result(first.lines)).toBe("[g4] result: INCONCLUSIVE (SELF_TEST_NO_APP)");
+    expect(existsSync(path.join(r, REPORT))).toBe(true);
+    expect(readFileSync(path.join(r, MARKER), "utf8")).toBe(markerText());
+    const again = run(r);
+    expect(result(again.lines)).toBe("[g4] result: BLOCKED (ALREADY_RUN) - no report written");
+    expect(readFileSync(path.join(r, MARKER), "utf8")).toBe(markerText());
+  }, 180_000);
 });
 
 describe("harness scripts: raw-data rules (static)", () => {
@@ -712,10 +830,11 @@ describe("harness scripts: raw-data rules (static)", () => {
     expect(linesOf(both).filter((l) => /^\s*(Check|Skip|Start-App)\s/.test(l))).toEqual([]);
   });
 
-  it("write one file only, the core's report, through a temporary file renamed into place", () => {
+  it("write two files only: the attempt marker (CreateNew) and the core's report (temporary file renamed into place)", () => {
     expect(linesOf(harness).filter((l) => /WriteAll|\[System\.IO\.File\]/.test(l))).toEqual([]);
     const writes = linesOf(lib).filter((l) => /WriteAll|\[System\.IO\.File\]/.test(l)).map((l) => l.trim());
     expect(writes).toEqual([
+      "$stream = [System.IO.File]::Open($path, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)",
       '[System.IO.File]::WriteAllText($temp, ($text -replace "`r?`n", "`n"), [System.Text.UTF8Encoding]::new($false))',
       "[System.IO.File]::Move($temp, $path)",
     ]);
@@ -761,10 +880,71 @@ describe("harness scripts: raw-data rules (static)", () => {
   it("refuse real data without the G4-C authorization, after the one run, or on an occupied CDP port", () => {
     expect(harness).toContain('$REAL_AUTHORIZATION = "HD-5A-10/G4-C"');
     expect(harness).toContain('[string] $ReviewedHead = "133576c944c55b8b50a4bdfec670d8651fdfb11e"');
-    expect(harness).toContain('if ($SelfTest -eq $RealData -or ($RealData -and $SelfTestFault -ne "")) {');
+    expect(harness).toContain('if ($SelfTest -eq $RealData -or ($RealData -and ($SelfTestFault -ne "" -or $SelfTestRoot -ne "" -or $SelfTestNoApp))) {');
     expect(harness).toContain("if ($Port -eq 0) { $Port = Get-Random -Minimum 49152 -Maximum 65535 }");
-    for (const code of ["NOT_AUTHORIZED", "ALREADY_RUN", "DIRTY_WORKTREE", "PRODUCT_DELTA", "STALE_BUILD", "DVCC_RUNNING", "DATA_DIR_OVERRIDE_PRESENT", "NO_DATA_DIR", "CDP_PORT_IN_USE", "DVCC_PAGE_UNCONFIRMED"]) {
+    for (const code of [
+      "NOT_AUTHORIZED", "ALREADY_RUN", "DIRTY_WORKTREE", "PRODUCT_DELTA", "STALE_BUILD", "DVCC_RUNNING", "DATA_DIR_OVERRIDE_PRESENT",
+      "NO_DATA_DIR", "CDP_PORT_IN_USE", "DVCC_PAGE_UNCONFIRMED", "ALREADY_ATTEMPTED", "ATTEMPT_MARKER_CREATE_FAILED",
+    ]) {
       expect(harness, code).toContain(`"${code}"`);
     }
+  });
+
+  it("never reassign a parameter through a same-named variable (PowerShell names are case-insensitive)", () => {
+    const params = [...harness.slice(0, harness.indexOf("$ErrorActionPreference")).matchAll(/\]\s*\$([A-Za-z]+)/g)].map((m) => m[1]);
+    expect(params).toEqual(expect.arrayContaining(["SelfTest", "RealData", "Authorization", "ReviewedHead", "Exe", "Port", "SelfTestFault", "SelfTestRoot", "SelfTestNoApp"]));
+    // Only the documented defaults are filled in ($Exe, $Port).
+    const reassigned = linesOf(harness).filter((l) => params.some((p) => new RegExp(`^\\s*(if \\(.*\\) \\{ )?\\$${p}\\s*=[^=]`, "i").test(l)));
+    expect(reassigned.map((l) => l.trim())).toEqual([
+      'if ($Exe -eq "") { $Exe = Join-Path $repo "src-tauri\\target\\release\\devvault-control-center.exe" }',
+      "if ($Port -eq 0) { $Port = Get-Random -Minimum 49152 -Maximum 65535 }",
+    ]);
+  });
+
+  it("gate the data phase behind the attempt marker: report, marker, CreateNew, then data (RF-G4B-04)", () => {
+    const lines = linesOf(harness);
+    const at = (needle: string) => lines.findIndex((l) => l.includes(needle));
+    const report = at('elseif (Test-Path -LiteralPath $reportPath) { $m.blockedCode = "ALREADY_RUN" }');
+    const marker = at('elseif (Test-Path -LiteralPath $attemptMarker) { $m.blockedCode = "ALREADY_ATTEMPTED" }');
+    const create = at('elseif (-not (New-AttemptMarker $attemptMarker $ReviewedHead $m.harnessHead)) { $m.blockedCode = "ATTEMPT_MARKER_CREATE_FAILED" }');
+    expect(report).toBeGreaterThan(0);
+    expect(marker).toBeGreaterThan(report);
+    expect(create).toBeGreaterThan(marker);
+    // Every touch of a data folder (existence check, seeding, hashing, selection) comes after the marker.
+    const touches = lines
+      .map((line, index) => ({ line, index }))
+      .filter(({ line }) => /\$dataDir\b|\$dataDirCandidate\b|\$fixtureCore /.test(line) && /Test-Path|Get-Tree|Invoke-Node|Invoke-AuditCore|Get-ChildItem|Get-Item|= \$dataDirCandidate/.test(line));
+    expect(touches.length).toBeGreaterThan(3);
+    for (const { line, index } of touches) expect(index, line).toBeGreaterThan(create);
+    // Every non-data precondition is decided before the one-shot gate.
+    for (const code of ["NOT_AUTHORIZED", "NO_NODE", "HEAD_UNRESOLVED", "DIRTY_WORKTREE", "PRODUCT_DELTA", "STALE_BUILD", "DVCC_RUNNING", "DATA_DIR_OVERRIDE_PRESENT", "CDP_PORT_IN_USE"]) {
+      expect(at(`"${code}"`), code).toBeLessThan(report);
+    }
+    expect(harness).toContain('$ATTEMPT_RELATIVE = ".agent-run/LR-20261005-DVCC-011/G4_REAL_DATA_ATTEMPT.md"');
+  });
+
+  it("never delete, overwrite or rewrite an attempt marker, and fill it with fixed metadata only", () => {
+    const allowedMoves = [
+      "if ($script:RealData) { Remove-Item Env:\\DVCC_DATA_DIR -ErrorAction SilentlyContinue } else { $env:DVCC_DATA_DIR = $script:dataDir }",
+      "try { if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Force } } catch { }",
+      "[System.IO.File]::Move($temp, $path)",
+    ];
+    for (const line of linesOf(both).filter((l) => /Remove-Item|\.Delete\(|::Move\(|Rename-Item|Move-Item|Copy-Item|Clear-Content|FileMode\]::(Create|Truncate|OpenOrCreate|Append)\b/.test(l))) {
+      expect(allowedMoves, line).toContain(line.trim());
+    }
+    const allowedUses = [
+      "$attemptMarker = $null",
+      "$attemptMarker = Join-Path $repo $ATTEMPT_RELATIVE",
+      '$attemptMarker = Join-Path $runRoot "G4_SELF_TEST_ATTEMPT.md"',
+      'if ($SelfTestFault -eq "MarkerCreateFails") { $attemptMarker = Join-Path $runRoot "missing-folder\\G4_SELF_TEST_ATTEMPT.md" }',
+      'elseif (Test-Path -LiteralPath $attemptMarker) { $m.blockedCode = "ALREADY_ATTEMPTED" }',
+      'elseif (-not (New-AttemptMarker $attemptMarker $ReviewedHead $m.harnessHead)) { $m.blockedCode = "ATTEMPT_MARKER_CREATE_FAILED" }',
+    ];
+    const uses = linesOf(harness).filter((l) => /\$attemptMarker\b/.test(l)).map((l) => l.trim());
+    expect(uses.sort()).toEqual([...allowedUses].sort());
+    expect(lib).toContain('return "schema_version: 1`nproduct_head: $productHead`nharness_head: $harnessHead`nstate: STARTED`n"');
+    expect(lib).toContain("if ($productHead -notmatch '^[0-9a-f]{40}$' -or $harnessHead -notmatch '^[0-9a-f]{40}$') { return $null }");
+    expect((both.match(/::Exit\(/g) ?? []).length).toBe(1);
+    expect(harness).toContain('if ($SelfTest -and $SelfTestFault -eq "AbortAtDataAccess") { [Environment]::Exit(9) }');
   });
 });

@@ -2,8 +2,10 @@
 
 Status: product READY CANDIDATE at `133576c944c55b8b50a4bdfec670d8651fdfb11e` (after RF-5A-IR-01).
 HD-5A-10 ADOPTED → Task Packet rev 3.3 → G4-A harness at `146ff68e…` → G4-B FIX_REQUIRED
-(RF-G4B-01 … 03) → Task Packet rev 3.4 focused repair, self-tested on synthetic data only, committed
-and pushed. **Real-data audit NOT RUN. STOPPED for `G4_HARNESS_REPAIR_FOCUSED_REVIEW`.** No Draft PR.
+(RF-G4B-01 … 03) → Task Packet rev 3.4 repair at `0657794d…` → `G4_HARNESS_REPAIR_FOCUSED_REVIEW`:
+RF-G4B-01 … 03 CLOSED, RF-G4B-04 OPEN → Task Packet rev 3.5 (one-shot attempt marker), verified on
+synthetic / temp roots only, committed and pushed. **Real-data folder not opened; real-data attempt
+marker NOT created; real-data audit NOT RUN. STOPPED for `RF-G4B-04_FOCUSED_REVIEW`.** No Draft PR.
 No release. No Production.
 
 ```
@@ -31,15 +33,22 @@ rev3.3_snapshot:             PRESERVED / NOT OVERWRITTEN
 rev3.3_snapshot_timing:      created after implementation, before the G4 automated audit
 
 G4-B:                        FIX_REQUIRED at 146ff68e9b36aa998d25d8e7a3ef411f81fbd13c (RF-G4B-01..03)
-active_packet:               rev 3.4
-active_packet_supersedes:    rev 3.3
-active_packet_sha256:        c492a5a10b7ee18aa86b52c85cc32fb596ca32280f364a3caffe6957661f3a58
+rev3.4_packet_sha256:        c492a5a10b7ee18aa86b52c85cc32fb596ca32280f364a3caffe6957661f3a58
+rev3.4_snapshot:             PRESERVED / NOT OVERWRITTEN
 rev3.4_snapshot_timing:      post G4-B FIX_REQUIRED, pre real-data audit
 
+harness repair review:       FIX_REQUIRED at 0657794de7fc75bc6de35ad6c371bce22a27959a
+                             (RF-G4B-01..03 CLOSED; RF-G4B-04 OPEN)
+active_packet:               rev 3.5
+active_packet_supersedes:    rev 3.4
+active_packet_sha256:        e8386cbfd9c8858072b38624e51df1d5a1b0a23dbe0363d2f967fa3728368bb5
+rev3.5_snapshot_timing:      after the G4 harness repair review returned RF-G4B-04, before any
+                             real-data G4-C audit
+
 product_ready_candidate_head: 133576c944c55b8b50a4bdfec670d8651fdfb11e
-previous_g4_harness_head:    146ff68e9b36aa998d25d8e7a3ef411f81fbd13c (G4-A)
-g4_harness_head:             the commit carrying the rev 3.4 repair (product code delta 0 from 133576c9…)
-G4-A:                        DONE; G4-B FIX_REQUIRED → repaired (rev 3.4)
+previous_g4_harness_heads:   146ff68e… (G4-A), 0657794d… (rev 3.4 repair)
+g4_harness_head:             the commit carrying the rev 3.5 repair (product code delta 0 from 133576c9…)
+real_data_attempt_marker:    .agent-run/LR-20261005-DVCC-011/G4_REAL_DATA_ATTEMPT.md — NOT CREATED
 G4-C / G4-D:                 PENDING (real-data audit NOT RUN; G4_REAL_DATA_AUDIT.md does not exist)
 ```
 
@@ -80,15 +89,19 @@ Reviews:
 - `PHASE_5A_INDEPENDENT_FULL_REVIEW` at `41b4ee95957a65ccfaa07203477d264146ad9624`: FIX_REQUIRED (RF-5A-IR-01)
 - after the RF-5A-IR-01 repair: product READY CANDIDATE at `133576c944c55b8b50a4bdfec670d8651fdfb11e`
 
-G4 (rev 3.4 §19.1):
+G4 (rev 3.5 §19.1):
 - [x] G4-A harness: `scripts/verify-control-read-real-data-audit.ps1`, `scripts/lib/control-read-audit.mjs`,
       `scripts/lib/control-read-audit-fixture.mjs`, `scripts/lib/control-read-audit.test.ts`,
       `scripts/vitest.audit.config.ts` (33 tests; H-01..16 killed; synthetic self-test PASS)
 - [x] G4-B `G4_AUTOMATED_AUDIT_HARNESS_FOCUSED_REVIEW` at `146ff68e…`: FIX_REQUIRED (RF-G4B-01..03)
 - [x] rev 3.4 focused repair: + `scripts/lib/control-read-audit-finalize.ps1`; 48 tests; H-01..26 killed;
       synthetic self-test PASS + 3 finalization fault runs INCONCLUSIVE with fixed codes
-- [ ] `G4_HARNESS_REPAIR_FOCUSED_REVIEW`
-- [ ] G4-C one-shot real-data audit → `G4_REAL_DATA_AUDIT.md` (sanitized) — NOT RUN
+- [x] `G4_HARNESS_REPAIR_FOCUSED_REVIEW` at `0657794d…`: RF-G4B-01..03 CLOSED; RF-G4B-04 OPEN
+- [x] rev 3.5 repair: one-shot attempt marker (CreateNew, fixed schema, never deleted) before any data
+      access; 59 tests; H-27..30 killed (H-01..26 re-confirmed); synthetic self-test PASS, fault runs
+      and one-shot re-runs as specified
+- [ ] `RF-G4B-04_FOCUSED_REVIEW`
+- [ ] G4-C one-shot real-data audit → attempt marker → `G4_REAL_DATA_AUDIT.md` (sanitized) — NOT RUN
 - [ ] G4-D Fresh Independent G4 Review
 
-Next gate: `G4_HARNESS_REPAIR_FOCUSED_REVIEW`.
+Next gate: `RF-G4B-04_FOCUSED_REVIEW`.
