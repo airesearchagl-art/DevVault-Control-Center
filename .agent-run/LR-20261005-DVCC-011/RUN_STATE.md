@@ -1,9 +1,9 @@
 # Run State — LR-20261005-DVCC-011
 
-Status: implementation, tests, mutation campaign, build / cargo check, release build, running-app
-smoke Case A–D, regression smokes and evidence closeout **complete**; committed and pushed to
-`feat/control-read-contract-v1`. **STOPPED for Independent FULL Review**
-(`PHASE_5A_INDEPENDENT_FULL_REVIEW`). No Draft PR. No release. No Production.
+Status: implementation complete. Independent FULL Review at `41b4ee95…` returned FIX_REQUIRED
+(RF-5A-IR-01, round verdict confirmation); the narrow repair is committed and pushed to
+`feat/control-read-contract-v1`. **STOPPED for `RF-5A-IR-01_FOCUSED_REVIEW`.** No Draft PR. No
+release. No Production.
 
 ```
 initial_authorized_packet:   rev 3.1
@@ -55,5 +55,10 @@ PHASE_5A_IMPLEMENTATION_CONTINUATION: YES (granted after TASK_PACKET_REV3_2_FOCU
       (3 clipboard checks INCONCLUSIVE — external clipboard activity, see EVIDENCE.md)
 - [x] AC5A-26 contract doc named by docsContract; existing docsContract tests not weakened
 - [x] AC5A-27 HD-5A-09 classification (all listed cases PASS)
+- [x] RF-5A-IR-01 round verdict: EXPLICIT only with `verdictConfirmedAt`, otherwise ENTERED / null
+      (schema-valid unconfirmed-verdict test; M-5A-37 killed)
 
-Next gate: `PHASE_5A_INDEPENDENT_FULL_REVIEW`.
+Reviews:
+- `PHASE_5A_INDEPENDENT_FULL_REVIEW` at `41b4ee95957a65ccfaa07203477d264146ad9624`: FIX_REQUIRED (RF-5A-IR-01)
+
+Next gate: `RF-5A-IR-01_FOCUSED_REVIEW`.

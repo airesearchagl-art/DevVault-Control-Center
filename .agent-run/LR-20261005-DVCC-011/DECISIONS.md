@@ -72,6 +72,14 @@ reach display name, notes, next action, health messages or set-aside names throu
 - Refusals toast only the error code; a copy failure toasts a fixed sentence (no underlying message).
 - `snapshot_id` = `snap-` + UUID v4 from `crypto.getRandomValues` (`newControlSnapshotId`).
 
+## D-07 — Round verdict confirmation fails conservative (RF-5A-IR-01)
+
+Independent FULL Review (`41b4ee95…`) required that a stored round verdict not be `EXPLICIT` merely
+because it is non-null. Same durable-evidence principle as HD-5A-09: `EXPLICIT` (with
+`recorded_at = verdictConfirmedAt`) only when `verdictConfirmedAt` is set; otherwise `ENTERED` with
+`recorded_at: null`; no verdict → `UNKNOWN NOTHING_RECORDED`. `schema.ts` / `transitions.ts` are not
+tightened; the projection represents the source as it exists.
+
 ## D-06 — Mutation probe split and pre-run coverage
 
 M-5A-17 ("projection / copy action writes") was run as 17a (projection writes into its source,

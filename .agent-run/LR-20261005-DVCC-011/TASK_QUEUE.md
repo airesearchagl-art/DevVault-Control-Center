@@ -18,6 +18,8 @@
 - [x] Running-app smoke Case A–D (78 / 0 / 0)
 - [x] Regression smokes (0 failed; 3 clipboard INCONCLUSIVE, external activity)
 - [x] Evidence closeout
-- [ ] Independent FULL Review (`PHASE_5A_INDEPENDENT_FULL_REVIEW`)
+- [x] Independent FULL Review at `41b4ee95…` — FIX_REQUIRED (RF-5A-IR-01)
+- [x] RF-5A-IR-01 narrow repair (round verdict confirmation) + M-5A-37
+- [ ] `RF-5A-IR-01_FOCUSED_REVIEW`
 - [ ] Human running-app dogfood (rev 3.2 §19 G4)
 - [ ] Draft PR — only after READY CANDIDATE (Required Fixes: none) and the Human gates

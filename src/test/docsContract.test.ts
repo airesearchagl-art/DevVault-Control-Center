@@ -152,6 +152,12 @@ describe("docs/control-read-contract-v1.md (Phase 5A)", () => {
     expect(controlRead).toMatch(/`EXPLICIT` only if the current round's `verdict`\s+equals the review state \*\*and\*\* its `verdictConfirmedAt` is set; otherwise `ENTERED`/);
     expect(controlRead).toMatch(/No inference from the state name alone, from `suspendedFrom`, or from event history\./);
   });
+
+  it("states that a stored round verdict is EXPLICIT only with its confirmation time (RF-5A-IR-01)", () => {
+    expect(controlRead).toMatch(/A stored round verdict is not automatically `EXPLICIT`/);
+    expect(controlRead).toMatch(/`EXPLICIT` \(with `recorded_at` =\s+`verdictConfirmedAt`\) only when its `verdictConfirmedAt` is set/);
+    expect(controlRead).toMatch(/a stored verdict without one is\s+`ENTERED` with `recorded_at: null`/);
+  });
 });
 
 describe("README Control Read (Phase 5A)", () => {

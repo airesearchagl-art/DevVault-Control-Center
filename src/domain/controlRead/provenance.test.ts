@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Project } from "../project";
 import { createReviewSession, emptyReviewForm, newRound, type ReviewSession } from "../review";
+import { parseSessionFile } from "../schema";
 import { CONTROL_READ_CONTRACT, type ControlReadSource, type ControlSnapshotV1, type Envelope } from "./contract";
 import { readControl } from "./readControl";
 
@@ -129,6 +130,48 @@ describe("Control Read provenance", () => {
     for (const fact of [current.reviewed_head, current.verdict, current.risk_tier]) {
       expect(fact).toEqual({ class: "UNKNOWN", unknown_reason: "NOTHING_RECORDED" });
     }
+  });
+
+  it("RF-5A-IR-01: a stored verdict without verdictConfirmedAt is ENTERED with recorded_at null", () => {
+    // A schema-valid persisted round: the schema checks `verdict` and `verdictConfirmedAt` independently.
+    const stored = session();
+    const unconfirmed: ReviewSession = {
+      ...stored,
+      rounds: [{ ...stored.rounds[0], verdict: "FIX_REQUIRED", verdictConfirmedAt: null }, stored.rounds[1]],
+    };
+    const parsed = parseSessionFile(JSON.stringify(unconfirmed), REVIEW_ID);
+    if (parsed.status !== "ok") throw new Error(`fixture must be schema-valid, got ${parsed.status}`);
+    expect(parsed.value.rounds[0]).toMatchObject({ verdict: "FIX_REQUIRED", verdictConfirmedAt: null });
+
+    const p = project();
+    const src: ControlReadSource = {
+      phase: "ready",
+      projects: [p],
+      projectsHealth: { status: "ok" },
+      reviews: [{ reviewId: REVIEW_ID, session: parsed.value, health: { status: "ok" } }],
+      gitObservations: {},
+    };
+    const result = readControl({ contract: CONTROL_READ_CONTRACT, version: 1, operation: "get_control_snapshot", project_id: PROJECT_ID }, src, ENV) as Envelope<ControlSnapshotV1>;
+    const decided = result.data.reviews[0].rounds[1];
+    expect(decided.round).toBe(1);
+    expect(decided.verdict).toEqual({
+      class: "HUMAN_CONFIRMED",
+      value: "FIX_REQUIRED",
+      confirmation: "ENTERED",
+      recorded_at: null,
+      evidence_ref: `dvcc:review/${REVIEW_ID}/round/1/verdict`,
+    });
+  });
+
+  it("RF-5A-IR-01: a stored verdict with verdictConfirmedAt stays EXPLICIT with that time", () => {
+    const decided = snapshot().data.reviews[0].rounds[1];
+    expect(decided.verdict).toEqual({
+      class: "HUMAN_CONFIRMED",
+      value: "FIX_REQUIRED",
+      confirmation: "EXPLICIT",
+      recorded_at: VERDICT_AT,
+      evidence_ref: `dvcc:review/${REVIEW_ID}/round/1/verdict`,
+    });
   });
 
   it("dates observations by their own observedAt and derivations by the observation they rest on", () => {

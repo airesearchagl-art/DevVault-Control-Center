@@ -263,7 +263,14 @@ export function roundState(reviewSessionId: string, round: RoundRecord): RoundSt
     expected_head: expected.class === "HUMAN_CONFIRMED" ? { ...expected, binding: headBinding(round.expectedHead) } : expected,
     reviewed_head: enteredOrUnknown(round.reviewedHead, ref("reviewed-head"), round.resultCapturedAt, "ENTERED"),
     result_captured: presence("round.result-presence@1", ref("result"), round.resultCapturedAt),
-    verdict: enteredOrUnknown(round.verdict, ref("verdict"), round.verdictConfirmedAt, "EXPLICIT"),
+    // RF-5A-IR-01: a stored verdict is EXPLICIT only with its durable confirmation time; a verdict
+    // without one is ENTERED (the schema accepts that combination, so it is represented as it is).
+    verdict: enteredOrUnknown(
+      round.verdict,
+      ref("verdict"),
+      round.verdictConfirmedAt,
+      round.verdictConfirmedAt !== null ? "EXPLICIT" : "ENTERED",
+    ),
     judgment_captured: presence("round.judgment-presence@1", ref("judgment"), round.judgmentCapturedAt),
     risk_tier: enteredOrUnknown(round.riskTier, ref("risk-tier"), null, "EXPLICIT"),
   };

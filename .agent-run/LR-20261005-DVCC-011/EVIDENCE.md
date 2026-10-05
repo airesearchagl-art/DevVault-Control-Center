@@ -199,6 +199,43 @@ log), while the IDE handoff, resume launcher and Control Read smokes — which c
 with the clipboard unchanged. Classified by the harness as external activity; not re-run.
 Not re-run (untouched areas): `verify-clipboard-interceptor.ps1`, `verify-single-instance.ps1`.
 
+## RF-5A-IR-01 repair (Independent FULL Review at `41b4ee95…`: FIX_REQUIRED)
+
+Finding: a persisted round verdict was classified `EXPLICIT` whenever `round.verdict` was non-null.
+The schema validates `verdict` and `verdictConfirmedAt` independently, so a stored verdict without a
+confirmation time is valid and was over-claimed.
+
+Repair (`projection.ts`, round `verdict` only; `schema.ts` / `transitions.ts` untouched):
+
+| Source | Projection |
+|---|---|
+| `verdict == null` | `UNKNOWN` / `NOTHING_RECORDED` |
+| `verdict != null` AND `verdictConfirmedAt != null` | `HUMAN_CONFIRMED` / `EXPLICIT`, `recorded_at = verdictConfirmedAt` |
+| `verdict != null` AND `verdictConfirmedAt == null` | `HUMAN_CONFIRMED` / `ENTERED`, `recorded_at = null` |
+
+Fresh verification after the repair:
+
+```
+targeted: projection + provenance + docsContract -> 3 files, 82 passed
+           (new: schema-valid round {verdict FIX_REQUIRED, verdictConfirmedAt null} parsed by
+            parseSessionFile -> verdict HUMAN_CONFIRMED / ENTERED / recorded_at null;
+            confirmed verdict stays EXPLICIT with recorded_at = verdictConfirmedAt;
+            contract doc states the rule)
+M-5A-37 (every non-null round verdict EXPLICIT) -> KILLED (1 test failure), restored byte-identical
+npm run typecheck -> clean
+npm test          -> 47 files, 1210 passed
+git diff --check  -> clean
+```
+
+Contract doc updated: "A stored round verdict is not automatically `EXPLICIT` …" (named by docsContract).
+
+Evidence reuse: the repair changes one classification line in `roundState` plus tests / docs; no UI,
+copy action, source, request validation, EvidenceRef, review-state (HD-5A-09) or runtime seam changed.
+Reused from `41b4ee95…`: M-5A-01..36 (mutated lines unchanged), running-app Case A–D (the smoke
+fixture's verdict has `verdictConfirmedAt` set, so its EXPLICIT assertion is unaffected), the six
+regression smokes (incl. the three clipboard INCONCLUSIVE results, kept as INCONCLUSIVE), build /
+release build / `cargo check` (no Rust change). Not re-run.
+
 ## Unverified items
 
 - Human running-app dogfood with real data (rev 3.2 §19 G4) — not performed (next gates).

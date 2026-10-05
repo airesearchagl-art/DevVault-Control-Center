@@ -47,6 +47,10 @@ expected head, risk tier and review state have no field timestamp and report `nu
 (`result_captured`, `judgment_captured`, `local_root`) is `DERIVED`; an absence is never a Human
 confirmation.
 
+A stored round verdict is not automatically `EXPLICIT`: it is `EXPLICIT` (with `recorded_at` =
+`verdictConfirmedAt`) only when its `verdictConfirmedAt` is set; a stored verdict without one is
+`ENTERED` with `recorded_at: null`; no verdict is `UNKNOWN` / `NOTHING_RECORDED`.
+
 Rules (`rule`): `project.local-root-presence@1`, `round.result-presence@1`,
 `round.judgment-presence@1`, `freshness.derive@1`.
 
