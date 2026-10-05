@@ -80,6 +80,47 @@ because it is non-null. Same durable-evidence principle as HD-5A-09: `EXPLICIT` 
 `recorded_at: null`; no verdict → `UNKNOWN NOTHING_RECORDED`. `schema.ts` / `transitions.ts` are not
 tightened; the projection represents the source as it exists.
 
+## D-08 — G4 becomes a local automated real-data disclosure audit (HD-5A-10)
+
+Status: **ADOPTED** (Human decision HD-5A-10). Task Packet rev 3.3 (§19.1).
+
+- G4 (rev 3.2: the Human copies once on real data and inspects it) is replaced by
+  "Local Automated Real-Data Disclosure Audit + Fresh Independent G4 Review":
+  G4-A harness → G4-B `G4_AUTOMATED_AUDIT_HARNESS_FOCUSED_REVIEW` → G4-C one-shot real-data audit →
+  G4-D Fresh Independent G4 Review. The harness does not run on real data before G4-B PASS.
+- Raw data exists only in local process memory; only the sanitized report is evidence.
+- Product contract / architecture / scope / AC product semantics unchanged. Product READY CANDIDATE
+  head stays `133576c9…`; the G4 harness head is a separate governance / harness delta with product
+  code delta 0.
+
+## D-09 — G4-A harness design choices (for G4-B)
+
+- **Split**: a PowerShell driver (`scripts/verify-control-read-real-data-audit.ps1`, reusing
+  `scripts/lib/dvcc-smoke.ps1` for the hidden desktop, CDP and the page-side clipboard interceptor) and
+  a node audit core (`scripts/lib/control-read-audit.mjs`) that holds all judgement: selection,
+  allowlist, exact comparison, pattern scan, positive assertions, decision and report rendering. The
+  driver passes the raw snapshot to the core through a stdin pipe only; the core answers with one
+  JSON line.
+- **Independent oracle**: the core's Control Read vocabulary is a copy (not an import) so that a
+  product regression cannot silently widen the allowlist; tests pin it to `contract.ts` and feed it
+  real `readControl` output.
+- **Tests outside the product suite**: `scripts/vitest.audit.config.ts` (`npx vitest run --config
+  scripts/vitest.audit.config.ts`) so `vite.config.ts` / `npm test` stay unchanged.
+- **Exact comparison semantics**: per parsed snapshot string (values and keys), not raw JSON text
+  (avoids JSON-escaping variants and false hits on JSON-shaped review text); substring for values of
+  12+ characters, equality below; paths case-insensitive with separators normalized. Values equal to
+  the lawful sample identity / contract vocabulary / machine-shaped values are excluded and counted.
+  Detector liveness is proven per run by planting real values into an in-memory copy.
+- **Report additions** beyond the HD-5A-10 field list (both sanitized): `exact_comparison_overlaps_excluded`
+  (count of undecidable values, so `0 leaks` is not over-read) and `result_reason` (fixed code). Flagged
+  for G4-B; removable without affecting the verdict logic.
+- **One-shot**: the real-data report's existence refuses a rerun (`ALREADY_RUN`); a BLOCKED
+  precondition touches no data, writes no report and does not consume the run; FAIL / INCONCLUSIVE
+  after data access writes the report and stops.
+- **Thresholds**: minimum coverage 3 of 11 categories (below → INCONCLUSIVE `LOW_COVERAGE`).
+- **Stale build guard**: the release executable must be newer than the last product commit
+  (`STALE_BUILD`); the G4-C procedure rebuilds the release from the reviewed product code first.
+
 ## D-06 — Mutation probe split and pre-run coverage
 
 M-5A-17 ("projection / copy action writes") was run as 17a (projection writes into its source,

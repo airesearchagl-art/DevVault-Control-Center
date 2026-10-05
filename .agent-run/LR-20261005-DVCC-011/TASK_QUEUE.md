@@ -20,6 +20,10 @@
 - [x] Evidence closeout
 - [x] Independent FULL Review at `41b4ee95…` — FIX_REQUIRED (RF-5A-IR-01)
 - [x] RF-5A-IR-01 narrow repair (round verdict confirmation) + M-5A-37
-- [ ] `RF-5A-IR-01_FOCUSED_REVIEW`
-- [ ] Human running-app dogfood (rev 3.2 §19 G4)
+- [x] RF-5A-IR-01 repair accepted — product READY CANDIDATE at `133576c9…`
+- [x] HD-5A-10 → Task Packet rev 3.3 + `TASK_PACKET_SNAPSHOT_REV3_3.md` (rev 3.2 snapshot preserved)
+- [x] G4-A automated real-data audit harness + tests + synthetic self-test (real data NOT touched)
+- [ ] G4-B `G4_AUTOMATED_AUDIT_HARNESS_FOCUSED_REVIEW`
+- [ ] G4-C one-shot real-data audit (only after G4-B PASS) → sanitized `G4_REAL_DATA_AUDIT.md`
+- [ ] G4-D Fresh Independent G4 Review
 - [ ] Draft PR — only after READY CANDIDATE (Required Fixes: none) and the Human gates

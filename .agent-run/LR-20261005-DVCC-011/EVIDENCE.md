@@ -236,9 +236,133 @@ fixture's verdict has `verdictConfirmedAt` set, so its EXPLICIT assertion is una
 regression smokes (incl. the three clipboard INCONCLUSIVE results, kept as INCONCLUSIVE), build /
 release build / `cargo check` (no Rust change). Not re-run.
 
+## G4-A — automated real-data audit harness (HD-5A-10, rev 3.3 §19.1)
+
+Scope: harness only. New files (no existing file changed outside `.agent-run/`):
+
+| File | Role |
+|---|---|
+| `scripts/verify-control-read-real-data-audit.ps1` | driver: preconditions, hidden desktop, open review, Git Refresh, one intercepted copy, tree / page-state / clipboard-sequence measurements, report write |
+| `scripts/lib/control-read-audit.mjs` | audit core: read-only sample selection, allowlist oracle, exact comparison, pattern scan, positive assertions, detector liveness, decision, report guard |
+| `scripts/lib/control-read-audit-fixture.mjs` | synthetic data folder (sentinels only) for tests and `-SelfTest` |
+| `scripts/lib/control-read-audit.test.ts` | tests (33) |
+| `scripts/vitest.audit.config.ts` | separate test entry; `vite.config.ts` / `npm test` unchanged |
+
+Product code delta from the READY CANDIDATE head:
+
+```
+git diff --stat 133576c944c55b8b50a4bdfec670d8651fdfb11e <G4 harness head> -- \
+  src src-tauri contract package.json package-lock.json index.html vite.config.ts tsconfig.json tsconfig.node.json
+-> (empty)   product code delta: 0
+```
+
+Raw-data handling: **LOCAL MEMORY ONLY** — the DVCC page (interceptor state, cleared before the app is
+stopped), the driver's PowerShell process (one string variable, passed only to the core and then
+cleared), the core's node process (stdin). Output channels: one guarded `Write-Host` (fixed words and
+codes; an exception is reported only by stage name), one file write (the report returned by the core
+after its value-domain guard). The core's stdout to the driver is one JSON line; its stderr is drained
+and discarded.
+
+OS clipboard raw write: **BLOCKED BY DESIGN** — DVCC's `plugin:clipboard-manager|write_text` request is
+answered inside the page by the shared interceptor and never reaches Windows; the harness never reads or
+writes the OS clipboard; it compares the Windows clipboard sequence number before launch and after
+the app stopped (changed → `os_clipboard_received_raw_snapshot: UNKNOWN`, INCONCLUSIVE).
+
+Verification (fresh):
+
+```
+npx vitest run --config scripts/vitest.audit.config.ts -> 1 file, 33 passed
+  oracle parity: vocabularies / ID patterns == contract.ts, states.ts, riskTier.ts, validation.ts
+  real readControl output (observed / unobserved / no local root + no repository / truncated
+    MAX_REVIEWS + MAX_ROUNDS) -> unknown 0, violations 0
+  allowlist negatives, exact comparison (substring / short-equality / path normalization / lawful
+    overlap / free text in a lawful position), 14 pattern cases, positive assertions (pass + fixed
+    failure codes), selection (non-CLOSED, deterministic, opaque sample_ref, .bak fallback,
+    REGISTRY_UNREADABLE, NO_CANDIDATE), core never writes (data folder + repo byte-identical),
+    decision matrix (PASS / FAIL / INCONCLUSIVE / BLOCKED, FAIL outranks INCONCLUSIVE),
+    report guard, CLI (no echo, empty stderr, BOM-prefixed stdin)
+  privacy (static, harness script): ASCII without BOM; exactly one Write-Host; no other output /
+    clipboard / file / transcript channel; exactly two WriteAllText lines, both of the core's report;
+    the raw snapshot variable appears only in its 5 allowed statements; no `$_` in any catch block;
+    real-data guards and the G4-C authorization token present
+npm run typecheck -> clean
+npm test          -> 47 files, 1210 passed (product suite unchanged)
+```
+
+Mutation probes (apply → audit tests → restore → SHA-256 byte-identical):
+
+| Probe | Mutation | Result |
+|---|---|---|
+| H-01 | exact comparison never hits | KILLED |
+| H-02 | allowlist ignores unknown keys | KILLED |
+| H-03 | pattern scan never hits | KILLED |
+| H-04 | decision ignores a write during copy | KILLED |
+| H-05 | decision ignores the clipboard sequence | KILLED |
+| H-06 | report value guard disabled | KILLED |
+| H-07 | every value treated as lawful | KILLED |
+| H-08 | CLOSED review selectable | KILLED (survived the first run; the CLOSED-only test was added, then killed) |
+| H-09 | sample branch not collected | KILLED |
+| H-10 | HEAD value not compared | KILLED |
+| H-11 | CLI echoes the error input | KILLED |
+| H-12 | other projects' values not collected | KILLED |
+| H-13 | detectors never live | KILLED |
+| H-14 | harness prints the raw snapshot | KILLED |
+| H-15 | harness logs the exception | KILLED |
+| H-16 | harness writes a second file | KILLED |
+
+Synthetic end-to-end self-test (`-SelfTest`; `%TEMP%` data folder seeded by the fixture; real data not
+touched; DVCC not running):
+
+- The release executable predated the RF-5A-IR-01 commit (the harness's `STALE_BUILD` guard would
+  refuse it) → rebuilt from the current tree (`npx tauri build --no-bundle`, product code == `133576c9…`;
+  no tracked file changed).
+- Run 1: `INCONCLUSIVE (AUDIT_CORE_UNAVAILABLE)`, no report — .NET's redirected stdin writer (encoding
+  utf-8, 3-byte preamble) put a BOM before the request and the core refused to parse it. Fail-closed as
+  designed. Fix: the core strips a leading BOM (test added).
+- Run 2: `PASS (ALL_CHECKS_PASSED)`, exit 0. Report (synthetic; `harness_head` was the uncommitted
+  working tree on `133576c9…`):
+
+```text
+reviewed_head: 133576c944c55b8b50a4bdfec670d8651fdfb11e
+harness_head: 133576c944c55b8b50a4bdfec670d8651fdfb11e
+sample_ref: sha256:5a56cc9bef18feb2
+selection: automatic
+copy_actions: 1
+contract_parse: PASS
+allowlist: PASS
+unknown_field_count: 0
+sensitive_source_categories_present: 11/11
+exact_sensitive_value_leaks: 0
+absolute_path_leaks: 0
+git_branch_leaks: 0
+free_text_leaks: 0
+thread_pointer_leaks: 0
+provider_identifier_leaks: 0
+credential_pattern_hits: 0
+exact_comparison_overlaps_excluded: 0
+expected_machine_facts: PASS
+unexpected_state_change: NO
+unexpected_persistent_write: NO
+raw_snapshot_persisted: NO
+raw_values_logged: NO
+os_clipboard_received_raw_snapshot: NO
+result: PASS
+result_reason: ALL_CHECKS_PASSED
+```
+
+- Run 3 (after tightening the report condition: no report unless the data folder was resolved):
+  `PASS (ALL_CHECKS_PASSED)`, exit 0, same report apart from the per-run `sample_ref`; audit tests
+  33 passed.
+
+(`expected_machine_facts: PASS` after a completed refresh of the fixture repository means the
+observed path was asserted: head / dirty / detached OBSERVED with one `observed_at`, HEAD and detached
+equal to read-only `rev-parse` / `symbolic-ref`.)
+
+Real-data audit (G4-C): **NOT RUN**. `G4_REAL_DATA_AUDIT.md` does not exist.
+
 ## Unverified items
 
-- Human running-app dogfood with real data (rev 3.2 §19 G4) — not performed (next gates).
+- G4 on real data (rev 3.3 §19.1): G4-B / G4-C / G4-D pending; the real-data audit has not been run.
 - `SOURCE_UNAVAILABLE` / `TARGET_UNAVAILABLE` / truncation are fixed by unit / integration tests only;
   the UI cannot reach them through the Copy button in a normal state (rev 3.2 §16).
 - The three regression INCONCLUSIVE clipboard checks above.

@@ -17,4 +17,12 @@
   "under development" (lines 10 / 375).
 - **QD-5A-07 (test fixtures)** — Control Read test files each build their own small synthetic
   fixtures (no shared helper file was added, to keep the change set to rev 3.2 §9).
+- **QD-5A-08 (G4 harness approximations)** — the audit core approximates the app's schema to decide
+  which files are readable (a mismatch surfaces as INCONCLUSIVE / FAIL, never as a hidden leak); it
+  drives the UI through existing `data-testid`s and decides "Git refresh succeeded" from the page
+  (`detail-current-head` is a full SHA). Forbidden values equal to the lawful identity, contract
+  vocabulary or machine-shaped values cannot be judged and are only counted.
+- **QD-5A-09 (audit tests outside `npm test`)** — the harness tests run with
+  `npx vitest run --config scripts/vitest.audit.config.ts`, not in the product suite, so that
+  `vite.config.ts` is unchanged.
 - Earlier QD items (QD-4B2B-*, QD-4B12-*, …) remain as recorded in their runs.
