@@ -3,10 +3,10 @@
 Status: product READY CANDIDATE at `133576c944c55b8b50a4bdfec670d8651fdfb11e` (after RF-5A-IR-01).
 HD-5A-10 ADOPTED → Task Packet rev 3.3 → G4-A harness at `146ff68e…` → G4-B FIX_REQUIRED
 (RF-G4B-01 … 03) → Task Packet rev 3.4 repair at `0657794d…` → `G4_HARNESS_REPAIR_FOCUSED_REVIEW`:
-RF-G4B-01 … 03 CLOSED, RF-G4B-04 OPEN → Task Packet rev 3.5 (one-shot attempt marker), verified on
-synthetic / temp roots only, committed and pushed. **Real-data folder not opened; real-data attempt
-marker NOT created; real-data audit NOT RUN. STOPPED for `RF-G4B-04_FOCUSED_REVIEW`.** No Draft PR.
-No release. No Production.
+RF-G4B-01 … 03 CLOSED, RF-G4B-04 OPEN → Task Packet rev 3.5 (one-shot attempt marker) at `7ded60ee…`
+→ `RF-G4B-04_FOCUSED_REVIEW` = PASS → G4-C authorized and run once: **PASS (`ALL_CHECKS_PASSED`)**,
+attempt marker created (schema PASS), sanitized `G4_REAL_DATA_AUDIT.md` written. **STOPPED for
+`G4_D_FRESH_INDEPENDENT_REVIEW`.** G4-D not started. No Draft PR. No release. No Production.
 
 ```
 initial_authorized_packet:   rev 3.1
@@ -47,9 +47,10 @@ rev3.5_snapshot_timing:      after the G4 harness repair review returned RF-G4B-
 
 product_ready_candidate_head: 133576c944c55b8b50a4bdfec670d8651fdfb11e
 previous_g4_harness_heads:   146ff68e… (G4-A), 0657794d… (rev 3.4 repair)
-g4_harness_head:             the commit carrying the rev 3.5 repair (product code delta 0 from 133576c9…)
-real_data_attempt_marker:    .agent-run/LR-20261005-DVCC-011/G4_REAL_DATA_ATTEMPT.md — NOT CREATED
-G4-C / G4-D:                 PENDING (real-data audit NOT RUN; G4_REAL_DATA_AUDIT.md does not exist)
+g4_harness_head:             7ded60ee95d17da3f9571395d96ced65d2bd52f0 (rev 3.5; RF-G4B-04_FOCUSED_REVIEW PASS)
+real_data_attempt_marker:    .agent-run/LR-20261005-DVCC-011/G4_REAL_DATA_ATTEMPT.md — CREATED (schema PASS)
+G4-C:                        PASS (ALL_CHECKS_PASSED; copy_actions 1; coverage 3/11; leaks 0)
+G4-D:                        NOT STARTED
 ```
 
 ## Acceptance criteria (rev 3.2 §17)
@@ -100,8 +101,8 @@ G4 (rev 3.5 §19.1):
 - [x] rev 3.5 repair: one-shot attempt marker (CreateNew, fixed schema, never deleted) before any data
       access; 59 tests; H-27..30 killed (H-01..26 re-confirmed); synthetic self-test PASS, fault runs
       and one-shot re-runs as specified
-- [ ] `RF-G4B-04_FOCUSED_REVIEW`
-- [ ] G4-C one-shot real-data audit → attempt marker → `G4_REAL_DATA_AUDIT.md` (sanitized) — NOT RUN
-- [ ] G4-D Fresh Independent G4 Review
+- [x] `RF-G4B-04_FOCUSED_REVIEW` at `7ded60ee…`: PASS (Required Fixes 0)
+- [x] G4-C one-shot real-data audit → attempt marker → `G4_REAL_DATA_AUDIT.md` (sanitized): PASS
+- [ ] G4-D Fresh Independent G4 Review — NOT STARTED
 
-Next gate: `RF-G4B-04_FOCUSED_REVIEW`.
+Next gate: `G4_D_FRESH_INDEPENDENT_REVIEW`.

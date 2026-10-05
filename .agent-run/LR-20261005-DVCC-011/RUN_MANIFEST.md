@@ -71,4 +71,8 @@
   OPEN (one-shot must not depend on the report alone). Narrow repair authorized (harness / tests /
   governance evidence; Task Packet rev 3.5). Real-data folder must not be opened; no real-data
   attempt marker and no `G4_REAL_DATA_AUDIT.md` may be created. Draft PR, Ready, merge, release,
-  Production, G4-C: not authorized. Next gate: `RF-G4B-04_FOCUSED_REVIEW`.
+  Production, G4-C: not authorized.
+- `RF-G4B-04_FOCUSED_REVIEW` at `7ded60ee95d17da3f9571395d96ced65d2bd52f0`: PASS (RF-G4B-01 … 04 CLOSED,
+  Required Fixes 0). `PHASE_5A_G4_C_REAL_DATA_AUDIT = AUTHORIZED` — one G4-C run under rev 3.5 only.
+  Executed once: PASS (`ALL_CHECKS_PASSED`); attempt marker created. Draft PR, Ready, merge, release,
+  Production, Phase 5B: not authorized. Next gate: `G4_D_FRESH_INDEPENDENT_REVIEW`.

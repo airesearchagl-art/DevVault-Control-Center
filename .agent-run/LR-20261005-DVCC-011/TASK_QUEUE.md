@@ -27,7 +27,7 @@
 - [x] Task Packet rev 3.4 + `TASK_PACKET_SNAPSHOT_REV3_4.md` (rev 3.3 snapshot preserved); RF-G4B-01..03 repaired, CDP hardening
 - [x] `G4_HARNESS_REPAIR_FOCUSED_REVIEW` — RF-G4B-01..03 CLOSED, RF-G4B-04 OPEN
 - [x] Task Packet rev 3.5 + `TASK_PACKET_SNAPSHOT_REV3_5.md` (rev 3.1–3.4 snapshots preserved); RF-G4B-04 one-shot attempt marker
-- [ ] `RF-G4B-04_FOCUSED_REVIEW`
-- [ ] G4-C one-shot real-data audit (only after the harness review PASSes and G4-C is authorized) → sanitized `G4_REAL_DATA_AUDIT.md`
+- [x] `RF-G4B-04_FOCUSED_REVIEW` — PASS (RF-G4B-01..04 CLOSED; harness READY FOR G4-C)
+- [x] G4-C one-shot real-data audit — PASS (`ALL_CHECKS_PASSED`); attempt marker created; sanitized `G4_REAL_DATA_AUDIT.md`
 - [ ] G4-D Fresh Independent G4 Review
 - [ ] Draft PR — only after READY CANDIDATE (Required Fixes: none) and the Human gates

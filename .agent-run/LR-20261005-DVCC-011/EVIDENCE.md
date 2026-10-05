@@ -524,10 +524,54 @@ running-app Case A–D, regression smokes.
 Real data: the data folder (`%APPDATA%\DevVault-Control`) was **not opened**; the real-data attempt
 marker was **not created**; `G4_REAL_DATA_AUDIT.md` was **not created**; G4-C **NOT RUN**.
 
+## G4-C — one-shot real-data audit (rev 3.5 §19.1) — PASS
+
+Authorization: `PHASE_5A_G4_C_REAL_DATA_AUDIT = AUTHORIZED` after `RF-G4B-04_FOCUSED_REVIEW = PASS`
+(RF-G4B-01 … 04 CLOSED, Required Fixes 0) at harness head `7ded60ee95d17da3f9571395d96ced65d2bd52f0`.
+
+Fresh preconditions (checked before the run, nothing read from the data folder):
+
+| Check | Result |
+|---|---|
+| `HEAD` / `origin/feat/control-read-contract-v1` | `7ded60ee95d17da3f9571395d96ced65d2bd52f0` (equal) |
+| Working tree | clean; `G4_REAL_DATA_AUDIT.md` and `G4_REAL_DATA_ATTEMPT.md` absent |
+| Product code delta from `133576c9…` | 0 |
+| Open PRs | 0 |
+| Release build | present and newer than the last product commit (not rebuilt) |
+| DVCC running / `DVCC_DATA_DIR` set | no / no |
+
+Run (official route, once): `scripts\verify-control-read-real-data-audit.ps1 -RealData -Authorization
+"HD-5A-10/G4-C"`. Complete console output (fixed lines only; stderr empty):
+
+```
+[g4] sample selected automatically: coverage 3/11 before Git refresh
+[g4] result: PASS (ALL_CHECKS_PASSED)
+[g4] report: .agent-run/LR-20261005-DVCC-011/G4_REAL_DATA_AUDIT.md
+exit=0
+```
+
+- Attempt marker `G4_REAL_DATA_ATTEMPT.md`: CREATED by the harness before the data phase; content equals
+  the allowed schema byte-for-byte (`schema_version: 1` / `product_head: 133576c9…` /
+  `harness_head: 7ded60ee…` / `state: STARTED`, 143 bytes; SHA-256 `81aed00b…def2d102`). Kept; never to
+  be deleted, overwritten or resumed.
+- Sanitized report `G4_REAL_DATA_AUDIT.md` (SHA-256 `735bbedf…b150c082`): every field within the
+  REPORT_SCHEMA domains (no line outside the fixed header / field grammar). Key values:
+  `copy_actions: 1`, `contract_parse: PASS`, `allowlist: PASS`, `unknown_field_count: 0`,
+  `sensitive_source_categories_present: 3/11`, every leak / pattern count `0`,
+  `exact_comparison_overlaps_excluded: 0`, `expected_machine_facts: PASS`,
+  `unexpected_state_change: NO`, `unexpected_persistent_write: NO`, `raw_snapshot_persisted: NO`,
+  `raw_values_logged: NO`, `os_clipboard_received_raw_snapshot: NO`, `result: PASS`,
+  `result_reason: ALL_CHECKS_PASSED`.
+- No raw snapshot or real-data value was printed, saved or read by the operator; the sample was chosen
+  by the harness; the OS clipboard was not read. Automatic retry: none.
+- Coverage note for G4-D: the selected sample had 3 of 11 sensitive-source categories non-empty — the
+  §19.1 minimum (`MIN_COVERAGE = 3`), so the run was not INCONCLUSIVE, but the exact comparison
+  exercised few categories on that sample (the whole-folder forbidden values were still compared and
+  the pattern scan covered every category).
+
 ## Unverified items
 
-- G4 on real data (rev 3.5 §19.1): `RF-G4B-04_FOCUSED_REVIEW`, G4-C and G4-D pending; the real-data
-  audit has not been run.
+- G4-D Fresh Independent G4 Review (rev 3.5 §19.1): NOT STARTED.
 - `SOURCE_UNAVAILABLE` / `TARGET_UNAVAILABLE` / truncation are fixed by unit / integration tests only;
   the UI cannot reach them through the Copy button in a normal state (rev 3.2 §16).
 - The three regression INCONCLUSIVE clipboard checks above.

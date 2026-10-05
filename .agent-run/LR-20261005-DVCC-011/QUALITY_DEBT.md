@@ -28,6 +28,10 @@
   there is deliberately no reset path (rev 3.5). Any retry needs a new Human gate and a separate,
   reviewed procedure for the marker. The harness's behavioural tests need DVCC closed (the
   `DVCC_RUNNING` precondition would otherwise block them).
+- **QD-5A-11 (G4-C sample coverage at the minimum)** — the automatically selected real-data sample
+  had 3 / 11 sensitive-source categories non-empty (`MIN_COVERAGE = 3`). The run PASSed, but per-sample
+  exact-comparison coverage was narrow; G4-D should weigh this. A broader real-data audit would need a
+  new Human gate (the one-shot is consumed).
 - **QD-5A-09 (audit tests outside `npm test`)** — the harness tests run with
   `npx vitest run --config scripts/vitest.audit.config.ts`, not in the product suite, so that
   `vite.config.ts` is unchanged.
