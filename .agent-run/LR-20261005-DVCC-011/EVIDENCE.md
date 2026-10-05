@@ -360,9 +360,83 @@ equal to read-only `rev-parse` / `symbolic-ref`.)
 
 Real-data audit (G4-C): **NOT RUN**. `G4_REAL_DATA_AUDIT.md` does not exist.
 
+## G4-B focused repair (rev 3.4; review at `146ff68e…`: FIX_REQUIRED, RF-G4B-01 … 03)
+
+Scope: G4 harness / tests / governance evidence only. Files: `scripts/lib/control-read-audit.mjs`,
+`scripts/verify-control-read-real-data-audit.ps1`, `scripts/lib/control-read-audit.test.ts`, new
+`scripts/lib/control-read-audit-finalize.ps1`, `.agent-run/…` (rev 3.4 snapshot, D-10, state files).
+
+| Finding | Repair | Fixed by tests / probes |
+|---|---|---|
+| RF-G4B-01 machine-shaped blanket exemption | legitimacy only from contract vocabulary, the selected source (project id, owner / name, readable non-CLOSED review ids of the project, their rounds' recorded heads and timestamps, DVCC's observed HEAD, EvidenceRefs built from these) and the response's own values inside the run windows; unresolved machine-shaped overlap → INCONCLUSIVE `EXACT_COMPARISON_OVERLAP`; every non-empty body line compared; source-bound positive assertions (foreign review / project id, foreign EvidenceRef, recorded head / timestamp, `generated_at` / `observed_at` windows) | SHA (7-hex) / review-id / ISO / EvidenceRef-shaped free text in the snapshot → unresolved, never PASS; another project's / a CLOSED review's identity → FAIL; short body line compared; H-17, H-18, H-25 |
+| RF-G4B-02 harness Git / filesystem beyond the product boundary | core: no `child_process`, no stat / Git of any local root; selection from the data folder only; Git facts only from DVCC's own observation read from the Review detail after Refresh Git (status label / HEAD / branch; labels pinned to `src/i18n`); harness Git only `git.exe -C <DVCC repo>` | static: no process / stat API in the core, no fs call on a `localRoot` line, exactly one `git.exe` in the harness (DVCC repo), none in the finalize library; a missing local root changes nothing; H-21, H-22 |
+| RF-G4B-03 finalization outside the sanitized boundary | `control-read-audit-finalize.ps1`: Invoke-Node / Invoke-AuditCore / Write-ReportAtomically catch everything; `Complete-AuditRun` boundary → `AUDIT_FINALIZE_FAILED` / `REPORT_RENDER_FAILED` / `REPORT_WRITE_FAILED`; script trap → `UNHANDLED_EXCEPTION`; temp file + rename (never overwrites); PASS only after the write; references dropped in `finally` | behavioural PowerShell tests: PASS writes atomically; audit core unavailable / report destination unwritable / renderer throws / exception carrying a path / existing report → fixed line only, exit 2, empty stderr, no path, no report, no temp file; H-19, H-20, H-23, H-24 |
+| CDP advisory | random high port 49152–65534 by default; listener before launch → BLOCKED `CDP_PORT_IN_USE`; identifiers sent only after Tauri internals + queue DOM + interceptor are confirmed (`DVCC_PAGE_UNCONFIRMED`) | static; H-26 |
+
+Product code delta from the READY CANDIDATE head (fresh):
+
+```
+git diff --stat 133576c944c55b8b50a4bdfec670d8651fdfb11e <repair head> -- \
+  src src-tauri contract package.json package-lock.json index.html vite.config.ts tsconfig.json tsconfig.node.json
+-> (empty)   product code delta: 0
+```
+
+Fresh verification:
+
+```
+npx vitest run --config scripts/vitest.audit.config.ts -> 1 file, 48 passed
+  (incl. 6 behavioural PowerShell finalization cases, i18n label parity, source-bound tests)
+git diff --check -> clean
+raw-data static privacy checks (harness + finalize library): ASCII without BOM; one Write-Host (Say);
+  no other output / clipboard / transcript channel; no `.Message` / `$_.Exception`; one WriteAllText
+  (temp) + one Move; the raw snapshot variables only in their allowed statements (4 + 4); no `$_` in a
+  catch block; trap with a fixed line
+```
+
+Mutation probes (apply → audit tests → restore → SHA-256 byte-identical), all re-run:
+
+| Probe | Mutation | Result |
+|---|---|---|
+| H-01 … H-16 | as G4-A (anchors moved to the repaired code) | all KILLED |
+| H-17 | generic MACHINE_SHAPED exemption restored | KILLED |
+| H-18 | decision ignores unresolved overlaps | KILLED |
+| H-19 | finalization catch removed | KILLED |
+| H-20 | report write exception rethrown | KILLED |
+| H-21 | core imports `child_process` (Git in a local root) | KILLED |
+| H-22 | harness runs Git against another folder | KILLED |
+| H-23 | PASS printed before the report is written | KILLED |
+| H-24 | report written in place (no temporary file) | KILLED (survived the first run; the "never overwrite an existing report" test was added, then killed) |
+| H-25 | source-bound identity check removed | KILLED |
+| H-26 | CDP port check removed | KILLED |
+
+No probe was killed only by a compile error (all by test failures).
+
+Synthetic end-to-end self-test (release build from the current tree, product code == `133576c9…`;
+DVCC not running; real data not touched):
+
+| Run | Output (complete) | Exit |
+|---|---|---|
+| `-SelfTest` | `sample selected automatically: coverage 10/11 before Git refresh` / `result: PASS (ALL_CHECKS_PASSED)` / `report: G4_SELF_TEST_REPORT.md in the self-test run folder` | 0 |
+| `-SelfTestFault AuditCoreUnavailable` | `result: INCONCLUSIVE (AUDIT_FINALIZE_FAILED) - no report written` | 2 |
+| `-SelfTestFault ReportUnwritable` | `result: INCONCLUSIVE (REPORT_WRITE_FAILED) - no report written` | 2 |
+| `-SelfTestFault RendererThrows` | `result: INCONCLUSIVE (REPORT_RENDER_FAILED) - no report written` | 2 |
+
+stderr was empty in all four; the three fault runs left no report and no temporary file. Self-test
+report (synthetic): `sensitive_source_categories_present: 11/11` (the branch came from DVCC's
+observation after Refresh Git), every leak count 0, `exact_comparison_overlaps_excluded: 0`,
+`expected_machine_facts: PASS`, no state change, no persistent write, OS clipboard untouched,
+`result: PASS`.
+
+Evidence reused unchanged (per the G4-B instruction): product READY CANDIDATE review at `133576c9…`,
+RF-5A-IR-01 closure, M-5A-01..37, Control Read running-app Case A–D, regression smokes, product
+typecheck / tests (product code unchanged; delta 0 re-verified above).
+
+Real-data audit (G4-C): **NOT RUN**. `G4_REAL_DATA_AUDIT.md` does not exist.
+
 ## Unverified items
 
-- G4 on real data (rev 3.3 §19.1): G4-B / G4-C / G4-D pending; the real-data audit has not been run.
+- G4 on real data (rev 3.4 §19.1): `G4_HARNESS_REPAIR_FOCUSED_REVIEW`, G4-C and G4-D pending; the
+  real-data audit has not been run.
 - `SOURCE_UNAVAILABLE` / `TARGET_UNAVAILABLE` / truncation are fixed by unit / integration tests only;
   the UI cannot reach them through the Copy button in a normal state (rev 3.2 §16).
 - The three regression INCONCLUSIVE clipboard checks above.

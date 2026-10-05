@@ -15,7 +15,8 @@
 |---|---|---|---|
 | initial_authorized_packet | rev 3.1 | `TASK_PACKET_SNAPSHOT.md` | `de0d0f8e233665213ed92b0f49ede1cb927457d168049f776f8b86bd8f3d18da` |
 | superseded | rev 3.2 (supersedes rev 3.1) | `TASK_PACKET_SNAPSHOT_REV3_2.md` | `1d663c7cd0d229d93c363e1434959a18dc7fd288607ff61b414d91b944d2bd02` |
-| active_packet | rev 3.3 (supersedes rev 3.2) | `TASK_PACKET_SNAPSHOT_REV3_3.md` | `d54ea639995e5224cd9a1ff5e7010691cc243cf1eecc464aee14cc482722a218` |
+| superseded | rev 3.3 (supersedes rev 3.2) | `TASK_PACKET_SNAPSHOT_REV3_3.md` | `d54ea639995e5224cd9a1ff5e7010691cc243cf1eecc464aee14cc482722a218` |
+| active_packet | rev 3.4 (supersedes rev 3.3) | `TASK_PACKET_SNAPSHOT_REV3_4.md` | `c492a5a10b7ee18aa86b52c85cc32fb596ca32280f364a3caffe6957661f3a58` |
 
 - rev 3.1 snapshot: written and hashed on `main` at `7efdc62c…`, **before** the branch was created
   and before any implementation edit. **PRESERVED / NOT OVERWRITTEN.**
@@ -27,6 +28,12 @@
   `133576c944c55b8b50a4bdfec670d8651fdfb11e`), **before** the G4 automated audit, in response to
   HD-5A-10 (see `DECISIONS.md` D-08). Changes only the G4 definition and its evidence / STOP text;
   product contract, architecture, scope and AC product semantics are unchanged.
+  **PRESERVED / NOT OVERWRITTEN.**
+- rev 3.4 snapshot: created **after** `G4_AUTOMATED_AUDIT_HARNESS_FOCUSED_REVIEW` = FIX_REQUIRED
+  (RF-G4B-01 … 03 at harness head `146ff68e9b36aa998d25d8e7a3ef411f81fbd13c`), **before** the
+  real-data audit (see `DECISIONS.md` D-10). Changes only harness safety / G4 evidence semantics
+  (§19.1, with §18 / §20 pointers); HD-5A-10, product contract, architecture, scope and product AC
+  are unchanged.
 
 ## Fresh Gate (rev 3.1 §1)
 
@@ -51,4 +58,7 @@
   Production.
 - HD-5A-10: G4-A (harness, tests, docs, snapshot, evidence; commit / push) authorized. The real-data
   audit (G4-C) is **not** authorized before `G4_AUTOMATED_AUDIT_HARNESS_FOCUSED_REVIEW` (G4-B) PASS.
-  Next gate: `G4_AUTOMATED_AUDIT_HARNESS_FOCUSED_REVIEW`.
+- G4-B at `146ff68e…`: FIX_REQUIRED (RF-G4B-01 … 03; CDP advisory). Focused repair authorized for the
+  G4 harness / tests / governance evidence only (Task Packet rev 3.4). Real-data audit, Draft PR,
+  Ready, merge, release, Production: not authorized. `G4_REAL_DATA_AUDIT.md` must not exist.
+  Next gate: `G4_HARNESS_REPAIR_FOCUSED_REVIEW`.

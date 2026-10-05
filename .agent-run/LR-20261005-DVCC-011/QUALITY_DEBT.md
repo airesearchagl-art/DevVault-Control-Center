@@ -19,9 +19,11 @@
   fixtures (no shared helper file was added, to keep the change set to rev 3.2 §9).
 - **QD-5A-08 (G4 harness approximations)** — the audit core approximates the app's schema to decide
   which files are readable (a mismatch surfaces as INCONCLUSIVE / FAIL, never as a hidden leak); it
-  drives the UI through existing `data-testid`s and decides "Git refresh succeeded" from the page
-  (`detail-current-head` is a full SHA). Forbidden values equal to the lawful identity, contract
-  vocabulary or machine-shaped values cannot be judged and are only counted.
+  drives the UI through existing `data-testid`s and reads DVCC's Git observation from the Review
+  detail's rendered status label / HEAD / branch cells (labels pinned to `src/i18n` ja / en by test; a
+  label change makes the observed path fail closed, not pass). Forbidden values equal to a
+  source-bound lawful value are excluded and counted; machine-shaped values without a source-bound
+  explanation stop the run (rev 3.4).
 - **QD-5A-09 (audit tests outside `npm test`)** — the harness tests run with
   `npx vitest run --config scripts/vitest.audit.config.ts`, not in the product suite, so that
   `vite.config.ts` is unchanged.

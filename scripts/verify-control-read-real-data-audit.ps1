@@ -1,29 +1,33 @@
-# Control Read real-data disclosure audit (Phase 5A G4, HD-5A-10, Task Packet rev 3.3).
+# Control Read real-data disclosure audit (Phase 5A G4, HD-5A-10, Task Packet rev 3.4).
 #
 # G4-A built this harness; G4-B reviews it; only after G4-B PASS may G4-C run it ONCE on real data.
 #
 #   -SelfTest                                 synthetic data only (scripts/lib/control-read-audit-fixture.mjs)
 #                                             in a new %TEMP% folder; the sanitized report stays there.
+#                                             -SelfTestFault injects a finalization failure (self-test only).
 #   -RealData -Authorization "HD-5A-10/G4-C"  the one authorized real-data run: the operator's own data
 #                                             folder, read-only; writes only the sanitized report
 #                                             .agent-run/LR-20261005-DVCC-011/G4_REAL_DATA_AUDIT.md and
 #                                             refuses to run again once that report exists.
 #
-# What one run does: pick one sample automatically and read-only (scripts/lib/control-read-audit.mjs),
-# start the release build on a hidden desktop, open that review, Refresh Git (read-only), press
-# "Copy control snapshot (JSON)" exactly once with the clipboard interceptor in place, stop the app,
-# and hand the captured JSON to the audit core through a stdin pipe. The core returns the verdict and
-# the sanitized report.
+# What one run does: pick one sample automatically and read-only (scripts/lib/control-read-audit.mjs;
+# the DVCC data folder only), start the release build on a hidden desktop with a random free CDP port,
+# confirm the DVCC page, open that review, ask DVCC to Refresh Git and read DVCC's own observation from
+# its Review detail, press "Copy control snapshot (JSON)" exactly once with the clipboard interceptor in
+# place, stop the app, and hand the captured JSON to the audit core through a stdin pipe
+# (scripts/lib/control-read-audit-finalize.ps1). The core returns the verdict and the sanitized report.
 #
-# Raw-data rules (HD-5A-10):
+# Raw-data rules (HD-5A-10, rev 3.4):
 # - the raw snapshot and every raw source value exist only in process memory (the app page, this
 #   PowerShell process, the audit-core node process); they never reach stdout, stderr, a transcript, a
 #   file, Git, a chat or the clipboard;
+# - this harness never runs Git in, or otherwise touches, a Project's local root: Git facts come only
+#   from DVCC's own validated observation. Git here is only the DVCC repository's own Fresh Gate;
 # - DVCC's clipboard write is answered inside the page by the shared interceptor (scripts/lib/
 #   dvcc-smoke.ps1): nothing reaches the Windows clipboard. This harness never reads or writes the
 #   clipboard; it only compares the Windows clipboard sequence number before and after;
 # - every printed line goes through Say (fixed words and codes); an exception is reported by the
-#   stage it happened in, never by its message;
+#   stage it happened in, never by its message (stage catch, finalization boundary, script trap);
 # - fail-closed: anything that cannot be established safely ends INCONCLUSIVE (or BLOCKED before any
 #   data is touched), never PASS.
 
@@ -33,8 +37,10 @@ param(
   [string] $Authorization = "",
   [string] $ReviewedHead = "133576c944c55b8b50a4bdfec670d8651fdfb11e",
   [string] $Exe = "",
-  [int] $Port = 9349,
-  [int] $ReadySeconds = 40
+  [int] $Port = 0,
+  [int] $ReadySeconds = 40,
+  [ValidateSet("", "AuditCoreUnavailable", "ReportUnwritable", "RendererThrows")]
+  [string] $SelfTestFault = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -46,29 +52,31 @@ $REPORT_RELATIVE = ".agent-run/LR-20261005-DVCC-011/G4_REAL_DATA_AUDIT.md"
 $MIN_COVERAGE = 3
 $PRODUCT_PATHS = @("src", "src-tauri", "contract", "package.json", "package-lock.json", "index.html", "vite.config.ts", "tsconfig.json", "tsconfig.node.json")
 
-# The only output channel. Anything that is not plain fixed text (or that looks like a path) is withheld.
-function Say([string] $text) {
-  if ($text -notmatch '^[A-Za-z0-9 _=./(),:\[\]-]*$' -or $text -match '[A-Za-z]:[\\/]') {
-    $text = "[g4] (line withheld)"
-  }
-  Write-Host $text
+. (Join-Path $PSScriptRoot "lib\control-read-audit-finalize.ps1")
+
+# Last boundary: an error nothing else caught ends the run with a fixed line, never its message.
+trap {
+  Say "[g4] result: INCONCLUSIVE (UNHANDLED_EXCEPTION) - no report written"
+  exit 2
 }
 
-if ($SelfTest -eq $RealData) {
-  Say "usage: -SelfTest, or -RealData -Authorization TOKEN (G4-C only)"
+if ($SelfTest -eq $RealData -or ($RealData -and $SelfTestFault -ne "")) {
+  Say "usage: -SelfTest [-SelfTestFault NAME], or -RealData -Authorization TOKEN (G4-C only)"
   exit 3
 }
 
 $runId = [guid]::NewGuid().ToString("N").Substring(0, 8)
 $desktopName = "dvcc-g4-audit-$runId"
 if ($Exe -eq "") { $Exe = Join-Path $repo "src-tauri\target\release\devvault-control-center.exe" }
+if ($Port -eq 0) { $Port = Get-Random -Minimum 49152 -Maximum 65535 }
 $dataDir = $null
 $selfTestRoot = $null
 
 . (Join-Path $PSScriptRoot "lib\dvcc-smoke.ps1")
 
-# Measurements handed to the audit core. Only booleans, counts, fixed codes and the opaque sample
-# reference; the sample identifiers are needed to press the button and to audit, and stay in memory.
+# Measurements handed to the audit core. Only booleans, counts, fixed codes, epoch-millisecond run
+# windows and the opaque sample reference; the sample identifiers (needed to press the button) and
+# DVCC's rendered Git observation stay in memory.
 $m = [ordered]@{
   op = "finalize"
   selfTest = [bool]$SelfTest
@@ -81,7 +89,8 @@ $m = [ordered]@{
   coverage = $null
   copyActions = 0
   gitRefreshCompleted = $false
-  gitObservedOk = $false
+  gitUi = $null
+  windows = [ordered]@{ refresh = $null; copy = $null }
   stateChange = "UNKNOWN"
   writeDuringCopy = $null
   writeOutsideCopy = $null
@@ -94,38 +103,7 @@ $stage = "PRECONDITIONS"
 
 # --- helpers ------------------------------------------------------------------------------------
 
-# Runs a node script with one UTF-8 request on stdin; returns the parsed JSON line, or $null.
-# stderr is drained and discarded (never shown).
-function Invoke-Node([string] $file, [string] $arguments, [string] $stdinText) {
-  $psi = [System.Diagnostics.ProcessStartInfo]::new()
-  $psi.FileName = $script:node
-  $psi.Arguments = '"' + $file + '"' + $arguments
-  $psi.UseShellExecute = $false
-  $psi.CreateNoWindow = $true
-  $psi.RedirectStandardInput = $true
-  $psi.RedirectStandardOutput = $true
-  $psi.RedirectStandardError = $true
-  $psi.StandardOutputEncoding = [System.Text.UTF8Encoding]::new($false)
-  $proc = [System.Diagnostics.Process]::Start($psi)
-  $errTask = $proc.StandardError.ReadToEndAsync()
-  $bytes = [System.Text.UTF8Encoding]::new($false).GetBytes($stdinText)
-  $proc.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
-  $proc.StandardInput.Close()
-  $out = $proc.StandardOutput.ReadToEnd()
-  if (-not $proc.WaitForExit(180000)) {
-    try { $proc.Kill() } catch { }
-    return $null
-  }
-  [void]$errTask.Wait(5000)
-  $bytes = $null
-  if ($proc.ExitCode -ne 0) { return $null }
-  try { return ($out | ConvertFrom-Json) } catch { return $null }
-}
-
-function Invoke-AuditCore($request) {
-  return Invoke-Node $script:auditCore "" ($request | ConvertTo-Json -Depth 4 -Compress)
-}
-
+# Git for the DVCC repository's own Fresh Gate only (never a Project's local root).
 function Invoke-RepoGit {
   # Git writes hints to stderr; only the exit code and stdout matter, and neither is printed.
   $ErrorActionPreference = "Continue"
@@ -147,6 +125,13 @@ function Stop-Run([string] $code) {
   if ($null -eq $script:m.stopCode) { $script:m.stopCode = $code }
 }
 
+function Now-Ms { return [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() }
+
+function Test-PortListening([int] $port) {
+  $listeners = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners()
+  return (@($listeners | Where-Object { $_.Port -eq $port }).Count -gt 0)
+}
+
 # Page state the copy must not change: queue membership and badges, the open review, the language,
 # open dialogs or forms. Compared inside the page; only the boolean comes back.
 $fingerprintJs = @'
@@ -156,6 +141,16 @@ $fingerprintJs = @'
   const lang = document.querySelector('[data-testid=language-selector]');
   const open = document.querySelectorAll('[role=dialog], [data-testid=project-form], dialog[open]').length;
   return items.join('\n') + '#' + (detail?.dataset.reviewId || '') + '#' + (lang ? lang.value : '') + '#' + open + '#' + document.documentElement.lang;
+})()
+'@
+
+# DVCC's own Git observation as its Review detail renders it: the status label, the HEAD cell and the
+# branch cell (a cell showing the "not observed" placeholder reads as null). Kept in memory only.
+$gitUiJs = @'
+(() => {
+  const cell = (id) => document.querySelector('[data-testid=' + id + ']');
+  const value = (id) => { const c = cell(id); if (!c || c.querySelector('.muted')) return null; return (c.textContent || '').trim(); };
+  return JSON.stringify({ status: (cell('detail-git-status')?.textContent || '').trim(), head: value('detail-current-head'), branch: value('detail-git-branch') });
 })()
 '@
 
@@ -199,6 +194,7 @@ try {
     elseif ((Get-Item -LiteralPath $Exe).LastWriteTimeUtc -lt [DateTimeOffset]::FromUnixTimeSeconds([long]$productCommit.out).UtcDateTime) { $m.blockedCode = "STALE_BUILD" }
     elseif (@(Get-Process -Name "devvault-control-center" -ErrorAction SilentlyContinue).Count -gt 0) { $m.blockedCode = "DVCC_RUNNING" }
     elseif ($RealData -and -not [string]::IsNullOrEmpty($env:DVCC_DATA_DIR)) { $m.blockedCode = "DATA_DIR_OVERRIDE_PRESENT" }
+    elseif (Test-PortListening $Port) { $m.blockedCode = "CDP_PORT_IN_USE" }
   }
 
   if ($null -eq $m.blockedCode) {
@@ -220,7 +216,7 @@ try {
 
   if ($null -ne $m.blockedCode) { Say ("[g4] BLOCKED " + $m.blockedCode) }
   else {
-    # ============================== selection (read-only) ==============================
+    # ============================== selection (read-only, data folder only) ==============================
     $stage = "TREE_BEFORE"
     $tree0 = Get-Tree $dataDir
 
@@ -233,7 +229,7 @@ try {
       $m.reviewId = [string]$selection.reviewId
       $m.sampleRef = [string]$selection.sampleRef
       $m.coverage = [int]$selection.coverage
-      Say ("[g4] sample selected automatically: coverage " + [int]$selection.coverage + "/" + [int]$selection.coverageTotal + ", git work tree " + [bool]$selection.gitWorkTree)
+      Say ("[g4] sample selected automatically: coverage " + [int]$selection.coverage + "/" + [int]$selection.coverageTotal + " before Git refresh")
       if ([int]$selection.coverage -lt $MIN_COVERAGE) { Stop-Run "LOW_COVERAGE" }
     }
 
@@ -243,11 +239,15 @@ try {
       [DvccDesktop]::Create($desktopName)
       $appPid = Start-AuditApp
 
+      # No identifier is sent to the page before it is confirmed to be DVCC's own page.
       $stage = "OPEN_REVIEW"
-      $selector = '[data-testid=queue-item][data-review-id="' + $m.reviewId + '"]'
-      if (-not (Invoke-Cdp ("(() => { const e = document.querySelector(" + (ConvertTo-Json $selector -Compress) + "); if (!e) return false; e.click(); return true; })()"))) { Stop-Run "REVIEW_NOT_IN_QUEUE" }
-      elseif (-not (Wait-For ('document.querySelector("[data-testid=detail]")?.dataset.reviewId === ' + (ConvertTo-Json $m.reviewId -Compress)) 10)) { Stop-Run "REVIEW_DID_NOT_OPEN" }
-      elseif (-not (Invoke-Cdp "(() => { const b = document.querySelector('[data-testid=action-copy-control-snapshot]'); return !!b && !b.disabled; })()")) { Stop-Run "BUTTON_UNREACHABLE" }
+      if (-not (Invoke-Cdp "typeof window.__TAURI_INTERNALS__ === 'object' && document.querySelector('[data-testid=queue-list]') !== null && !!window.__dvccClipboard")) { Stop-Run "DVCC_PAGE_UNCONFIRMED" }
+      else {
+        $selector = '[data-testid=queue-item][data-review-id="' + $m.reviewId + '"]'
+        if (-not (Invoke-Cdp ("(() => { const e = document.querySelector(" + (ConvertTo-Json $selector -Compress) + "); if (!e) return false; e.click(); return true; })()"))) { Stop-Run "REVIEW_NOT_IN_QUEUE" }
+        elseif (-not (Wait-For ('document.querySelector("[data-testid=detail]")?.dataset.reviewId === ' + (ConvertTo-Json $m.reviewId -Compress)) 10)) { Stop-Run "REVIEW_DID_NOT_OPEN" }
+        elseif (-not (Invoke-Cdp "(() => { const b = document.querySelector('[data-testid=action-copy-control-snapshot]'); return !!b && !b.disabled; })()")) { Stop-Run "BUTTON_UNREACHABLE" }
+      }
     }
 
     if ($null -eq $m.stopCode -and [bool]$selection.hasLocalRoot) {
@@ -255,13 +255,16 @@ try {
       if (-not (Invoke-Cdp 'window.__dvccAuditObservedBefore = document.querySelector("[data-testid=detail-observed-at]")?.textContent ?? null; window.__dvccAuditObservedBefore !== null')) { Stop-Run "GIT_PANEL_MISSING" }
       elseif (-not (Wait-For "(() => { const b = document.querySelector('[data-testid=action-refresh-git]'); return !!b && !b.disabled; })()" 10)) { Stop-Run "GIT_REFRESH_UNAVAILABLE" }
       else {
+        $refreshFrom = Now-Ms
         Invoke-Cdp "document.querySelector('[data-testid=action-refresh-git]').click(); true" | Out-Null
         $refreshed = Wait-For '(() => { const t = document.querySelector("[data-testid=detail-observed-at]")?.textContent ?? null; const b = document.querySelector("[data-testid=action-refresh-git]"); return t !== null && t !== window.__dvccAuditObservedBefore && !!b && !b.disabled; })()' 30
+        $refreshTo = Now-Ms
         Invoke-Cdp 'delete window.__dvccAuditObservedBefore; true' | Out-Null
         if (-not $refreshed) { Stop-Run "GIT_REFRESH_INCOMPLETE" }
         else {
           $m.gitRefreshCompleted = $true
-          $m.gitObservedOk = [bool](Invoke-Cdp '/^[0-9a-f]{40}$/.test((document.querySelector("[data-testid=detail-current-head]")?.textContent ?? "").trim())')
+          $m.windows.refresh = @($refreshFrom, $refreshTo)
+          $m.gitUi = ([string](Invoke-Cdp $gitUiJs)) | ConvertFrom-Json
         }
       }
     }
@@ -276,9 +279,11 @@ try {
       if (-not (Test-ClipboardInterceptor)) { Stop-Run "INTERCEPTION_UNCONFIRMED" }
       else {
         $count = [int](Invoke-Cdp 'window.__dvccClipboard.writes.length')
+        $copyFrom = Now-Ms
         Invoke-Cdp "document.querySelector('[data-testid=action-copy-control-snapshot]').click(); true" | Out-Null
         $m.copyActions = 1
         $seen = Wait-For "window.__dvccClipboard.writes.length > $count" 8
+        $m.windows.copy = @($copyFrom, (Now-Ms))
         Start-Sleep -Milliseconds 1000
         $writes = [int](Invoke-Cdp 'window.__dvccClipboard.writes.length')
         if (-not $seen) { Stop-Run "NO_INTERCEPTED_WRITE" }
@@ -323,42 +328,27 @@ finally {
   try { Stop-Started } catch { }
 }
 
-# ============================== audit, decision, report ==============================
-$final = $null
-if ($null -eq $m.blockedCode -and $null -ne $snapshotText) {
-  $request = [ordered]@{}
-  foreach ($key in $m.Keys) { $request[$key] = $m[$key] }
-  $request["snapshotText"] = $snapshotText
-  $final = Invoke-AuditCore $request
-  $request = $null
+# ============================== audit, decision, report (sanitized boundary) ==============================
+$reportLabel = $REPORT_RELATIVE
+if ($RealData) { $finalReportPath = $reportPath }
+elseif ($null -ne $selfTestRoot) {
+  $finalReportPath = Join-Path $selfTestRoot "G4_SELF_TEST_REPORT.md"
+  $reportLabel = "G4_SELF_TEST_REPORT.md in the self-test run folder"
 }
-$snapshotText = $null
-[GC]::Collect()
+else { $finalReportPath = $null }
 
-if ($null -eq $final -or $final.status -ne "FINALIZED") {
-  if ($null -eq $m.blockedCode -and $null -ne $m.dataDir -and $m.copyActions -eq 1) { Stop-Run "AUDIT_EXCEPTION" }
-  $final = Invoke-AuditCore $m
+if ($SelfTest -and $null -ne $selfTestRoot) {
+  if ($SelfTestFault -eq "AuditCoreUnavailable") { $script:node = Join-Path $selfTestRoot "missing-node.exe" }
+  elseif ($SelfTestFault -eq "ReportUnwritable") { $finalReportPath = Join-Path $selfTestRoot "missing-folder\G4_SELF_TEST_REPORT.md" }
+  elseif ($SelfTestFault -eq "RendererThrows") { $m["selfTestFault"] = "RENDER" }
 }
 
 $exitCode = 2
-if ($null -eq $final -or $final.status -ne "FINALIZED") {
-  Say "[g4] result: INCONCLUSIVE (AUDIT_CORE_UNAVAILABLE) - no report written"
+try {
+  $exitCode = Complete-AuditRun $m $snapshotText $finalReportPath $reportLabel
 }
-else {
-  Say ("[g4] result: " + $final.result + " (" + $final.reason + ")")
-  # A BLOCKED run (or one that never resolved the data folder) touched nothing and does not consume
-  # the one real-data run: no report.
-  if ($null -ne $final.reportText -and $null -eq $m.blockedCode -and $null -ne $m.dataDir) {
-    $utf8 = [System.Text.UTF8Encoding]::new($false)
-    if ($RealData) {
-      [System.IO.File]::WriteAllText($reportPath, ([string]$final.reportText -replace "`r?`n", "`n"), $utf8)
-      Say ("[g4] report: " + $REPORT_RELATIVE)
-    }
-    elseif ($null -ne $selfTestRoot) {
-      [System.IO.File]::WriteAllText((Join-Path $selfTestRoot "G4_SELF_TEST_REPORT.md"), ([string]$final.reportText -replace "`r?`n", "`n"), $utf8)
-      Say "[g4] self-test report: G4_SELF_TEST_REPORT.md in the self-test run folder"
-    }
-  }
-  if ($final.result -eq "PASS") { $exitCode = 0 } elseif ($final.result -eq "FAIL") { $exitCode = 1 }
+finally {
+  $snapshotText = $null
+  [GC]::Collect()
 }
 exit $exitCode

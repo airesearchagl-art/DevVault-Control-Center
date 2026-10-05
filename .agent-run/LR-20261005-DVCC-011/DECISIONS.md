@@ -121,6 +121,40 @@ Status: **ADOPTED** (Human decision HD-5A-10). Task Packet rev 3.3 (§19.1).
 - **Stale build guard**: the release executable must be newer than the last product commit
   (`STALE_BUILD`); the G4-C procedure rebuilds the release from the reviewed product code first.
 
+## D-10 — G4-B focused repair (RF-G4B-01 … 03, Task Packet rev 3.4)
+
+`G4_AUTOMATED_AUDIT_HARNESS_FOCUSED_REVIEW` at `146ff68e…` = FIX_REQUIRED. Repairs (harness, tests and
+governance evidence only; product code untouched):
+
+- **RF-G4B-01 — source-bound legitimacy.** The blanket `MACHINE_SHAPED` exemption is gone. Lawful =
+  contract vocabulary + the selected source's identity / recorded values (project id, repository
+  owner / name, readable non-CLOSED review ids of that project, their rounds' recorded heads and
+  `resultCapturedAt` / `verdictConfirmedAt` / `judgmentCapturedAt`, DVCC's observed HEAD, EvidenceRefs
+  built from these) + the response's own values (`snapshot_id`; `generated_at` / `observed_at` inside
+  the harness's copy / refresh windows). A forbidden value outside that set that occurs in the
+  snapshot is a leak, or, when machine-shaped, an unresolved overlap → INCONCLUSIVE
+  `EXACT_COMPARISON_OVERLAP` (PASS requires 0). Every non-empty body line is compared (short ones by
+  equality). Positive assertions now bind identities, EvidenceRefs, recorded heads / timestamps and
+  the response's times to the source and the run.
+- **RF-G4B-02 — no local-root access.** The audit core no longer imports `child_process` or stats /
+  runs Git in any Project local root; selection uses only the data folder. Git facts come only from
+  DVCC's own observation: after Refresh Git the harness reads the Review detail's status label, HEAD
+  and branch cells through CDP into memory (labels pinned to `src/i18n` ja / en by test). The harness's
+  only Git is the DVCC repository's Fresh Gate (`git.exe -C <DVCC repo>`).
+- **RF-G4B-03 — sanitized finalization.** Finalization moved to
+  `scripts/lib/control-read-audit-finalize.ps1`: every function catches its own failures; the audit /
+  render / write path ends in `Complete-AuditRun`'s boundary with fixed codes
+  (`AUDIT_FINALIZE_FAILED`, `REPORT_RENDER_FAILED`, `REPORT_WRITE_FAILED`); the script ends in a trap
+  (`UNHANDLED_EXCEPTION`). The report is written to a temporary file and renamed (an existing report is
+  never overwritten); PASS is printed and returned only after the write succeeded. The raw snapshot /
+  request references are dropped in `finally`. `-SelfTestFault` (self-test only) injects the three
+  finalization failures for the running-app self-test.
+- **CDP advisory — implemented.** Default port is a random high port (49152–65534); a listener on it
+  before launch → BLOCKED `CDP_PORT_IN_USE`; no identifier is sent to the page before Tauri internals,
+  the DVCC queue DOM and the interceptor are confirmed (`DVCC_PAGE_UNCONFIRMED`).
+- Report fields `result_reason` and `exact_comparison_overlaps_excluded`: ADOPTED by G4-B; the latter
+  now counts resolved + unresolved overlaps.
+
 ## D-06 — Mutation probe split and pre-run coverage
 
 M-5A-17 ("projection / copy action writes") was run as 17a (projection writes into its source,

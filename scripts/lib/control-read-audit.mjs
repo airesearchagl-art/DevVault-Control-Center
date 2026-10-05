@@ -1,19 +1,24 @@
-// Control Read v1 real-data disclosure audit core (Phase 5A G4, HD-5A-10).
+// Control Read v1 real-data disclosure audit core (Phase 5A G4, HD-5A-10, Task Packet rev 3.4).
 //
-// Used by scripts/verify-control-read-real-data-audit.ps1. Raw local data is read here read-only and
-// the raw snapshot arrives ONLY through stdin; both live in this process's memory and nowhere else.
-// stdout carries one JSON line with numbers, booleans, fixed codes, an opaque per-run sample
-// reference and (for the harness only) the sample's identifiers it needs to press the button. The
-// rendered report is built from fixed tokens and checked against a value guard before it leaves.
-// Nothing here writes a file, logs a value or prints an error message: an internal error becomes a
-// fixed code.
+// Used by scripts/verify-control-read-real-data-audit.ps1. Raw local data is read here read-only (the
+// DVCC data folder only) and the raw snapshot arrives ONLY through stdin; both live in this process's
+// memory and nowhere else. stdout carries one JSON line with numbers, booleans, fixed codes, an opaque
+// per-run sample reference and (for the harness only) the sample's identifiers it needs to press the
+// button. The rendered report is built from fixed tokens and checked against a value guard.
+//
+// Boundaries (rev 3.4):
+// - this module never runs Git and never touches a Project's local root (it is only a string here);
+//   Git facts come from DVCC's own validated observation, read from its UI by the harness;
+// - a source value is lawful in a snapshot only when it is bound to the selected source (contract
+//   vocabulary, the selected Project's identity / recorded values, DVCC's observation) or is a value
+//   the response itself generated inside the run's time window — never because of its shape alone;
+// - nothing here writes a file, logs a value or prints an error message: errors become fixed codes.
 //
 // The Control Read vocabulary below is an independent copy (a test oracle); the tests prove it equals
 // src/domain/controlRead/contract.ts and that real `readControl` output passes the allowlist.
 
-import { execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -64,6 +69,15 @@ export const SNAPSHOT_KEYS = Object.freeze([
   "basis_observed_at", "basis_recorded_at", "unknown_reason", "blocked_reason", "host", "owner", "name", "path",
 ]);
 
+/**
+ * How DVCC's Review detail renders a Git observation (src/i18n ja / en; pinned by tests): the status
+ * label of an OK observation, and the branch cell of a detached HEAD.
+ */
+export const GIT_UI = Object.freeze({
+  statusOkLabels: ["観測済み", "Observed"],
+  detachedLabel: "detached HEAD",
+});
+
 export const PROJECT_ID = /^[a-z0-9][a-z0-9-]{1,63}$/;
 export const REVIEW_ID = /^rv-\d{8}-[a-z0-9]{6}$/;
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
@@ -83,10 +97,18 @@ export const EVIDENCE_REF_GRAMMAR = Object.freeze([
   /^dvcc:git-observation\/[a-z0-9][a-z0-9-]{1,63}\/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/,
 ]);
 
+/**
+ * Shapes of values the contract carries (hex SHA, ISO time, snapshot / review id, EvidenceRef). A
+ * shape proves nothing about where a value came from: it is used only to classify a forbidden value
+ * that occurs in the snapshot without a source-bound explanation as an UNRESOLVED overlap.
+ */
+export const MACHINE_SHAPED = Object.freeze([/^[0-9a-f]{7,40}$/i, ISO, SNAPSHOT_ID, REVIEW_ID, ...EVIDENCE_REF_GRAMMAR]);
+
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 const isInt = (v, min = 0) => Number.isInteger(v) && v >= min;
 const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 const nonEmpty = (v) => typeof v === "string" && v.trim() !== "";
+const iso = (v) => typeof v === "string" && ISO.test(v);
 
 // ---------------------------------------------------------------------------------------------
 // A. Output allowlist
@@ -114,7 +136,6 @@ export function validateSnapshot(snapshot) {
   const ref = (v) => {
     if (typeof v !== "string" || EVIDENCE_REF_GRAMMAR.filter((p) => p.test(v)).length !== 1) bad();
   };
-  const iso = (v) => typeof v === "string" && ISO.test(v);
   const nullableIso = (v) => {
     if (!(v === null || iso(v))) bad();
   };
@@ -238,6 +259,98 @@ export function validateSnapshot(snapshot) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Source binding: what the selected source lawfully puts into this snapshot
+// ---------------------------------------------------------------------------------------------
+
+/** Clock tolerance between the harness's run windows and DVCC's own timestamps (same machine). */
+export const WINDOW_TOLERANCE_MS = 2000;
+
+export function withinWindow(value, window) {
+  if (!iso(value) || !Array.isArray(window) || window.length !== 2) return false;
+  const [from, to] = window;
+  const t = Date.parse(value);
+  return Number.isFinite(from) && Number.isFinite(to) && t >= from - WINDOW_TOLERANCE_MS && t <= to + WINDOW_TOLERANCE_MS;
+}
+
+/** DVCC's own Git observation as its Review detail rendered it (read by the harness through CDP). */
+export function interpretGitUi(ui) {
+  const none = { statusOk: false, head: null, branch: null, detached: null };
+  if (!isObj(ui)) return none;
+  const statusOk = GIT_UI.statusOkLabels.includes(ui.status);
+  if (!statusOk) return none;
+  const head = typeof ui.head === "string" && FULL_HEAD.test(ui.head) ? ui.head : null;
+  if (typeof ui.branch !== "string" || ui.branch === "") return { statusOk, head, branch: null, detached: null };
+  if (ui.branch === GIT_UI.detachedLabel) return { statusOk, head, branch: null, detached: true };
+  return { statusOk, head, branch: ui.branch, detached: false };
+}
+
+function repositoryIdentity(url) {
+  const m = typeof url === "string" ? /^https:\/\/github\.com\/([^/]+)\/([^/]+)$/.exec(url.trim()) : null;
+  return m ? { owner: m[1], name: m[2] } : null;
+}
+
+/** Readable, non-CLOSED reviews of the project: the only reviews the snapshot may name. */
+function projectReviews(folder, projectId) {
+  const out = new Map();
+  for (const r of folder.reviews) if (r.session && r.session.projectId === projectId && r.session.reviewState !== "CLOSED") out.set(r.id, r.session);
+  return out;
+}
+
+const ROUND_REF_KINDS = ["expected-head", "reviewed-head", "result", "verdict", "judgment", "risk-tier"];
+
+/** Every OBSERVED `observed_at` of the snapshot that lies inside the harness's refresh window. */
+function observedAtsInWindow(parsed, windows) {
+  const out = new Set();
+  const git = parsed?.data?.project?.git;
+  for (const key of ["head", "dirty", "detached"]) {
+    const f = git?.[key];
+    if (f?.class === "OBSERVED" && withinWindow(f.observed_at, windows?.refresh)) out.add(f.observed_at);
+  }
+  return out;
+}
+
+/**
+ * The source binding of one audit: contract vocabulary, the selected Project's identity and its
+ * reviews' recorded heads / timestamps, DVCC's observed HEAD, and the values the response generated
+ * itself inside the run window. `refs` are the only EvidenceRefs the snapshot may contain.
+ */
+export function sourceBinding(folder, project, parsed, windows, gitUi) {
+  const repo = repositoryIdentity(project.repositoryUrl);
+  const reviews = projectReviews(folder, project.projectId);
+  const heads = new Set();
+  const times = new Set();
+  const refs = new Set([`dvcc:project/${project.projectId}`, `dvcc:project/${project.projectId}/repository`, `dvcc:project/${project.projectId}/local-root`]);
+  for (const [id, s] of reviews) {
+    refs.add(`dvcc:review/${id}`);
+    for (const field of ["review-state", "resource-state", "pr-number"]) refs.add(`dvcc:review/${id}/field/${field}`);
+    s.rounds.forEach((round, index) => {
+      for (const kind of ROUND_REF_KINDS) refs.add(`dvcc:review/${id}/round/${index + 1}/${kind}`);
+      for (const h of [round?.expectedHead, round?.reviewedHead]) if (nonEmpty(h)) heads.add(h);
+      for (const t of [round?.resultCapturedAt, round?.verdictConfirmedAt, round?.judgmentCapturedAt]) if (nonEmpty(t)) times.add(t);
+    });
+  }
+  const observedAts = observedAtsInWindow(parsed, windows);
+  for (const at of observedAts) refs.add(`dvcc:git-observation/${project.projectId}/${at}`);
+  const owned = [];
+  if (typeof parsed?.snapshot_id === "string" && SNAPSHOT_ID.test(parsed.snapshot_id)) owned.push(parsed.snapshot_id);
+  if (withinWindow(parsed?.generated_at, windows?.copy)) owned.push(parsed.generated_at);
+  const git = interpretGitUi(gitUi);
+  const legit = new Set([
+    ...VOCABULARY_TOKENS,
+    project.projectId,
+    ...(repo ? [repo.owner, repo.name] : []),
+    ...reviews.keys(),
+    ...heads,
+    ...times,
+    ...(git.head ? [git.head] : []),
+    ...observedAts,
+    ...owned,
+    ...refs,
+  ]);
+  return { legit, refs, reviews, heads, times, observedAts };
+}
+
+// ---------------------------------------------------------------------------------------------
 // B. Exact sensitive-value comparison  /  C. Pattern-based leakage
 // ---------------------------------------------------------------------------------------------
 
@@ -258,47 +371,42 @@ export function snapshotStrings(value, at = [], into = []) {
   return into;
 }
 
-const VOCABULARY_TOKENS = new Set([
+const VOCABULARY_TOKENS = Object.freeze([
   ...SNAPSHOT_KEYS,
   ...Object.values(VOCABULARY).flatMap((v) => (Array.isArray(v) ? v : typeof v === "string" ? [v] : [])),
   "github.com",
   "GIT_OBSERVATION",
 ]);
 
-/** Values the contract may legitimately carry by their shape alone (constrained by the allowlist). */
-const MACHINE_SHAPED = [/^[0-9a-f]{7,40}$/i, ISO, SNAPSHOT_ID, REVIEW_ID, ...EVIDENCE_REF_GRAMMAR];
-
-/**
- * The legitimate identity of the sample (project id, its review ids, repository owner / name) plus
- * the contract vocabulary. A forbidden value equal to (or, when long, contained in) one of them, or
- * shaped like a machine value, cannot be told apart from a lawful disclosure: it is excluded from the
- * comparison and counted as an overlap.
- */
-export function legitimateTokens(identity) {
-  return new Set([...VOCABULARY_TOKENS, ...identity.filter(nonEmpty)]);
+const SEPARATOR = "\u0000";
+function haystack(texts) {
+  return { set: new Set(texts), joined: `${SEPARATOR}${texts.join(SEPARATOR)}${SEPARATOR}` };
 }
-
-export function isLegitimate(value, legit) {
-  if (MACHINE_SHAPED.some((p) => p.test(value))) return true;
-  for (const token of legit) {
-    if (token === value) return true;
-    if (value.length >= SUBSTRING_MIN_LENGTH && token.includes(value)) return true;
-  }
-  return false;
+function occursIn(needle, hay) {
+  return hay.set.has(needle) || (needle.length >= SUBSTRING_MIN_LENGTH && hay.joined.includes(needle));
 }
 
 const normalizePath = (s) => s.replace(/\\/g, "/").toLowerCase();
 
-function occurs(needle, texts) {
-  const long = needle.length >= SUBSTRING_MIN_LENGTH;
-  return texts.some((t) => t === needle || (long && t.includes(needle)));
+/** A forbidden value equal to (or, when long, contained in) a source-bound lawful value. */
+export function isSourceBound(value, legit) {
+  const hay = legit instanceof Set ? haystack([...legit]) : legit;
+  return occursIn(value, hay);
 }
 
-/** Forbidden source values found in the snapshot, by category (counts of distinct source values). */
+/**
+ * Forbidden source values found in the snapshot. Per distinct value:
+ * - source-bound lawful → excluded (resolved overlap, counted);
+ * - occurs in the snapshot and is machine-shaped without a source-bound explanation → UNRESOLVED
+ *   overlap (counted; the run cannot PASS);
+ * - occurs in the snapshot otherwise → a leak in its category.
+ */
 export function exactLeaks(parsed, forbidden, legit) {
   const texts = snapshotStrings(parsed).map((s) => s.text);
-  const pathTexts = texts.map(normalizePath);
-  const counts = { overlaps: 0 };
+  const hay = haystack(texts);
+  const pathHay = haystack(texts.map(normalizePath));
+  const legitHay = haystack([...legit]);
+  const counts = { overlapsResolved: 0, overlapsUnresolved: 0 };
   for (const category of EXACT_CATEGORIES) counts[category] = 0;
   for (const category of EXACT_CATEGORIES) {
     const seen = new Set();
@@ -307,12 +415,14 @@ export function exactLeaks(parsed, forbidden, legit) {
       const value = raw.trim();
       if (value === "" || seen.has(value)) continue;
       seen.add(value);
-      if (isLegitimate(value, legit)) {
-        counts.overlaps += 1;
+      if (isSourceBound(value, legitHay)) {
+        counts.overlapsResolved += 1;
         continue;
       }
-      const hit = category === "absolute_path" ? occurs(normalizePath(value), pathTexts) : occurs(value, texts);
-      if (hit) counts[category] += 1;
+      const hit = category === "absolute_path" ? occursIn(normalizePath(value), pathHay) : occursIn(value, hay);
+      if (!hit) continue;
+      if (MACHINE_SHAPED.some((p) => p.test(value))) counts.overlapsUnresolved += 1;
+      else counts[category] += 1;
     }
   }
   return counts;
@@ -371,14 +481,15 @@ function plant(parsed, value) {
 /**
  * Proves the detectors are live on THIS data: one real forbidden value per category (and one
  * synthetic value per pattern) is planted into a copy of the snapshot, in memory, and each must be
- * found — by the comparison and by the allowlist. Returns false when any is missed.
+ * found — as a leak of its category and by the allowlist. Returns false when any is missed.
  */
 export function detectorsLive(parsed, forbidden, legit) {
   try {
+    const legitHay = haystack([...legit]);
     for (const category of EXACT_CATEGORIES) {
       const probe = (forbidden[category] ?? [])
         .map((v) => (typeof v === "string" ? v.trim() : ""))
-        .find((v) => v !== "" && !isLegitimate(v, legit));
+        .find((v) => v !== "" && !isSourceBound(v, legitHay) && !MACHINE_SHAPED.some((p) => p.test(v)));
       if (probe === undefined) continue;
       const planted = plant(parsed, probe);
       if (exactLeaks(planted, { [category]: [probe] }, legit)[category] < 1) return false;
@@ -394,13 +505,34 @@ export function detectorsLive(parsed, forbidden, legit) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Positive assertions (the contract is useful, not only silent)
+// Positive assertions (the contract is useful, not only silent) — source-bound
 // ---------------------------------------------------------------------------------------------
+
+function evidenceRefs(value, into = []) {
+  if (Array.isArray(value)) value.forEach((item) => evidenceRefs(item, into));
+  else if (isObj(value))
+    for (const [key, item] of Object.entries(value)) {
+      if (key === "evidence_ref" && typeof item === "string") into.push(item);
+      else if (key === "derived_from" && Array.isArray(item)) into.push(...item.filter((r) => typeof r === "string"));
+      else evidenceRefs(item, into);
+    }
+  return into;
+}
+
+function recordedTimes(value, into = []) {
+  if (Array.isArray(value)) value.forEach((item) => recordedTimes(item, into));
+  else if (isObj(value))
+    for (const [key, item] of Object.entries(value)) {
+      if ((key === "recorded_at" || key === "basis_recorded_at") && item !== null) into.push(item);
+      else recordedTimes(item, into);
+    }
+  return into;
+}
 
 /** Returns fixed failure codes only. */
 export function expectedFacts(parsed, exp) {
-  const failures = [];
-  const fail = (code) => failures.push(code);
+  const failures = new Set();
+  const fail = (code) => failures.add(code);
   try {
     if (parsed.contract !== VOCABULARY.contract) fail("CONTRACT");
     if (parsed.version !== VOCABULARY.version) fail("VERSION");
@@ -408,6 +540,7 @@ export function expectedFacts(parsed, exp) {
     if (parsed.omitted_sections?.join(",") !== VOCABULARY.omittedSections.join(",")) fail("OMITTED_SECTIONS");
     const ext = parsed.data?.external_gates;
     if (ext?.class !== "UNKNOWN" || ext?.unknown_reason !== "NOT_TRACKED_BY_DVCC") fail("EXTERNAL_GATES");
+    if (!withinWindow(parsed.generated_at, exp.windows?.copy)) fail("GENERATED_AT_WINDOW");
 
     const project = parsed.data?.project;
     if (project?.project_id !== exp.projectId) fail("PROJECT_ID");
@@ -417,8 +550,32 @@ export function expectedFacts(parsed, exp) {
       if (repo?.class !== "HUMAN_CONFIRMED" || v?.host !== "github.com" || v?.owner !== exp.repository.owner || v?.name !== exp.repository.name) fail("REPOSITORY_IDENTITY");
     } else if (repo?.class !== "UNKNOWN") fail("REPOSITORY_ABSENT");
     if (project?.local_root?.value !== exp.localRootConfigured) fail("LOCAL_ROOT_PRESENCE");
+    if (recordedTimes(project).length > 0) fail("SOURCE_BOUND_TIMESTAMP");
 
-    const review = (parsed.data?.reviews ?? []).find((r) => r?.review_session_id === exp.reviewId);
+    // Identity: every projected review belongs to the selected project, and every EvidenceRef is one
+    // the selected source can produce.
+    const reviews = Array.isArray(parsed.data?.reviews) ? parsed.data.reviews : [];
+    for (const id of project?.review_session_ids ?? []) if (!exp.binding.reviews.has(id)) fail("FOREIGN_REVIEW_ID");
+    for (const r of reviews) {
+      if (!exp.binding.reviews.has(r?.review_session_id)) fail("FOREIGN_REVIEW_ID");
+      if (r?.project_id !== exp.projectId) fail("FOREIGN_PROJECT_ID");
+    }
+    for (const ref of evidenceRefs(parsed)) if (!exp.binding.refs.has(ref)) fail("FOREIGN_EVIDENCE_REF");
+
+    // Recorded heads and timestamps come from the review's own rounds.
+    for (const r of reviews) {
+      const source = exp.binding.reviews.get(r?.review_session_id);
+      if (!source) continue;
+      const times = new Set(source.rounds.flatMap((x) => [x?.resultCapturedAt, x?.verdictConfirmedAt, x?.judgmentCapturedAt]).filter(nonEmpty));
+      for (const t of recordedTimes(r)) if (!times.has(t)) fail("SOURCE_BOUND_TIMESTAMP");
+      for (const round of Array.isArray(r.rounds) ? r.rounds : []) {
+        const src = source.rounds[(round?.round ?? 0) - 1];
+        if (round?.expected_head?.class === "HUMAN_CONFIRMED" && round.expected_head.value !== src?.expectedHead) fail("SOURCE_BOUND_HEAD");
+        if (round?.reviewed_head?.class === "HUMAN_CONFIRMED" && round.reviewed_head.value !== src?.reviewedHead) fail("SOURCE_BOUND_HEAD");
+      }
+    }
+
+    const review = reviews.find((r) => r?.review_session_id === exp.reviewId);
     if (!review || !(project?.review_session_ids ?? []).includes(exp.reviewId)) fail("REVIEW_PRESENT");
     else {
       if (review.review_state?.class !== "HUMAN_CONFIRMED" || review.review_state?.value !== exp.reviewState) fail("REVIEW_STATE");
@@ -428,19 +585,23 @@ export function expectedFacts(parsed, exp) {
       } else if (review.pr_number?.class !== "HUMAN_CONFIRMED" || review.pr_number?.value !== exp.prNumber) fail("PR_NUMBER");
     }
 
+    // Git: DVCC's own observation (as its UI rendered it) is the only expectation source.
     const git = project?.git ?? {};
     const freshness = review?.freshness;
-    if (exp.git.observedOk) {
+    const ui = interpretGitUi(exp.gitUi);
+    if (exp.gitRefreshCompleted && ui.statusOk && ui.head !== null) {
       const at = git.head?.observed_at;
       for (const key of ["head", "dirty", "detached"]) {
         const f = git[key];
-        if (f?.class !== "OBSERVED" || typeof f.observed_at !== "string" || !ISO.test(f.observed_at) || f.observed_at !== at) fail(`GIT_${key.toUpperCase()}_OBSERVED`);
+        if (f?.class !== "OBSERVED" || f.observed_at !== at) fail(`GIT_${key.toUpperCase()}_OBSERVED`);
         else if (f.evidence_ref !== `dvcc:git-observation/${exp.projectId}/${at}`) fail(`GIT_${key.toUpperCase()}_EVIDENCE_REF`);
       }
-      if (exp.git.head !== null && git.head?.value !== exp.git.head) fail("GIT_HEAD_VALUE");
-      if (exp.git.detached !== null && git.detached?.value !== exp.git.detached) fail("GIT_DETACHED_VALUE");
+      if (!withinWindow(at, exp.windows?.refresh)) fail("OBSERVED_AT_WINDOW");
+      if (git.head?.value !== ui.head) fail("GIT_HEAD_VALUE");
+      if (ui.detached !== null && git.detached?.value !== ui.detached) fail("GIT_DETACHED_VALUE");
       if (!["DERIVED", "UNKNOWN"].includes(freshness?.class)) fail("FRESHNESS");
-    } else if (exp.git.refreshed) {
+      if (freshness?.class === "DERIVED" && freshness.basis_observed_at !== at) fail("FRESHNESS_BASIS");
+    } else if (exp.gitRefreshCompleted) {
       if (git.head?.class !== "UNKNOWN" || git.head?.unknown_reason === "NOT_OBSERVED") fail("GIT_HEAD_AFTER_REFRESH");
     } else {
       if (git.head?.class !== "UNKNOWN" || !["NOT_OBSERVED", "NO_LOCAL_ROOT"].includes(git.head?.unknown_reason)) fail("GIT_HEAD_UNOBSERVED");
@@ -449,11 +610,11 @@ export function expectedFacts(parsed, exp) {
   } catch {
     fail("EXPECTATION_EXCEPTION");
   }
-  return { pass: failures.length === 0, failures };
+  return { pass: failures.size === 0, failures: [...failures] };
 }
 
 // ---------------------------------------------------------------------------------------------
-// Local sources (read-only)
+// Local sources (read-only; the DVCC data folder only)
 // ---------------------------------------------------------------------------------------------
 
 function readText(file) {
@@ -482,7 +643,6 @@ function listDir(dir) {
   }
 }
 
-const iso = (v) => typeof v === "string" && ISO.test(v);
 const nullableString = (v) => v === null || typeof v === "string";
 
 /** Approximates the app's project schema (the whole registry fails when one project does). */
@@ -538,12 +698,12 @@ export function loadDataFolder(dataDir) {
   return { projects: registry.effective ?? undefined, allProjects, reviews, allSessions, settings: isObj(settings) ? settings : {} };
 }
 
+/** Every non-empty line of a body (short lines are compared by equality, long ones as substrings). */
 function bodyValues(text) {
   const out = [];
-  if (nonEmpty(text) && text.trim().length < SUBSTRING_MIN_LENGTH) out.push(text.trim());
   for (const line of text.split(/\r?\n/)) {
     const t = line.trim();
-    if (t.length >= SUBSTRING_MIN_LENGTH) out.push(t);
+    if (t !== "") out.push(t);
   }
   return out;
 }
@@ -571,60 +731,8 @@ function reviewFolderValues(dir) {
   return out;
 }
 
-const REDIRECTING_GIT_VARIABLES = [
-  "GIT_DIR", "GIT_COMMON_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-  "GIT_NAMESPACE", "GIT_DISCOVERY_ACROSS_FILESYSTEM", "GIT_CEILING_DIRECTORIES", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT",
-  "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_NOSYSTEM",
-];
-
-/**
- * Read-only Git facts of a local root, with the same verbs DVCC itself uses (`rev-parse`,
- * `symbolic-ref`), no optional locks and no file-system monitor. Output stays in memory.
- */
-export function localGit(root) {
-  const none = { workTree: false, head: null, branch: null, detached: null };
-  if (!nonEmpty(root)) return none;
-  try {
-    if (!statSync(root).isDirectory()) return none;
-  } catch {
-    return none;
-  }
-  const env = { ...process.env, GIT_OPTIONAL_LOCKS: "0", GIT_TERMINAL_PROMPT: "0" };
-  for (const key of REDIRECTING_GIT_VARIABLES) delete env[key];
-  const run = (args) => {
-    try {
-      const out = execFileSync("git", ["-c", "core.fsmonitor=false", ...args], {
-        cwd: root,
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-        env,
-        windowsHide: true,
-        timeout: 5000,
-      });
-      return { ok: true, out: out.trim() };
-    } catch {
-      return { ok: false, out: "" };
-    }
-  };
-  if (run(["rev-parse", "--is-inside-work-tree"]).out !== "true") return none;
-  const head = run(["rev-parse", "--verify", "--quiet", "HEAD"]);
-  const branch = run(["symbolic-ref", "--quiet", "--short", "HEAD"]);
-  const branchName = branch.ok && branch.out !== "" ? branch.out : null;
-  return {
-    workTree: true,
-    head: head.ok && /^[0-9a-f]{40}$/i.test(head.out) ? head.out.toLowerCase() : null,
-    branch: branchName,
-    detached: head.ok ? branchName === null : null,
-  };
-}
-
-function repositoryIdentity(url) {
-  const m = typeof url === "string" ? /^https:\/\/github\.com\/([^/]+)\/([^/]+)$/.exec(url.trim()) : null;
-  return m ? { owner: m[1], name: m[2] } : null;
-}
-
 /** Forbidden values from the WHOLE data folder (any project / review could leak), by category. */
-export function forbiddenValues(dataDir, folder, sampleGit) {
+export function forbiddenValues(dataDir, folder, branch) {
   const out = { absolute_path: [dataDir, os.homedir()], free_text: [], thread_pointer: [], git_branch: [], provider_identifier: [] };
   for (const v of [process.env.APPDATA, process.env.LOCALAPPDATA, process.env.TEMP, folder.settings.codexExecutablePath]) if (nonEmpty(v)) out.absolute_path.push(v);
   for (const p of folder.allProjects) {
@@ -645,7 +753,7 @@ export function forbiddenValues(dataDir, folder, sampleGit) {
     out.free_text.push(...values.notes, ...values.setAside);
   }
   for (const name of listDir(dataDir)) if (name.includes(".corrupt-")) out.free_text.push(name);
-  if (nonEmpty(sampleGit?.branch)) out.git_branch.push(sampleGit.branch);
+  if (nonEmpty(branch)) out.git_branch.push(branch);
   return out;
 }
 
@@ -666,7 +774,8 @@ export const COVERAGE_CATEGORIES = Object.freeze([
 /** Below this many non-empty sensitive categories the sample cannot show much: INCONCLUSIVE. */
 export const MIN_COVERAGE = 3;
 
-function coverageOf(project, review, git) {
+/** `branch` is DVCC's observed branch (null before a refresh: Git is never run here). */
+function coverageOf(project, review, branch) {
   const s = review.session;
   const present = {
     local_root: nonEmpty(project.localRoot),
@@ -679,43 +788,33 @@ function coverageOf(project, review, git) {
     thread_url: nonEmpty(s.chatgptThreadUrl),
     verdict_note: s.rounds.some((round) => nonEmpty(round?.verdictNote)),
     review_bodies: reviewFolderValues(review.dir).bodies.some(nonEmpty),
-    git_branch: nonEmpty(git.branch),
+    git_branch: nonEmpty(branch),
   };
   return COVERAGE_CATEGORIES.filter((c) => present[c]).length;
 }
 
-function sampleIdentity(folder, project) {
-  const repo = repositoryIdentity(project.repositoryUrl);
-  const reviewIds = folder.reviews.filter((r) => r.session?.projectId === project.projectId).map((r) => r.id);
-  return [project.projectId, ...reviewIds, ...(repo ? [repo.owner, repo.name] : [])];
-}
-
 // ---------------------------------------------------------------------------------------------
-// Deterministic sample selection
+// Deterministic sample selection (no Git, no access to any local root)
 // ---------------------------------------------------------------------------------------------
 
 /**
- * One readable, non-CLOSED review of a registered project, preferring a Git work tree (a refresh can
- * be observed), a configured repository and the broadest sensitive-source coverage. Ties break on
- * SHA-256 of the review id. The salt is random per run, so `sampleRef` links to nothing.
+ * One readable, non-CLOSED review of a registered project, preferring a configured local root (a
+ * refresh can be asked of DVCC), a configured repository and the broadest sensitive-source coverage.
+ * Ties break on SHA-256 of the review id. The salt is random per run, so `sampleRef` links to nothing.
  */
 export function selectSample(dataDir, salt = randomBytes(32)) {
   const folder = loadDataFolder(dataDir);
   if (!folder.projects) return { status: "REGISTRY_UNREADABLE" };
-  const gitByRoot = new Map();
   const candidates = [];
   for (const review of folder.reviews) {
     const s = review.session;
     if (!s || s.reviewState === "CLOSED") continue;
     const project = folder.projects.find((p) => p.projectId === s.projectId);
     if (!project) continue;
-    const root = project.localRoot ?? "";
-    if (!gitByRoot.has(root)) gitByRoot.set(root, localGit(project.localRoot));
-    const git = gitByRoot.get(root);
-    const coverage = coverageOf(project, review, git);
-    const score = (git.workTree ? 4 : nonEmpty(project.localRoot) ? 2 : 0) + (nonEmpty(project.repositoryUrl) ? 2 : 0) + coverage;
+    const coverage = coverageOf(project, review, null);
+    const score = (nonEmpty(project.localRoot) ? 2 : 0) + (nonEmpty(project.repositoryUrl) ? 2 : 0) + coverage;
     const order = createHash("sha256").update(review.id).digest("hex");
-    candidates.push({ review, project, git, coverage, score, order });
+    candidates.push({ review, project, coverage, score, order });
   }
   if (candidates.length === 0) return { status: "NO_CANDIDATE" };
   candidates.sort((a, b) => b.score - a.score || (a.order < b.order ? -1 : a.order > b.order ? 1 : 0));
@@ -725,7 +824,6 @@ export function selectSample(dataDir, salt = randomBytes(32)) {
     reviewId: chosen.review.id,
     projectId: chosen.project.projectId,
     hasLocalRoot: nonEmpty(chosen.project.localRoot),
-    gitWorkTree: chosen.git.workTree,
     sampleRef: `sha256:${createHash("sha256").update(salt).update(chosen.review.id).digest("hex").slice(0, 16)}`,
     coverage: chosen.coverage,
     coverageTotal: COVERAGE_CATEGORIES.length,
@@ -736,14 +834,14 @@ export function selectSample(dataDir, salt = randomBytes(32)) {
 // Audit of one captured snapshot
 // ---------------------------------------------------------------------------------------------
 
-export function auditSnapshot({ dataDir, projectId, reviewId, snapshotText, gitRefreshCompleted, gitObservedOk }) {
+export function auditSnapshot({ dataDir, projectId, reviewId, snapshotText, gitRefreshCompleted, gitUi, windows }) {
   const folder = loadDataFolder(dataDir);
   if (!folder.projects) return { status: "REGISTRY_UNREADABLE" };
   const project = folder.projects.find((p) => p.projectId === projectId);
   const review = folder.reviews.find((r) => r.id === reviewId && r.session !== null);
   if (!project || !review) return { status: "SAMPLE_UNAVAILABLE" };
-  const git = localGit(project.localRoot);
-  const coverage = coverageOf(project, review, git);
+  const git = interpretGitUi(gitRefreshCompleted === true ? gitUi : null);
+  const coverage = coverageOf(project, review, git.branch);
 
   let parsed;
   try {
@@ -754,9 +852,9 @@ export function auditSnapshot({ dataDir, projectId, reviewId, snapshotText, gitR
   if (!isObj(parsed)) return { status: "AUDITED", contractParse: "FAIL", coverage };
 
   const allow = validateSnapshot(parsed);
-  const legit = legitimateTokens(sampleIdentity(folder, project));
-  const forbidden = forbiddenValues(dataDir, folder, git);
-  const exact = exactLeaks(parsed, forbidden, legit);
+  const binding = sourceBinding(folder, project, parsed, windows, git.statusOk ? gitUi : null);
+  const forbidden = forbiddenValues(dataDir, folder, git.branch);
+  const exact = exactLeaks(parsed, forbidden, binding.legit);
   const patterns = patternHits(parsed);
   const s = review.session;
   const facts = expectedFacts(parsed, {
@@ -767,7 +865,10 @@ export function auditSnapshot({ dataDir, projectId, reviewId, snapshotText, gitR
     reviewState: s.reviewState,
     resourceState: s.resourceState,
     prNumber: Number.isInteger(s.prNumber) ? s.prNumber : null,
-    git: { refreshed: gitRefreshCompleted === true, observedOk: gitObservedOk === true, head: git.head, detached: git.detached },
+    binding,
+    windows,
+    gitRefreshCompleted: gitRefreshCompleted === true,
+    gitUi,
   });
   return {
     status: "AUDITED",
@@ -776,8 +877,9 @@ export function auditSnapshot({ dataDir, projectId, reviewId, snapshotText, gitR
     allowlist: allow.unknownFields === 0 && allow.violations === 0 && allow.decided ? "PASS" : "FAIL",
     unknownFieldCount: allow.unknownFields,
     coverage,
-    detectorsLive: detectorsLive(parsed, forbidden, legit),
-    overlapsExcluded: exact.overlaps,
+    detectorsLive: detectorsLive(parsed, forbidden, binding.legit),
+    overlapsExcluded: exact.overlapsResolved + exact.overlapsUnresolved,
+    overlapsUnresolved: exact.overlapsUnresolved,
     exactSensitiveValueLeaks: EXACT_CATEGORIES.reduce((sum, c) => sum + exact[c], 0),
     absolutePathLeaks: exact.absolute_path + patterns.absolute_path,
     gitBranchLeaks: exact.git_branch,
@@ -823,6 +925,7 @@ export function decide(m) {
   if (!a) return inconclusive("NOT_AUDITED");
   if (a.contractParse !== "PASS") return inconclusive("JSON_PARSE_FAILED");
   if (!a.allowlistDecided) return inconclusive("ALLOWLIST_UNDECIDABLE");
+  if (!(a.overlapsUnresolved === 0)) return inconclusive("EXACT_COMPARISON_OVERLAP");
   if (!a.detectorsLive) return inconclusive("DETECTORS_NOT_LIVE");
   if (m.copyActions !== 1) return inconclusive("COPY_ACTION_COUNT");
   if (m.clipboardSequenceChanged !== false) return inconclusive("OS_CLIPBOARD_NOT_PROVEN_UNTOUCHED");
@@ -902,10 +1005,10 @@ export function renderReport(fields, selfTest) {
   const lines = [];
   for (const [key, domain] of REPORT_SCHEMA) {
     const value = fields[key];
-    if (typeof value !== "string" || !domain.test(value)) throw new Error("REPORT_GUARD");
+    if (typeof value !== "string" || !domain.test(value)) throw new Error("REPORT_RENDER_FAILED");
     lines.push(`${key}: ${value}`);
   }
-  if (Object.keys(fields).some((key) => !REPORT_SCHEMA.some(([k]) => k === key))) throw new Error("REPORT_GUARD");
+  if (Object.keys(fields).some((key) => !REPORT_SCHEMA.some(([k]) => k === key))) throw new Error("REPORT_RENDER_FAILED");
   const title = selfTest ? "G4 Real-Data Disclosure Audit - SELF-TEST (synthetic data only)" : "G4 Real-Data Disclosure Audit - LR-20261005-DVCC-011";
   return [
     `# ${title}`,
@@ -931,15 +1034,18 @@ export function finalize(req) {
       reviewId: String(req.reviewId),
       snapshotText: req.snapshotText,
       gitRefreshCompleted: req.gitRefreshCompleted === true,
-      gitObservedOk: req.gitObservedOk === true,
+      gitUi: req.gitUi ?? null,
+      windows: req.windows ?? null,
     });
   }
   delete m.snapshotText;
   const verdict = decide(m);
   try {
+    // Self-test only: proves the harness's finalization boundary handles a renderer failure.
+    if (req.selfTest === true && req.selfTestFault === "RENDER") throw new Error("REPORT_RENDER_FAILED");
     return { status: "FINALIZED", result: verdict.result, reason: verdict.reason, reportText: renderReport(reportFields(m, verdict), req.selfTest === true) };
   } catch {
-    return { status: "FINALIZED", result: "INCONCLUSIVE", reason: "REPORT_GUARD", reportText: null };
+    return { status: "FINALIZED", result: "INCONCLUSIVE", reason: "REPORT_RENDER_FAILED", reportText: null };
   }
 }
 
@@ -950,7 +1056,7 @@ export function finalize(req) {
 export async function runCli(input) {
   try {
     // .NET's redirected stdin writer may emit a UTF-8 preamble before the request.
-    const request = JSON.parse(input.replace(/^﻿/, ""));
+    const request = JSON.parse(input.replace(/^\uFEFF/, ""));
     if (request.op === "select") return selectSample(String(request.dataDir));
     if (request.op === "finalize") return finalize(request);
     return { status: "UNKNOWN_OP" };
