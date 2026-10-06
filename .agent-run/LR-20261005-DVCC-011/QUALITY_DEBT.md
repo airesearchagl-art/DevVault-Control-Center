@@ -30,8 +30,9 @@
   `DVCC_RUNNING` precondition would otherwise block them).
 - **QD-5A-11 (G4-C sample coverage at the minimum)** — the automatically selected real-data sample
   had 3 / 11 sensitive-source categories non-empty (`MIN_COVERAGE = 3`). The run PASSed, but per-sample
-  exact-comparison coverage was narrow; G4-D should weigh this. A broader real-data audit would need a
-  new Human gate (the one-shot is consumed).
+  exact-comparison coverage was narrow. G4-D (at `0695f52d…`) accepted the 3/11 coverage as
+  non-blocking QUALITY_DEBT. The adopted minimum was met; no additional real-data audit is authorized
+  or required for Phase 5A. A broader audit would require a new Human Gate (the one-shot is consumed).
 - **QD-5A-09 (audit tests outside `npm test`)** — the harness tests run with
   `npx vitest run --config scripts/vitest.audit.config.ts`, not in the product suite, so that
   `vite.config.ts` is unchanged.

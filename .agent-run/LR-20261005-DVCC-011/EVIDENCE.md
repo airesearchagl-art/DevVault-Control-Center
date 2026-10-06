@@ -3,8 +3,12 @@
 No real path, real session ID, real project name or provider content appears here. All test and
 smoke data is synthetic (`example-org`, `project-alpha`, sentinel strings).
 
-Active packet: rev 3.2 (`TASK_PACKET_SNAPSHOT_REV3_2.md`, SHA-256 `1d663c7c…44d2bd02`). Initial
-authorized packet rev 3.1 preserved (`TASK_PACKET_SNAPSHOT.md`, SHA-256 `de0d0f8e…3d18da`).
+Active packet: rev 3.5 (`TASK_PACKET_SNAPSHOT_REV3_5.md`, SHA-256
+`e8386cbfd9c8858072b38624e51df1d5a1b0a23dbe0363d2f967fa3728368bb5`). The product implementation and
+verification below were performed under rev 3.2 (`TASK_PACKET_SNAPSHOT_REV3_2.md`, SHA-256
+`1d663c7c…44d2bd02`); rev 3.3 – 3.5 changed only the G4 definition / harness semantics (see
+`RUN_MANIFEST.md`). Initial authorized packet rev 3.1 preserved (`TASK_PACKET_SNAPSHOT.md`, SHA-256
+`de0d0f8e…3d18da`).
 
 ## Ordering (AC5A-01)
 
@@ -604,6 +608,20 @@ reviewed head. Its delta from `0695f52d…` is limited to `EVIDENCE.md`, `RUN_ST
 `RUN_MANIFEST.md` and `TASK_QUEUE.md`; product code delta from `133576c9…` = 0; `scripts/**` delta from
 `7ded60ee…` = 0. `G4_REAL_DATA_ATTEMPT.md` / `G4_REAL_DATA_AUDIT.md` untouched; the real-data audit,
 product tests and harness tests were not re-run.
+
+Current PR state after that record: see "Draft PR #12 — current state" below.
+
+## Draft PR #12 — current state
+
+- Draft PR #12 created after the G4-D state sync: OPEN / DRAFT, base `main` @ `7efdc62c…`, head at
+  creation `216f5ff20bd7e96576907aa88a099de4eb66871a`.
+- `PHASE_5A_DRAFT_PR_CURRENT_HEAD_REVIEW` at `216f5ff2…`: FIX_REQUIRED — RF-5A-PR12-01 (current-state
+  evidence / documentation sync only; product finding NONE; harness finding NONE). Repaired by a
+  current-state evidence sync commit after `216f5ff2…` (this file's active-packet line and this section,
+  `QUALITY_DEBT.md` QD-5A-11, `RUN_STATE.md`, `RUN_MANIFEST.md`, `TASK_QUEUE.md`). Product code delta from
+  `133576c9…` = 0; `scripts/**` delta from `7ded60ee…` = 0; product / harness tests, mutation and G4-C
+  not re-run.
+- Ready: NOT AUTHORIZED / NOT PERFORMED. Next gate: `RF-5A-PR12-01_FOCUSED_REVIEW`.
 
 ## Unverified items
 

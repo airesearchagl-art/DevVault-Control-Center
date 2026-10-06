@@ -82,3 +82,11 @@
   evidence-only state sync (this update; not the G4-D reviewed head). No additional real-data audit.
   Ready, merge, release, Production, Phase 5B: not authorized. Next gate after the Draft PR:
   `PHASE_5A_DRAFT_PR_CURRENT_HEAD_REVIEW`.
+- Draft PR #12 created (OPEN / DRAFT; base `main` @ `7efdc62c…`; head at creation
+  `216f5ff20bd7e96576907aa88a099de4eb66871a`). `PHASE_5A_DRAFT_PR_CURRENT_HEAD_REVIEW` at `216f5ff2…`:
+  FIX_REQUIRED (RF-5A-PR12-01 — current-state evidence / documentation sync only; product finding NONE;
+  harness finding NONE). Repair authorized for the current-state evidence files and the PR #12 body
+  only; real-data G4 not re-run.
+- **Current state:** Draft PR #12 OPEN / DRAFT. Current gate: `PHASE_5A_DRAFT_PR_CURRENT_HEAD_REVIEW`
+  (RF-5A-PR12-01 repaired); next gate: `RF-5A-PR12-01_FOCUSED_REVIEW`. Ready: NOT AUTHORIZED / NOT
+  PERFORMED. Merge, release, Production, Phase 5B: not authorized.

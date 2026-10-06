@@ -30,4 +30,9 @@
 - [x] `RF-G4B-04_FOCUSED_REVIEW` — PASS (RF-G4B-01..04 CLOSED; harness READY FOR G4-C)
 - [x] G4-C one-shot real-data audit — PASS (`ALL_CHECKS_PASSED`); attempt marker created; sanitized `G4_REAL_DATA_AUDIT.md`
 - [x] G4-D Fresh Independent G4 Review at `0695f52d…` — PASS (Required Fixes: none); G4 CLOSED
-- [ ] Draft PR — AUTHORIZED / NOT YET CREATED (after the G4-D evidence-only state sync)
+- [x] G4-D evidence-only state sync at `216f5ff2…` (not the G4-D reviewed head)
+- [x] Draft PR #12 created — OPEN / DRAFT (base `main` @ `7efdc62c…`)
+- [x] `PHASE_5A_DRAFT_PR_CURRENT_HEAD_REVIEW` at `216f5ff2…` — FIX_REQUIRED (RF-5A-PR12-01, current-state evidence sync only)
+- [x] RF-5A-PR12-01 current-state evidence sync
+- [ ] `RF-5A-PR12-01_FOCUSED_REVIEW`
+- [ ] Ready for review — NOT AUTHORIZED / NOT PERFORMED

@@ -8,9 +8,11 @@ RF-G4B-01 … 03 CLOSED, RF-G4B-04 OPEN → Task Packet rev 3.5 (one-shot attemp
 attempt marker created (schema PASS), sanitized `G4_REAL_DATA_AUDIT.md` written →
 `G4_D_FRESH_INDEPENDENT_REVIEW` at `0695f52ddc372dcfbdc988a7c4328c4f5a53e140`: **PASS** (Required Fixes:
 none; coverage 3/11 ACCEPTABLE; QD-5A-11 QUALITY_DEBT / non-blocking) → **G4 CLOSED; Phase 5A READY
-CANDIDATE.** Draft PR: AUTHORIZED / NOT YET CREATED. No Ready. No merge. No release. No Production.
-This file's G4-D update is an evidence-only state-sync commit after `0695f52d…`, not the G4-D
-reviewed head.
+CANDIDATE.** Draft PR creation authorized → G4-D evidence-only state sync at `216f5ff2…` (not the G4-D
+reviewed head) → **Draft PR #12: OPEN / DRAFT** → `PHASE_5A_DRAFT_PR_CURRENT_HEAD_REVIEW` at
+`216f5ff2…`: FIX_REQUIRED (RF-5A-PR12-01, current-state evidence / documentation sync only; product
+and harness findings NONE) → current-state evidence sync (this update). Ready: NOT PERFORMED. No merge.
+No release. No Production.
 
 ```
 initial_authorized_packet:   rev 3.1
@@ -61,7 +63,12 @@ coverage_judgment:           3/11 ACCEPTABLE (rev 3.5: only n < 3 is LOW_COVERAG
 QD-5A-11:                    QUALITY_DEBT / non-blocking
 G4:                          CLOSED
 phase_5a:                    READY CANDIDATE
-draft_pr:                    AUTHORIZED / NOT YET CREATED
+draft_pr_creation:           AUTHORIZED after G4-D (state sync at 216f5ff20bd7e96576907aa88a099de4eb66871a)
+draft_pr:                    #12 OPEN / DRAFT (base main @ 7efdc62cd1a72679355d8488481c9b071ddd3081)
+ready:                       NOT AUTHORIZED / NOT PERFORMED
+current_gate:                PHASE_5A_DRAFT_PR_CURRENT_HEAD_REVIEW — FIX_REQUIRED at 216f5ff2… (RF-5A-PR12-01,
+                             current-state evidence sync only); RF-5A-PR12-01 repaired
+next_gate:                   RF-5A-PR12-01_FOCUSED_REVIEW
 ```
 
 ## Acceptance criteria (rev 3.2 §17)
@@ -116,4 +123,12 @@ G4 (rev 3.5 §19.1):
 - [x] G4-C one-shot real-data audit → attempt marker → `G4_REAL_DATA_AUDIT.md` (sanitized): PASS
 - [x] G4-D Fresh Independent G4 Review at `0695f52d…`: PASS (Required Fixes: none) → G4 CLOSED
 
-Next: Draft PR creation (authorized), then `PHASE_5A_DRAFT_PR_CURRENT_HEAD_REVIEW`.
+Draft PR:
+- [x] G4-D evidence-only state sync at `216f5ff2…` (records the G4-D result; not the G4-D reviewed head)
+- [x] Draft PR #12 created — OPEN / DRAFT, base `main` @ `7efdc62c…`
+- [x] `PHASE_5A_DRAFT_PR_CURRENT_HEAD_REVIEW` at `216f5ff2…`: FIX_REQUIRED (RF-5A-PR12-01 — current-state
+      evidence / documentation sync only; product finding NONE; harness finding NONE)
+- [x] RF-5A-PR12-01 current-state evidence sync (this update)
+- [ ] Ready for review — NOT AUTHORIZED / NOT PERFORMED
+
+Next gate: `RF-5A-PR12-01_FOCUSED_REVIEW`.
