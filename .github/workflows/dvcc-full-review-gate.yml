@@ -1,0 +1,81 @@
+# C2 — Full Review Gate: product checks and the synthetic G4 harness tests on the exact PR head.
+# Read-only: contents: read only, no secrets, no real DVCC data, no real-data G4 audit.
+name: DVCC Full Review Gate
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dvcc-full-review-gate-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('{0}-{1}', github.event_name, github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  full-review-gate:
+    name: full review gate / exact head
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Check out exact commit under review
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove exact-head checkout
+        shell: pwsh
+        run: |
+          $expected = $env:EXPECTED_SHA
+          $actual = (git rev-parse HEAD).Trim()
+          Write-Host "Expected: $expected"
+          Write-Host "Actual:   $actual"
+          @"
+          ### DVCC Full Review Gate
+
+          | | commit |
+          |---|---|
+          | Expected | ``$expected`` |
+          | Checked out | ``$actual`` |
+
+          Profile: C2 Full Review Gate / current exact head
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          if ($expected -notmatch '^[0-9a-f]{40}$' -or $expected -ne $actual) {
+            throw "Exact-head checkout mismatch"
+          }
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Product tests
+        run: npm test
+
+      - name: Frontend build
+        run: npm run build
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cargo check
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      # Synthetic fixtures only; the real-data audit (-RealData) is never run in CI.
+      - name: G4 harness tests (synthetic)
+        run: npx vitest run --config scripts/vitest.audit.config.ts
