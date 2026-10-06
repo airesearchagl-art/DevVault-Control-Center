@@ -5,8 +5,12 @@ HD-5A-10 ADOPTED → Task Packet rev 3.3 → G4-A harness at `146ff68e…` → G
 (RF-G4B-01 … 03) → Task Packet rev 3.4 repair at `0657794d…` → `G4_HARNESS_REPAIR_FOCUSED_REVIEW`:
 RF-G4B-01 … 03 CLOSED, RF-G4B-04 OPEN → Task Packet rev 3.5 (one-shot attempt marker) at `7ded60ee…`
 → `RF-G4B-04_FOCUSED_REVIEW` = PASS → G4-C authorized and run once: **PASS (`ALL_CHECKS_PASSED`)**,
-attempt marker created (schema PASS), sanitized `G4_REAL_DATA_AUDIT.md` written. **STOPPED for
-`G4_D_FRESH_INDEPENDENT_REVIEW`.** G4-D not started. No Draft PR. No release. No Production.
+attempt marker created (schema PASS), sanitized `G4_REAL_DATA_AUDIT.md` written →
+`G4_D_FRESH_INDEPENDENT_REVIEW` at `0695f52ddc372dcfbdc988a7c4328c4f5a53e140`: **PASS** (Required Fixes:
+none; coverage 3/11 ACCEPTABLE; QD-5A-11 QUALITY_DEBT / non-blocking) → **G4 CLOSED; Phase 5A READY
+CANDIDATE.** Draft PR: AUTHORIZED / NOT YET CREATED. No Ready. No merge. No release. No Production.
+This file's G4-D update is an evidence-only state-sync commit after `0695f52d…`, not the G4-D
+reviewed head.
 
 ```
 initial_authorized_packet:   rev 3.1
@@ -50,7 +54,14 @@ previous_g4_harness_heads:   146ff68e… (G4-A), 0657794d… (rev 3.4 repair)
 g4_harness_head:             7ded60ee95d17da3f9571395d96ced65d2bd52f0 (rev 3.5; RF-G4B-04_FOCUSED_REVIEW PASS)
 real_data_attempt_marker:    .agent-run/LR-20261005-DVCC-011/G4_REAL_DATA_ATTEMPT.md — CREATED (schema PASS)
 G4-C:                        PASS (ALL_CHECKS_PASSED; copy_actions 1; coverage 3/11; leaks 0)
-G4-D:                        NOT STARTED
+G4-D:                        PASS at 0695f52ddc372dcfbdc988a7c4328c4f5a53e140 (Required Fixes: none;
+                             raw real-data required: NO)
+g4_d_reviewed_head:          0695f52ddc372dcfbdc988a7c4328c4f5a53e140
+coverage_judgment:           3/11 ACCEPTABLE (rev 3.5: only n < 3 is LOW_COVERAGE / INCONCLUSIVE)
+QD-5A-11:                    QUALITY_DEBT / non-blocking
+G4:                          CLOSED
+phase_5a:                    READY CANDIDATE
+draft_pr:                    AUTHORIZED / NOT YET CREATED
 ```
 
 ## Acceptance criteria (rev 3.2 §17)
@@ -103,6 +114,6 @@ G4 (rev 3.5 §19.1):
       and one-shot re-runs as specified
 - [x] `RF-G4B-04_FOCUSED_REVIEW` at `7ded60ee…`: PASS (Required Fixes 0)
 - [x] G4-C one-shot real-data audit → attempt marker → `G4_REAL_DATA_AUDIT.md` (sanitized): PASS
-- [ ] G4-D Fresh Independent G4 Review — NOT STARTED
+- [x] G4-D Fresh Independent G4 Review at `0695f52d…`: PASS (Required Fixes: none) → G4 CLOSED
 
-Next gate: `G4_D_FRESH_INDEPENDENT_REVIEW`.
+Next: Draft PR creation (authorized), then `PHASE_5A_DRAFT_PR_CURRENT_HEAD_REVIEW`.

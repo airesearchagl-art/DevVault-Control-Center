@@ -569,9 +569,46 @@ exit=0
   exercised few categories on that sample (the whole-folder forbidden values were still compared and
   the pattern scan covered every category).
 
+## G4-D — Fresh Independent G4 Review (rev 3.5 §19.1) — PASS
+
+Result received at the Human Gate (this section records the review result; it did not perform the
+review):
+
+| Item | Result |
+|---|---|
+| `G4_D_FRESH_INDEPENDENT_REVIEW` | PASS |
+| Reviewed exact head | `0695f52ddc372dcfbdc988a7c4328c4f5a53e140` |
+| Product READY CANDIDATE head | `133576c944c55b8b50a4bdfec670d8651fdfb11e` |
+| G4 harness reviewed head | `7ded60ee95d17da3f9571395d96ced65d2bd52f0` |
+| G4-C / attempt marker / sanitized report / one-shot integrity | PASS / PASS / PASS / PASS |
+| Coverage | 3/11 |
+| Coverage judgment | ACCEPTABLE |
+| QD-5A-11 | QUALITY_DEBT / non-blocking |
+| Raw real-data required for review | NO |
+| Required Fixes | none |
+| G4 | CLOSED |
+| Phase 5A | READY CANDIDATE |
+
+Coverage rationale (Human Gate): 3/11 equals the adopted minimum and is not a blocker — rev 3.5 makes
+only `n < 3` LOW_COVERAGE / INCONCLUSIVE; the exact-sensitive comparison covered the whole DVCC data
+folder; the pattern scan is independent of the selected sample's category count; source-bound /
+machine-fact assertions PASS; unresolved overlaps 0; synthetic 11/11 coverage evidence exists; the
+limitation is recorded as QD-5A-11. No additional real-data audit is performed.
+
+Authorization: `PHASE_5A_G4 = CLOSED`; `PHASE_5A_DRAFT_PR_CREATION = AUTHORIZED` (after this
+evidence-only state sync). Draft PR: AUTHORIZED / NOT YET CREATED at the time of this record.
+
+Head distinction: G4-D reviewed `0695f52ddc372dcfbdc988a7c4328c4f5a53e140`. The commit that adds this
+section is an evidence-only state-sync head recording the G4-D result — it is **not** the G4-D
+reviewed head. Its delta from `0695f52d…` is limited to `EVIDENCE.md`, `RUN_STATE.md`,
+`RUN_MANIFEST.md` and `TASK_QUEUE.md`; product code delta from `133576c9…` = 0; `scripts/**` delta from
+`7ded60ee…` = 0. `G4_REAL_DATA_ATTEMPT.md` / `G4_REAL_DATA_AUDIT.md` untouched; the real-data audit,
+product tests and harness tests were not re-run.
+
 ## Unverified items
 
-- G4-D Fresh Independent G4 Review (rev 3.5 §19.1): NOT STARTED.
+- Hosted CI: NOT CONFIGURED (the repository has no GitHub workflows); every verification in this
+  file is local.
 - `SOURCE_UNAVAILABLE` / `TARGET_UNAVAILABLE` / truncation are fixed by unit / integration tests only;
   the UI cannot reach them through the Copy button in a normal state (rev 3.2 §16).
 - The three regression INCONCLUSIVE clipboard checks above.

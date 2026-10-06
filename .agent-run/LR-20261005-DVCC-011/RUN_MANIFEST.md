@@ -76,3 +76,9 @@
   Required Fixes 0). `PHASE_5A_G4_C_REAL_DATA_AUDIT = AUTHORIZED` — one G4-C run under rev 3.5 only.
   Executed once: PASS (`ALL_CHECKS_PASSED`); attempt marker created. Draft PR, Ready, merge, release,
   Production, Phase 5B: not authorized. Next gate: `G4_D_FRESH_INDEPENDENT_REVIEW`.
+- `G4_D_FRESH_INDEPENDENT_REVIEW` at `0695f52ddc372dcfbdc988a7c4328c4f5a53e140`: PASS (Required Fixes:
+  none; coverage 3/11 ACCEPTABLE; QD-5A-11 QUALITY_DEBT / non-blocking; raw real-data required: NO).
+  `PHASE_5A_G4 = CLOSED`; Phase 5A READY CANDIDATE. `PHASE_5A_DRAFT_PR_CREATION = AUTHORIZED` after an
+  evidence-only state sync (this update; not the G4-D reviewed head). No additional real-data audit.
+  Ready, merge, release, Production, Phase 5B: not authorized. Next gate after the Draft PR:
+  `PHASE_5A_DRAFT_PR_CURRENT_HEAD_REVIEW`.
