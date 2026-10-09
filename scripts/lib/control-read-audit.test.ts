@@ -718,8 +718,11 @@ describe.skipIf(process.platform !== "win32")("one-shot attempt marker (harness,
   });
 
   const newRoot = () => mkdtempSync(path.join(root, "oneshot-"));
+  // These synthetic runs bind -ReviewedHead to the checkout's own HEAD, so a later change under the
+  // product paths cannot stop them at PRODUCT_DELTA before the one-shot behaviour under test. The
+  // real-data default stays pinned to the reviewed product head (static test below).
   const run = (stRoot: string, ...extra: string[]) => {
-    const out = spawnSync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", HARNESS, "-SelfTest", "-SelfTestRoot", stRoot, "-Exe", fakeExe, ...extra], { encoding: "utf8" });
+    const out = spawnSync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", HARNESS, "-SelfTest", "-SelfTestRoot", stRoot, "-Exe", fakeExe, "-ReviewedHead", harnessHead, ...extra], { encoding: "utf8" });
     expect(out.stderr).toBe("");
     const lines = out.stdout.split(/\r?\n/).filter((l) => l !== "");
     for (const line of lines) expect(line).toMatch(/^\[g4\] [A-Za-z0-9 _=./(),:-]*$/);
@@ -728,7 +731,7 @@ describe.skipIf(process.platform !== "win32")("one-shot attempt marker (harness,
   };
   const result = (lines: string[]) => lines.find((l) => l.startsWith("[g4] result: "));
   const dataTouched = (stRoot: string) => existsSync(path.join(stRoot, "data"));
-  const markerText = () => `schema_version: 1\nproduct_head: 133576c944c55b8b50a4bdfec670d8651fdfb11e\nharness_head: ${harnessHead}\nstate: STARTED\n`;
+  const markerText = () => `schema_version: 1\nproduct_head: ${harnessHead}\nharness_head: ${harnessHead}\nstate: STARTED\n`;
 
   it("creates the marker before the data phase; a crash right there leaves it, and the next run is ALREADY_ATTEMPTED with no data access", () => {
     const r = newRoot();
