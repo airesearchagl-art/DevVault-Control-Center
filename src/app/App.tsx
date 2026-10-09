@@ -63,9 +63,11 @@ import {
 } from "../i18n";
 import { I18nContext, type I18n } from "../i18n/context";
 import { appReducer, initialAppState, type ToastKind } from "./appState";
-import { describeError } from "./format";
+import { describeError, nowIso } from "./format";
 import { copyIdeHandoffAction } from "./ideHandoffAction";
 import { copyResumeCommandAction } from "./copyResumeCommandAction";
+import { copyControlSnapshotAction } from "./copyControlSnapshotAction";
+import { controlReadSourceFrom, newControlSnapshotId } from "./controlReadSource";
 import { confirmResumeLaunch, requestResumeLaunch, type LaunchContext, type ResumeLaunchRequest } from "./launchCodexResumeAction";
 import { tauriCodexLauncher } from "../services/codexLauncher";
 import { ResumeLaunchDialog } from "../features/reviews/ResumeLaunchDialog";
@@ -672,6 +674,17 @@ export default function App() {
         onCopyIdeHandoff={() => {
           if (!selectedProject) return notify("warning", t("toast.noProjectForReview"));
           void copyIdeHandoff(selectedProject, selectedSession);
+        }}
+        onCopyControlSnapshot={() => {
+          // Phase 5A: read-only Control Read of the current state; copied only, nothing is persisted.
+          void copyControlSnapshotAction(
+            selectedSession.projectId,
+            controlReadSourceFrom(state),
+            { now: nowIso, newSnapshotId: () => newControlSnapshotId() },
+            t,
+            copyText,
+            notify,
+          );
         }}
         ideSessions={state.ideSessions}
         ideSessionsStale={state.ideSessions.status === "loaded" && isIdeSessionsStale(state.ideSessions.fingerprint, state.projects)}

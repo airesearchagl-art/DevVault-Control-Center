@@ -1,0 +1,632 @@
+# Evidence — LR-20261005-DVCC-011 (Phase 5A, Control Read Contract Vertical Slice)
+
+No real path, real session ID, real project name or provider content appears here. All test and
+smoke data is synthetic (`example-org`, `project-alpha`, sentinel strings).
+
+Active packet: rev 3.5 (`TASK_PACKET_SNAPSHOT_REV3_5.md`, SHA-256
+`e8386cbfd9c8858072b38624e51df1d5a1b0a23dbe0363d2f967fa3728368bb5`). The product implementation and
+verification below were performed under rev 3.2 (`TASK_PACKET_SNAPSHOT_REV3_2.md`, SHA-256
+`1d663c7c…44d2bd02`); rev 3.3 – 3.5 changed only the G4 definition / harness semantics (see
+`RUN_MANIFEST.md`). Initial authorized packet rev 3.1 preserved (`TASK_PACKET_SNAPSHOT.md`, SHA-256
+`de0d0f8e…3d18da`).
+
+## Ordering (AC5A-01)
+
+1. Fresh Gate PASS at `main` = `origin/main` = `7efdc62c…`, clean, no open PR, helpers present,
+   baseline `npm run typecheck` clean / `npm test` 40 files, 1093 tests.
+2. rev 3.1 snapshot written and hashed on `main` before the branch existed.
+3. Branch `feat/control-read-contract-v1` created at `7efdc62c…`.
+4. i18n keys added; STOP on the confirmation-table mismatch (HD-5A-09); rev 3.2 + second snapshot
+   created after branch creation, before Control Read product implementation (see `DECISIONS.md`).
+5. `PHASE_5A_IMPLEMENTATION_CONTINUATION = YES` → implementation.
+
+## Verification
+
+```
+npm run typecheck                -> clean
+npm test                         -> 47 files, 1207 passed (baseline 1093 + 114 Control Read)
+npm run build                    -> clean (pre-existing >500 kB chunk warning only)
+cargo check                      -> clean (no Rust change)
+npm run tauri build -- --no-bundle -> release build exit 0
+git diff --check                 -> clean
+```
+
+## Delta (AC5A-17 / AC5A-21)
+
+Product diff vs `7efdc62c…`: 21 files, all in rev 3.2 §9 — new `src/domain/controlRead/{contract,
+evidenceRef, projection, readControl}.ts` + 6 test files, `src/app/{controlReadSource,
+copyControlSnapshotAction}.ts` + tests, `docs/control-read-contract-v1.md`,
+`scripts/verify-control-read-ui.ps1`; minimal edits to `README.md`, `src/app/App.tsx` (handler wiring),
+`src/features/reviews/ReviewDetail.tsx` (one optional prop + one button), `src/i18n/{ja,en}.ts`
+(4 keys each), `src/test/docsContract.test.ts` (additive).
+
+`git diff 7efdc62c… -- src-tauri package.json package-lock.json src/app/appState.ts
+src/domain/validation.ts src/domain/limits.ts src/domain/transitions.ts src/domain/schema.ts
+src/services contract docs/data-contract-v1.md fixtures` → **empty**. Rust / capability / dependency /
+schema / appState / validator / transitions delta = 0. New Tauri command = 0. Data Model delta = 0.
+
+## HD-5A-09 confirmation classification (AC5A-27)
+
+Driven through the existing `applyReviewAction` (`transitions.ts` unchanged):
+
+| Case | Expected | Result |
+|---|---|---|
+| FIX_REQUIRED via confirmVerdict | EXPLICIT | PASS |
+| FIX_REQUIRED after suspend / resume | EXPLICIT | PASS |
+| REVIEW_PASS via confirmVerdict | EXPLICIT | PASS |
+| REVIEW_PASS after suspend / resume | EXPLICIT | PASS |
+| BLOCKED from REVIEWING via block | EXPLICIT | PASS |
+| BLOCKED after suspend / resume from a confirmed BLOCKED | EXPLICIT | PASS |
+| BLOCKED from NEW | ENTERED | PASS |
+| BLOCKED from READY_FOR_REVIEW | ENTERED | PASS |
+| BLOCKED from FIX_REQUIRED (verdict remains FIX_REQUIRED) | ENTERED | PASS |
+| CLOSED | EXPLICIT | PASS |
+| NEW / READY_FOR_REVIEW / REVIEWING / SUSPENDED | ENTERED | PASS (4) |
+| durable-record: `suspendedFrom` FIX_REQUIRED without a confirmed verdict → resume | ENTERED | PASS |
+| verdict state with no round at all | ENTERED | PASS |
+
+## Helper / oracle parity (AC5A-03)
+
+- Freshness: every row of the existing `src/test/freshnessContract.ts` oracle — projection class /
+  value agrees with `deriveFreshness().status` (UNKNOWN ↔ class UNKNOWN).
+- Target format: `readControl`'s `INVALID_TARGET` decision equals `isValidProjectId` /
+  `isValidReviewId` over a table of valid / invalid / boundary IDs.
+- Repository: `normalizeRepositoryUrl` ok → `{host, owner, name}` (trailing `.git` removed); error /
+  http / other host / one segment → `BLOCKED INVALID_SOURCE_VALUE` (value not echoed).
+- Source-shape: `evidenceRef.ts` imports `isIsoTimestamp, isValidProjectId, isValidReviewId` and
+  `MAX_REVIEW_ROUNDS`; `readControl.ts` imports `isValidProjectId, isValidReviewId`; `projection.ts`
+  imports `normalizeRepositoryUrl`; no ID / HEAD / repository regex in Control Read product files.
+
+## Source semantics (AC5A-08..11)
+
+| `projectsHealth.status` | snapshot / project / review |
+|---|---|
+| ok, restored_from_backup | proceed (`registry_health` reported) |
+| missing | proceed; absent project → `TARGET_NOT_FOUND` |
+| unreadable / io_error / unsupported_version | `SOURCE_UNAVAILABLE` / `REGISTRY_UNREADABLE` / `REGISTRY_IO_ERROR` / `REGISTRY_UNSUPPORTED_VERSION` (never `TARGET_NOT_FOUND`) |
+
+`get_review_state`: no LoadedReview → `TARGET_NOT_FOUND`; `session === null` → `TARGET_UNAVAILABLE`
+/ `UNREADABLE` | `IO_ERROR` | `UNSUPPORTED_VERSION` | `MISSING`. Snapshot: unreadable reviews only
+increment `unattributable_review_count`. Persistence invariant `session !== null` ⇔ status ∈
+{ok, restored_from_backup} verified through the real `loadAll` over `MemoryStorage` (ok, corrupt,
+future version, missing session file, read failure, corrupt primary + valid backup), and Control
+Read over that load left `MemoryStorage.files` unchanged.
+
+## Provenance / presence (AC5A-05 / AC5A-06)
+
+Entity times (`Project.createdAt/updatedAt`, `session.createdAt/updatedAt`, `requestSavedAt`,
+`followupSavedAt`) set to unique sentinel times: none appears in the output. `reviewed_head.recorded_at
+= resultCapturedAt`, `verdict.recorded_at = verdictConfirmedAt`; repository, resource state, PR number,
+expected head, risk tier, review state → `null`. Presence (`result_captured`, `judgment_captured`,
+`local_root`) is `DERIVED`; `false` never HUMAN_CONFIRMED; unconfigured local root has no `path`.
+
+## Disclosure (AC5A-15 / AC5A-19)
+
+Sentinels planted in: local root, display name, notes (with a `ghp_` token), project / review next
+action (with `sk-` / `AKIA` tokens), IDE label, review type, thread title / URL, verdict note,
+revalidation explanation, Git branch, Git error message / code, FileHealth reason / set-aside /
+quarantined name / io code, IDE discovery session ID / cwd, checkpoint / result bodies, unknown request
+key name / value. Absent from every success and error response and from every evidence reference,
+for both an OK and an ERROR observation. All evidence references match exactly one of the seven
+approved variants. `controlReadSourceFrom` passes exactly `gitObservations, phase, projects,
+projectsHealth, reviews`. `as EvidenceRef` occurs once (inside `evidenceRef.ts`); no `"dvcc:"` literal
+elsewhere. Unrecognized-field echo: safe only → `fields`, unsafe only → `unlisted_field_count: 1`,
+mixed → `fields` + `unlisted_field_count: 2` (RF-5A-R3-01).
+
+## Mutation campaign (AC5A-23)
+
+Driver in the session scratchpad (not committed). Each: apply → `vitest run` of the 7 Control Read
+test files → restore → SHA-256 equal to the committed file. M-5A-17 was split into 17a / 17b.
+
+| Probe | Mutation | Failed tests | Restored |
+|---|---|---|---|
+| M-5A-01 | local_root discloses the real path | 4 | yes |
+| M-5A-02 | display name disclosed | 3 | yes |
+| M-5A-03 | Git errorMessage passed into the output | 2 | yes |
+| M-5A-04 | unobserved Git fabricated as OBSERVED | 1 | yes |
+| M-5A-05 | OBSERVATION_INVALIDATED without a raw observation | 1 | yes |
+| M-5A-06 | stale observation used without observationForProject | 2 | yes |
+| M-5A-07 | version 2 accepted | 2 | yes |
+| M-5A-08 | unknown keys silently ignored | 4 | yes |
+| M-5A-09 | unknown-field check before the version check | 1 | yes |
+| M-5A-10 | project looked up by display name | 2 | yes |
+| M-5A-11 | recorded_at = session.updatedAt | 16 | yes |
+| M-5A-12 | absent result as HUMAN_CONFIRMED | 1 | yes |
+| M-5A-13 | unconfigured local root reports a withheld path | 1 | yes |
+| M-5A-14 | freshness classified as OBSERVED | 20 | yes |
+| M-5A-15 | freshness re-implemented (edge differs) | 2 | yes |
+| M-5A-16 | get_run_state returns an empty run | 3 | yes |
+| M-5A-17a | projection writes into its source | 1 | yes |
+| M-5A-17b | copy action writes to the clipboard twice | 1 | yes |
+| M-5A-18 | truncated response reports complete: true | 1 | yes |
+| M-5A-19 | review order not ID-descending | 2 | yes |
+| M-5A-20 | IDE sessions passed into the source | 3 | yes |
+| M-5A-21 | FileHealth read through `.kind` | 19 | yes |
+| M-5A-22 | unreadable registry → TARGET_NOT_FOUND | 4 | yes |
+| M-5A-23 | registry gate dropped for io_error / unsupported_version | 3 | yes |
+| M-5A-24 | unreadable review → TARGET_NOT_FOUND | 2 | yes |
+| M-5A-25 | unreadable review fabricated into a review state | 8 | yes |
+| M-5A-26 | unattributable_review_count always 0 | 3 | yes |
+| M-5A-27 | TARGET_UNAVAILABLE carries the health message | 3 | yes |
+| M-5A-28 | own looser project ID regex | 1 | yes |
+| M-5A-29 | repository split without normalizeRepositoryUrl | 1 | yes |
+| M-5A-30 | reference built outside the builders from display name | 6 | yes |
+| M-5A-31 | gitObservationRef without the ISO timestamp check | 1 | yes |
+| M-5A-32 | out-of-range round accepted | 1 | yes |
+| M-5A-33 | every FIX_REQUIRED / REVIEW_PASS / BLOCKED EXPLICIT | 5 | yes |
+| M-5A-34 | resumed confirmed verdict state ENTERED | 3 | yes |
+| M-5A-35 | BLOCKED from NEW EXPLICIT | 3 | yes |
+| M-5A-36 | EXPLICIT inferred from suspendedFrom alone | 2 | yes |
+
+37 probes, all **KILLED by test failures**; compile-error-only kills: 0; survived: 0. Before the run,
+two probes (M-5A-10, M-5A-18) were found to lack a killing test; the identity and truncation tests
+were added first (commit `527d2c0`).
+
+## Running-app smoke (AC5A-25) — SYNTHETIC ONLY
+
+`scripts/verify-control-read-ui.ps1` against the fresh release build, hidden desktop, four isolated
+`DVCC_DATA_DIR`s, synthetic Git repository, clipboard interceptor: **78 passed, 0 failed,
+0 inconclusive**. The operator's clipboard was unchanged.
+
+- Case A: copy → Refresh Git → copy. NOT_OBSERVED then OBSERVED (+`observed_at`, git-observation ref)
+  and freshness DERIVED/ALIGNED with `basis_observed_at`; HD-5A-09 EXPLICIT from the durable verdict;
+  provenance exact / null; unreadable review only counted (1); every sentinel absent; data folder
+  **byte-identical**, no `events.jsonl`.
+- Case B: observe → Human-intentional local root edit → copy: Git and freshness
+  `OBSERVATION_INVALIDATED`; the edit changed only `projects.json` + `projects.json.bak`; the copy
+  wrote nothing; the new root not disclosed.
+- Case C: observe → copy (OBSERVED) → restart → copy: `NOT_OBSERVED` (not invalidated); data folder
+  byte-identical across the restart.
+- Case D: JA copy (no write) → locale switch (only `settings.json` written) → EN copy (no write):
+  JSON identical apart from `snapshot_id` / `generated_at`; JA / EN labels and toasts localized.
+
+Harness history (no product change between runs): run 1 stopped while seeding Case A (Git CRLF
+warning under `$ErrorActionPreference = "Stop"`; no app instance started) → `Invoke-Git` aligned with
+the existing smokes; run 2: 77 / 1 (toast read included the dismiss button "×") → read the toast
+message span; run 3: 78 / 0 / 0.
+
+## Regression smokes (same release build)
+
+| Smoke | Result |
+|---|---|
+| session discovery | 220 passed, 0 failed, 0 inconclusive |
+| resume handoff | 62 passed, 0 failed, 1 inconclusive |
+| resume launcher | 75 passed, 0 failed, 0 inconclusive |
+| localization | 26 passed, 0 failed, 1 inconclusive |
+| IDE handoff | 38 passed, 0 failed, 0 inconclusive |
+| review workflow | 112 passed, 0 failed, 1 inconclusive |
+
+The three INCONCLUSIVE results are the final "operator's clipboard is untouched" check
+(EXTERNAL_CLIPBOARD_ACTIVITY): the Windows clipboard sequence changed between smokes (+5 each time,
+to texts of different lengths), **never during an intercepted DVCC copy** (no `[note]` line in any
+log), while the IDE handoff, resume launcher and Control Read smokes — which copy through DVCC — ended
+with the clipboard unchanged. Classified by the harness as external activity; not re-run.
+Not re-run (untouched areas): `verify-clipboard-interceptor.ps1`, `verify-single-instance.ps1`.
+
+## RF-5A-IR-01 repair (Independent FULL Review at `41b4ee95…`: FIX_REQUIRED)
+
+Finding: a persisted round verdict was classified `EXPLICIT` whenever `round.verdict` was non-null.
+The schema validates `verdict` and `verdictConfirmedAt` independently, so a stored verdict without a
+confirmation time is valid and was over-claimed.
+
+Repair (`projection.ts`, round `verdict` only; `schema.ts` / `transitions.ts` untouched):
+
+| Source | Projection |
+|---|---|
+| `verdict == null` | `UNKNOWN` / `NOTHING_RECORDED` |
+| `verdict != null` AND `verdictConfirmedAt != null` | `HUMAN_CONFIRMED` / `EXPLICIT`, `recorded_at = verdictConfirmedAt` |
+| `verdict != null` AND `verdictConfirmedAt == null` | `HUMAN_CONFIRMED` / `ENTERED`, `recorded_at = null` |
+
+Fresh verification after the repair:
+
+```
+targeted: projection + provenance + docsContract -> 3 files, 82 passed
+           (new: schema-valid round {verdict FIX_REQUIRED, verdictConfirmedAt null} parsed by
+            parseSessionFile -> verdict HUMAN_CONFIRMED / ENTERED / recorded_at null;
+            confirmed verdict stays EXPLICIT with recorded_at = verdictConfirmedAt;
+            contract doc states the rule)
+M-5A-37 (every non-null round verdict EXPLICIT) -> KILLED (1 test failure), restored byte-identical
+npm run typecheck -> clean
+npm test          -> 47 files, 1210 passed
+git diff --check  -> clean
+```
+
+Contract doc updated: "A stored round verdict is not automatically `EXPLICIT` …" (named by docsContract).
+
+Evidence reuse: the repair changes one classification line in `roundState` plus tests / docs; no UI,
+copy action, source, request validation, EvidenceRef, review-state (HD-5A-09) or runtime seam changed.
+Reused from `41b4ee95…`: M-5A-01..36 (mutated lines unchanged), running-app Case A–D (the smoke
+fixture's verdict has `verdictConfirmedAt` set, so its EXPLICIT assertion is unaffected), the six
+regression smokes (incl. the three clipboard INCONCLUSIVE results, kept as INCONCLUSIVE), build /
+release build / `cargo check` (no Rust change). Not re-run.
+
+## G4-A — automated real-data audit harness (HD-5A-10, rev 3.3 §19.1)
+
+Scope: harness only. New files (no existing file changed outside `.agent-run/`):
+
+| File | Role |
+|---|---|
+| `scripts/verify-control-read-real-data-audit.ps1` | driver: preconditions, hidden desktop, open review, Git Refresh, one intercepted copy, tree / page-state / clipboard-sequence measurements, report write |
+| `scripts/lib/control-read-audit.mjs` | audit core: read-only sample selection, allowlist oracle, exact comparison, pattern scan, positive assertions, detector liveness, decision, report guard |
+| `scripts/lib/control-read-audit-fixture.mjs` | synthetic data folder (sentinels only) for tests and `-SelfTest` |
+| `scripts/lib/control-read-audit.test.ts` | tests (33) |
+| `scripts/vitest.audit.config.ts` | separate test entry; `vite.config.ts` / `npm test` unchanged |
+
+Product code delta from the READY CANDIDATE head:
+
+```
+git diff --stat 133576c944c55b8b50a4bdfec670d8651fdfb11e <G4 harness head> -- \
+  src src-tauri contract package.json package-lock.json index.html vite.config.ts tsconfig.json tsconfig.node.json
+-> (empty)   product code delta: 0
+```
+
+Raw-data handling: **LOCAL MEMORY ONLY** — the DVCC page (interceptor state, cleared before the app is
+stopped), the driver's PowerShell process (one string variable, passed only to the core and then
+cleared), the core's node process (stdin). Output channels: one guarded `Write-Host` (fixed words and
+codes; an exception is reported only by stage name), one file write (the report returned by the core
+after its value-domain guard). The core's stdout to the driver is one JSON line; its stderr is drained
+and discarded.
+
+OS clipboard raw write: **BLOCKED BY DESIGN** — DVCC's `plugin:clipboard-manager|write_text` request is
+answered inside the page by the shared interceptor and never reaches Windows; the harness never reads or
+writes the OS clipboard; it compares the Windows clipboard sequence number before launch and after
+the app stopped (changed → `os_clipboard_received_raw_snapshot: UNKNOWN`, INCONCLUSIVE).
+
+Verification (fresh):
+
+```
+npx vitest run --config scripts/vitest.audit.config.ts -> 1 file, 33 passed
+  oracle parity: vocabularies / ID patterns == contract.ts, states.ts, riskTier.ts, validation.ts
+  real readControl output (observed / unobserved / no local root + no repository / truncated
+    MAX_REVIEWS + MAX_ROUNDS) -> unknown 0, violations 0
+  allowlist negatives, exact comparison (substring / short-equality / path normalization / lawful
+    overlap / free text in a lawful position), 14 pattern cases, positive assertions (pass + fixed
+    failure codes), selection (non-CLOSED, deterministic, opaque sample_ref, .bak fallback,
+    REGISTRY_UNREADABLE, NO_CANDIDATE), core never writes (data folder + repo byte-identical),
+    decision matrix (PASS / FAIL / INCONCLUSIVE / BLOCKED, FAIL outranks INCONCLUSIVE),
+    report guard, CLI (no echo, empty stderr, BOM-prefixed stdin)
+  privacy (static, harness script): ASCII without BOM; exactly one Write-Host; no other output /
+    clipboard / file / transcript channel; exactly two WriteAllText lines, both of the core's report;
+    the raw snapshot variable appears only in its 5 allowed statements; no `$_` in any catch block;
+    real-data guards and the G4-C authorization token present
+npm run typecheck -> clean
+npm test          -> 47 files, 1210 passed (product suite unchanged)
+```
+
+Mutation probes (apply → audit tests → restore → SHA-256 byte-identical):
+
+| Probe | Mutation | Result |
+|---|---|---|
+| H-01 | exact comparison never hits | KILLED |
+| H-02 | allowlist ignores unknown keys | KILLED |
+| H-03 | pattern scan never hits | KILLED |
+| H-04 | decision ignores a write during copy | KILLED |
+| H-05 | decision ignores the clipboard sequence | KILLED |
+| H-06 | report value guard disabled | KILLED |
+| H-07 | every value treated as lawful | KILLED |
+| H-08 | CLOSED review selectable | KILLED (survived the first run; the CLOSED-only test was added, then killed) |
+| H-09 | sample branch not collected | KILLED |
+| H-10 | HEAD value not compared | KILLED |
+| H-11 | CLI echoes the error input | KILLED |
+| H-12 | other projects' values not collected | KILLED |
+| H-13 | detectors never live | KILLED |
+| H-14 | harness prints the raw snapshot | KILLED |
+| H-15 | harness logs the exception | KILLED |
+| H-16 | harness writes a second file | KILLED |
+
+Synthetic end-to-end self-test (`-SelfTest`; `%TEMP%` data folder seeded by the fixture; real data not
+touched; DVCC not running):
+
+- The release executable predated the RF-5A-IR-01 commit (the harness's `STALE_BUILD` guard would
+  refuse it) → rebuilt from the current tree (`npx tauri build --no-bundle`, product code == `133576c9…`;
+  no tracked file changed).
+- Run 1: `INCONCLUSIVE (AUDIT_CORE_UNAVAILABLE)`, no report — .NET's redirected stdin writer (encoding
+  utf-8, 3-byte preamble) put a BOM before the request and the core refused to parse it. Fail-closed as
+  designed. Fix: the core strips a leading BOM (test added).
+- Run 2: `PASS (ALL_CHECKS_PASSED)`, exit 0. Report (synthetic; `harness_head` was the uncommitted
+  working tree on `133576c9…`):
+
+```text
+reviewed_head: 133576c944c55b8b50a4bdfec670d8651fdfb11e
+harness_head: 133576c944c55b8b50a4bdfec670d8651fdfb11e
+sample_ref: sha256:5a56cc9bef18feb2
+selection: automatic
+copy_actions: 1
+contract_parse: PASS
+allowlist: PASS
+unknown_field_count: 0
+sensitive_source_categories_present: 11/11
+exact_sensitive_value_leaks: 0
+absolute_path_leaks: 0
+git_branch_leaks: 0
+free_text_leaks: 0
+thread_pointer_leaks: 0
+provider_identifier_leaks: 0
+credential_pattern_hits: 0
+exact_comparison_overlaps_excluded: 0
+expected_machine_facts: PASS
+unexpected_state_change: NO
+unexpected_persistent_write: NO
+raw_snapshot_persisted: NO
+raw_values_logged: NO
+os_clipboard_received_raw_snapshot: NO
+result: PASS
+result_reason: ALL_CHECKS_PASSED
+```
+
+- Run 3 (after tightening the report condition: no report unless the data folder was resolved):
+  `PASS (ALL_CHECKS_PASSED)`, exit 0, same report apart from the per-run `sample_ref`; audit tests
+  33 passed.
+
+(`expected_machine_facts: PASS` after a completed refresh of the fixture repository means the
+observed path was asserted: head / dirty / detached OBSERVED with one `observed_at`, HEAD and detached
+equal to read-only `rev-parse` / `symbolic-ref`.)
+
+Real-data audit (G4-C): **NOT RUN**. `G4_REAL_DATA_AUDIT.md` does not exist.
+
+## G4-B focused repair (rev 3.4; review at `146ff68e…`: FIX_REQUIRED, RF-G4B-01 … 03)
+
+Scope: G4 harness / tests / governance evidence only. Files: `scripts/lib/control-read-audit.mjs`,
+`scripts/verify-control-read-real-data-audit.ps1`, `scripts/lib/control-read-audit.test.ts`, new
+`scripts/lib/control-read-audit-finalize.ps1`, `.agent-run/…` (rev 3.4 snapshot, D-10, state files).
+
+| Finding | Repair | Fixed by tests / probes |
+|---|---|---|
+| RF-G4B-01 machine-shaped blanket exemption | legitimacy only from contract vocabulary, the selected source (project id, owner / name, readable non-CLOSED review ids of the project, their rounds' recorded heads and timestamps, DVCC's observed HEAD, EvidenceRefs built from these) and the response's own values inside the run windows; unresolved machine-shaped overlap → INCONCLUSIVE `EXACT_COMPARISON_OVERLAP`; every non-empty body line compared; source-bound positive assertions (foreign review / project id, foreign EvidenceRef, recorded head / timestamp, `generated_at` / `observed_at` windows) | SHA (7-hex) / review-id / ISO / EvidenceRef-shaped free text in the snapshot → unresolved, never PASS; another project's / a CLOSED review's identity → FAIL; short body line compared; H-17, H-18, H-25 |
+| RF-G4B-02 harness Git / filesystem beyond the product boundary | core: no `child_process`, no stat / Git of any local root; selection from the data folder only; Git facts only from DVCC's own observation read from the Review detail after Refresh Git (status label / HEAD / branch; labels pinned to `src/i18n`); harness Git only `git.exe -C <DVCC repo>` | static: no process / stat API in the core, no fs call on a `localRoot` line, exactly one `git.exe` in the harness (DVCC repo), none in the finalize library; a missing local root changes nothing; H-21, H-22 |
+| RF-G4B-03 finalization outside the sanitized boundary | `control-read-audit-finalize.ps1`: Invoke-Node / Invoke-AuditCore / Write-ReportAtomically catch everything; `Complete-AuditRun` boundary → `AUDIT_FINALIZE_FAILED` / `REPORT_RENDER_FAILED` / `REPORT_WRITE_FAILED`; script trap → `UNHANDLED_EXCEPTION`; temp file + rename (never overwrites); PASS only after the write; references dropped in `finally` | behavioural PowerShell tests: PASS writes atomically; audit core unavailable / report destination unwritable / renderer throws / exception carrying a path / existing report → fixed line only, exit 2, empty stderr, no path, no report, no temp file; H-19, H-20, H-23, H-24 |
+| CDP advisory | random high port 49152–65534 by default; listener before launch → BLOCKED `CDP_PORT_IN_USE`; identifiers sent only after Tauri internals + queue DOM + interceptor are confirmed (`DVCC_PAGE_UNCONFIRMED`) | static; H-26 |
+
+Product code delta from the READY CANDIDATE head (fresh):
+
+```
+git diff --stat 133576c944c55b8b50a4bdfec670d8651fdfb11e <repair head> -- \
+  src src-tauri contract package.json package-lock.json index.html vite.config.ts tsconfig.json tsconfig.node.json
+-> (empty)   product code delta: 0
+```
+
+Fresh verification:
+
+```
+npx vitest run --config scripts/vitest.audit.config.ts -> 1 file, 48 passed
+  (incl. 6 behavioural PowerShell finalization cases, i18n label parity, source-bound tests)
+git diff --check -> clean
+raw-data static privacy checks (harness + finalize library): ASCII without BOM; one Write-Host (Say);
+  no other output / clipboard / transcript channel; no `.Message` / `$_.Exception`; one WriteAllText
+  (temp) + one Move; the raw snapshot variables only in their allowed statements (4 + 4); no `$_` in a
+  catch block; trap with a fixed line
+```
+
+Mutation probes (apply → audit tests → restore → SHA-256 byte-identical), all re-run:
+
+| Probe | Mutation | Result |
+|---|---|---|
+| H-01 … H-16 | as G4-A (anchors moved to the repaired code) | all KILLED |
+| H-17 | generic MACHINE_SHAPED exemption restored | KILLED |
+| H-18 | decision ignores unresolved overlaps | KILLED |
+| H-19 | finalization catch removed | KILLED |
+| H-20 | report write exception rethrown | KILLED |
+| H-21 | core imports `child_process` (Git in a local root) | KILLED |
+| H-22 | harness runs Git against another folder | KILLED |
+| H-23 | PASS printed before the report is written | KILLED |
+| H-24 | report written in place (no temporary file) | KILLED (survived the first run; the "never overwrite an existing report" test was added, then killed) |
+| H-25 | source-bound identity check removed | KILLED |
+| H-26 | CDP port check removed | KILLED |
+
+No probe was killed only by a compile error (all by test failures).
+
+Synthetic end-to-end self-test (release build from the current tree, product code == `133576c9…`;
+DVCC not running; real data not touched):
+
+| Run | Output (complete) | Exit |
+|---|---|---|
+| `-SelfTest` | `sample selected automatically: coverage 10/11 before Git refresh` / `result: PASS (ALL_CHECKS_PASSED)` / `report: G4_SELF_TEST_REPORT.md in the self-test run folder` | 0 |
+| `-SelfTestFault AuditCoreUnavailable` | `result: INCONCLUSIVE (AUDIT_FINALIZE_FAILED) - no report written` | 2 |
+| `-SelfTestFault ReportUnwritable` | `result: INCONCLUSIVE (REPORT_WRITE_FAILED) - no report written` | 2 |
+| `-SelfTestFault RendererThrows` | `result: INCONCLUSIVE (REPORT_RENDER_FAILED) - no report written` | 2 |
+
+stderr was empty in all four; the three fault runs left no report and no temporary file. Self-test
+report (synthetic): `sensitive_source_categories_present: 11/11` (the branch came from DVCC's
+observation after Refresh Git), every leak count 0, `exact_comparison_overlaps_excluded: 0`,
+`expected_machine_facts: PASS`, no state change, no persistent write, OS clipboard untouched,
+`result: PASS`.
+
+Evidence reused unchanged (per the G4-B instruction): product READY CANDIDATE review at `133576c9…`,
+RF-5A-IR-01 closure, M-5A-01..37, Control Read running-app Case A–D, regression smokes, product
+typecheck / tests (product code unchanged; delta 0 re-verified above).
+
+Real-data audit (G4-C): **NOT RUN**. `G4_REAL_DATA_AUDIT.md` does not exist.
+
+## RF-G4B-04 repair (rev 3.5; harness repair review at `0657794d…`: RF-G4B-01 … 03 CLOSED)
+
+Finding: the real-data one-shot depended on the report's existence only; a report-write failure,
+a finalize failure, an unhandled exception or a crash after the data was touched would have allowed
+a second run with the same authorization.
+
+Repair (`scripts/verify-control-read-real-data-audit.ps1`, `scripts/lib/control-read-audit-finalize.ps1`,
+tests; product code untouched):
+
+| Step | Real-data route (rev 3.5) | Data folder touched |
+|---|---|---|
+| 1 | non-data preconditions (authorization, Node / harness files, repo / head, clean worktree except the two one-shot files, product delta 0, release build fresh, DVCC not running, no `DVCC_DATA_DIR`, CDP port free) → BLOCKED codes | no |
+| 2 | report exists → `ALREADY_RUN` (BLOCKED) | no |
+| 3 | attempt marker exists → `ALREADY_ATTEMPTED` (BLOCKED) | no |
+| 4–5 | `New-AttemptMarker`: `FileMode.CreateNew`, fixed text, flush, existence + length check; any failure → `ATTEMPT_MARKER_CREATE_FAILED` (BLOCKED) | no |
+| 6+ | data folder (existence check / selection / app / Git Refresh / one copy / audit / report) | yes, only from here |
+
+Marker: `.agent-run/LR-20261005-DVCC-011/G4_REAL_DATA_ATTEMPT.md` (self-test: `G4_SELF_TEST_ATTEMPT.md` in
+the temp run folder), exactly:
+
+```text
+schema_version: 1
+product_head: <40 hex>
+harness_head: <40 hex>
+state: STARTED
+```
+
+Never overwritten, deleted, cleaned up or resumed; no reset path.
+
+Behavioural tests (synthetic / temp roots only; the app is not started; the release-build
+precondition is met by a dummy file that is never executed):
+
+| Case | Result |
+|---|---|
+| fresh root, crash-equivalent (`[Environment]::Exit(9)`) right where data access would begin | exit 9; marker present with the exact schema; data folder absent; re-run → `BLOCKED (ALREADY_ATTEMPTED)`, data folder still absent, marker unchanged |
+| marker already present | `BLOCKED (ALREADY_ATTEMPTED)`; data folder absent; marker content untouched |
+| report already present | `BLOCKED (ALREADY_RUN)`; data folder absent; no marker created |
+| marker cannot be created | `BLOCKED (ATTEMPT_MARKER_CREATE_FAILED)`; data folder absent; run folder empty |
+| report write failure after the marker (`-SelfTestNoApp -SelfTestFault ReportUnwritable`) | `INCONCLUSIVE (REPORT_WRITE_FAILED)`; data phase ran; marker remains; re-run → `ALREADY_ATTEMPTED` without selection |
+| audit finalize failure after the marker (`… AuditCoreUnavailable`) | `INCONCLUSIVE (AUDIT_FINALIZE_FAILED)`; marker remains; re-run → `ALREADY_ATTEMPTED` |
+| completed run (`-SelfTestNoApp`) | report written, marker remains next to it; re-run → `ALREADY_RUN`, marker unchanged |
+| library | `New-AttemptMarker` refuses an existing file and leaves it unchanged; refuses a non-SHA value; writes exactly the schema |
+
+Every run: stderr empty; every stdout line a fixed `[g4]` line; no sentinel, run folder path or
+identifier printed. Static: the report / marker / CreateNew order precedes every data-folder touch;
+all non-data preconditions precede the gate; the only `Remove-Item` / `Move` lines are the environment
+variable, the report's temporary file and its rename; `$attemptMarker` appears only in its six
+allowed statements; the marker text is the fixed literal with 40-hex guards; the only process exit is
+the self-test crash fault; no parameter is reassigned except the `$Exe` / `$Port` defaults.
+
+Found and fixed while testing: the internal `$selfTestRoot` variable overwrote the new
+`-SelfTestRoot` parameter (PowerShell names are case-insensitive), so the first run used a fresh temp
+folder instead of the given one (fail-closed: the existing marker was not overwritten). Renamed to
+`$runRoot`; the new static test fails on the old code and passes on the fix.
+
+Fresh verification:
+
+```
+npx vitest run --config scripts/vitest.audit.config.ts -> 1 file, 59 passed
+git diff --check -> clean
+product code delta (133576c9 -> repair head, product paths) -> empty: 0
+```
+
+Mutation probes (apply → audit tests → restore → SHA-256 byte-identical):
+
+| Probe | Mutation | Result |
+|---|---|---|
+| H-27 | existing attempt-marker check removed | KILLED (7 test failures) |
+| H-28 | attempt marker created after the first data access | KILLED (4 test failures) |
+| H-29 | marker deleted when the run ends with a non-zero code (report write failure) | KILLED (6 test failures) |
+| H-30 | marker creation failure still proceeds to the data | KILLED (4 test failures) |
+| H-01 … H-26 | unchanged probes, re-run against the repaired files | all 26 KILLED by test failures, restored byte-identical |
+
+Synthetic end-to-end self-test (release build from the current tree, product code == `133576c9…`;
+DVCC not running; temp run folders given with `-SelfTestRoot`):
+
+| Run | Result | Exit | Marker | Report | Temp files |
+|---|---|---|---|---|---|
+| `-SelfTest` | `PASS (ALL_CHECKS_PASSED)`, coverage 11/11 after refresh, all leak counts 0 | 0 | present (schema) | written | 0 |
+| `-SelfTestFault AuditCoreUnavailable` | `INCONCLUSIVE (AUDIT_FINALIZE_FAILED)` | 2 | present | none | 0 |
+| `-SelfTestFault ReportUnwritable` | `INCONCLUSIVE (REPORT_WRITE_FAILED)` | 2 | present | none | 0 |
+| `-SelfTestFault RendererThrows` | `INCONCLUSIVE (REPORT_RENDER_FAILED)` | 2 | present | none | 0 |
+| re-run of the PASS folder | `BLOCKED (ALREADY_RUN)` | 2 | unchanged | unchanged | — |
+| re-run of each fault folder | `BLOCKED (ALREADY_ATTEMPTED)` | 2 | unchanged | none | — |
+
+Evidence reused unchanged (per the instruction): product suite, M-5A product mutations, Control Read
+running-app Case A–D, regression smokes.
+
+Real data: the data folder (`%APPDATA%\DevVault-Control`) was **not opened**; the real-data attempt
+marker was **not created**; `G4_REAL_DATA_AUDIT.md` was **not created**; G4-C **NOT RUN**.
+
+## G4-C — one-shot real-data audit (rev 3.5 §19.1) — PASS
+
+Authorization: `PHASE_5A_G4_C_REAL_DATA_AUDIT = AUTHORIZED` after `RF-G4B-04_FOCUSED_REVIEW = PASS`
+(RF-G4B-01 … 04 CLOSED, Required Fixes 0) at harness head `7ded60ee95d17da3f9571395d96ced65d2bd52f0`.
+
+Fresh preconditions (checked before the run, nothing read from the data folder):
+
+| Check | Result |
+|---|---|
+| `HEAD` / `origin/feat/control-read-contract-v1` | `7ded60ee95d17da3f9571395d96ced65d2bd52f0` (equal) |
+| Working tree | clean; `G4_REAL_DATA_AUDIT.md` and `G4_REAL_DATA_ATTEMPT.md` absent |
+| Product code delta from `133576c9…` | 0 |
+| Open PRs | 0 |
+| Release build | present and newer than the last product commit (not rebuilt) |
+| DVCC running / `DVCC_DATA_DIR` set | no / no |
+
+Run (official route, once): `scripts\verify-control-read-real-data-audit.ps1 -RealData -Authorization
+"HD-5A-10/G4-C"`. Complete console output (fixed lines only; stderr empty):
+
+```
+[g4] sample selected automatically: coverage 3/11 before Git refresh
+[g4] result: PASS (ALL_CHECKS_PASSED)
+[g4] report: .agent-run/LR-20261005-DVCC-011/G4_REAL_DATA_AUDIT.md
+exit=0
+```
+
+- Attempt marker `G4_REAL_DATA_ATTEMPT.md`: CREATED by the harness before the data phase; content equals
+  the allowed schema byte-for-byte (`schema_version: 1` / `product_head: 133576c9…` /
+  `harness_head: 7ded60ee…` / `state: STARTED`, 143 bytes; SHA-256 `81aed00b…def2d102`). Kept; never to
+  be deleted, overwritten or resumed.
+- Sanitized report `G4_REAL_DATA_AUDIT.md` (SHA-256 `735bbedf…b150c082`): every field within the
+  REPORT_SCHEMA domains (no line outside the fixed header / field grammar). Key values:
+  `copy_actions: 1`, `contract_parse: PASS`, `allowlist: PASS`, `unknown_field_count: 0`,
+  `sensitive_source_categories_present: 3/11`, every leak / pattern count `0`,
+  `exact_comparison_overlaps_excluded: 0`, `expected_machine_facts: PASS`,
+  `unexpected_state_change: NO`, `unexpected_persistent_write: NO`, `raw_snapshot_persisted: NO`,
+  `raw_values_logged: NO`, `os_clipboard_received_raw_snapshot: NO`, `result: PASS`,
+  `result_reason: ALL_CHECKS_PASSED`.
+- No raw snapshot or real-data value was printed, saved or read by the operator; the sample was chosen
+  by the harness; the OS clipboard was not read. Automatic retry: none.
+- Coverage note for G4-D: the selected sample had 3 of 11 sensitive-source categories non-empty — the
+  §19.1 minimum (`MIN_COVERAGE = 3`), so the run was not INCONCLUSIVE, but the exact comparison
+  exercised few categories on that sample (the whole-folder forbidden values were still compared and
+  the pattern scan covered every category).
+
+## G4-D — Fresh Independent G4 Review (rev 3.5 §19.1) — PASS
+
+Result received at the Human Gate (this section records the review result; it did not perform the
+review):
+
+| Item | Result |
+|---|---|
+| `G4_D_FRESH_INDEPENDENT_REVIEW` | PASS |
+| Reviewed exact head | `0695f52ddc372dcfbdc988a7c4328c4f5a53e140` |
+| Product READY CANDIDATE head | `133576c944c55b8b50a4bdfec670d8651fdfb11e` |
+| G4 harness reviewed head | `7ded60ee95d17da3f9571395d96ced65d2bd52f0` |
+| G4-C / attempt marker / sanitized report / one-shot integrity | PASS / PASS / PASS / PASS |
+| Coverage | 3/11 |
+| Coverage judgment | ACCEPTABLE |
+| QD-5A-11 | QUALITY_DEBT / non-blocking |
+| Raw real-data required for review | NO |
+| Required Fixes | none |
+| G4 | CLOSED |
+| Phase 5A | READY CANDIDATE |
+
+Coverage rationale (Human Gate): 3/11 equals the adopted minimum and is not a blocker — rev 3.5 makes
+only `n < 3` LOW_COVERAGE / INCONCLUSIVE; the exact-sensitive comparison covered the whole DVCC data
+folder; the pattern scan is independent of the selected sample's category count; source-bound /
+machine-fact assertions PASS; unresolved overlaps 0; synthetic 11/11 coverage evidence exists; the
+limitation is recorded as QD-5A-11. No additional real-data audit is performed.
+
+Authorization: `PHASE_5A_G4 = CLOSED`; `PHASE_5A_DRAFT_PR_CREATION = AUTHORIZED` (after this
+evidence-only state sync). Draft PR: AUTHORIZED / NOT YET CREATED at the time of this record.
+
+Head distinction: G4-D reviewed `0695f52ddc372dcfbdc988a7c4328c4f5a53e140`. The commit that adds this
+section is an evidence-only state-sync head recording the G4-D result — it is **not** the G4-D
+reviewed head. Its delta from `0695f52d…` is limited to `EVIDENCE.md`, `RUN_STATE.md`,
+`RUN_MANIFEST.md` and `TASK_QUEUE.md`; product code delta from `133576c9…` = 0; `scripts/**` delta from
+`7ded60ee…` = 0. `G4_REAL_DATA_ATTEMPT.md` / `G4_REAL_DATA_AUDIT.md` untouched; the real-data audit,
+product tests and harness tests were not re-run.
+
+Current PR state after that record: see "Draft PR #12 — current state" below.
+
+## Draft PR #12 — current state
+
+- Draft PR #12 created after the G4-D state sync: OPEN / DRAFT, base `main` @ `7efdc62c…`, head at
+  creation `216f5ff20bd7e96576907aa88a099de4eb66871a`.
+- `PHASE_5A_DRAFT_PR_CURRENT_HEAD_REVIEW` at `216f5ff2…`: FIX_REQUIRED — RF-5A-PR12-01 (current-state
+  evidence / documentation sync only; product finding NONE; harness finding NONE). Repaired by a
+  current-state evidence sync commit after `216f5ff2…` (this file's active-packet line and this section,
+  `QUALITY_DEBT.md` QD-5A-11, `RUN_STATE.md`, `RUN_MANIFEST.md`, `TASK_QUEUE.md`). Product code delta from
+  `133576c9…` = 0; `scripts/**` delta from `7ded60ee…` = 0; product / harness tests, mutation and G4-C
+  not re-run.
+- Ready: NOT AUTHORIZED / NOT PERFORMED. Next gate: `RF-5A-PR12-01_FOCUSED_REVIEW`.
+
+## Unverified items
+
+- Hosted CI: NOT CONFIGURED (the repository has no GitHub workflows); every verification in this
+  file is local.
+- `SOURCE_UNAVAILABLE` / `TARGET_UNAVAILABLE` / truncation are fixed by unit / integration tests only;
+  the UI cannot reach them through the Copy button in a normal state (rev 3.2 §16).
+- The three regression INCONCLUSIVE clipboard checks above.

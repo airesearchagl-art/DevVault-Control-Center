@@ -1,0 +1,38 @@
+# Task Queue — LR-20261005-DVCC-011
+
+- [x] Fresh Gate (base `7efdc62c…`, clean, no open PR, helpers present, baseline recorded)
+- [x] rev 3.1 Task Packet snapshot + SHA-256 on `main`, before the branch
+- [x] Branch `feat/control-read-contract-v1` from exact `main`
+- [x] STOP on the confirmation-table mismatch → HD-5A-09 (option A) → rev 3.2 + second snapshot
+- [x] Continuation authorization under rev 3.2
+- [x] Contract types / vocabularies (`contract.ts`)
+- [x] EvidenceRef builders, 7 variants, existing validators only (`evidenceRef.ts`)
+- [x] Pure projection over existing domain functions, HD-5A-09 rule (`projection.ts`)
+- [x] `readControl` with the fixed 10-step validation order
+- [x] `ControlReadSource` (5 keys) + `newControlSnapshotId`
+- [x] Copy control snapshot (JSON) action + ReviewDetail wiring + i18n JA/EN
+- [x] `docs/control-read-contract-v1.md` + docsContract coverage + README
+- [x] Tests: evidenceRef / projection / readControl / disclosure / provenance / source / copy action
+- [x] Mutation campaign M-5A-01..36 (37 probes) — all killed, restored byte-identical
+- [x] typecheck / tests / build / cargo check / release build
+- [x] Running-app smoke Case A–D (78 / 0 / 0)
+- [x] Regression smokes (0 failed; 3 clipboard INCONCLUSIVE, external activity)
+- [x] Evidence closeout
+- [x] Independent FULL Review at `41b4ee95…` — FIX_REQUIRED (RF-5A-IR-01)
+- [x] RF-5A-IR-01 narrow repair (round verdict confirmation) + M-5A-37
+- [x] RF-5A-IR-01 repair accepted — product READY CANDIDATE at `133576c9…`
+- [x] HD-5A-10 → Task Packet rev 3.3 + `TASK_PACKET_SNAPSHOT_REV3_3.md` (rev 3.2 snapshot preserved)
+- [x] G4-A automated real-data audit harness + tests + synthetic self-test (real data NOT touched)
+- [x] G4-B `G4_AUTOMATED_AUDIT_HARNESS_FOCUSED_REVIEW` — FIX_REQUIRED (RF-G4B-01..03)
+- [x] Task Packet rev 3.4 + `TASK_PACKET_SNAPSHOT_REV3_4.md` (rev 3.3 snapshot preserved); RF-G4B-01..03 repaired, CDP hardening
+- [x] `G4_HARNESS_REPAIR_FOCUSED_REVIEW` — RF-G4B-01..03 CLOSED, RF-G4B-04 OPEN
+- [x] Task Packet rev 3.5 + `TASK_PACKET_SNAPSHOT_REV3_5.md` (rev 3.1–3.4 snapshots preserved); RF-G4B-04 one-shot attempt marker
+- [x] `RF-G4B-04_FOCUSED_REVIEW` — PASS (RF-G4B-01..04 CLOSED; harness READY FOR G4-C)
+- [x] G4-C one-shot real-data audit — PASS (`ALL_CHECKS_PASSED`); attempt marker created; sanitized `G4_REAL_DATA_AUDIT.md`
+- [x] G4-D Fresh Independent G4 Review at `0695f52d…` — PASS (Required Fixes: none); G4 CLOSED
+- [x] G4-D evidence-only state sync at `216f5ff2…` (not the G4-D reviewed head)
+- [x] Draft PR #12 created — OPEN / DRAFT (base `main` @ `7efdc62c…`)
+- [x] `PHASE_5A_DRAFT_PR_CURRENT_HEAD_REVIEW` at `216f5ff2…` — FIX_REQUIRED (RF-5A-PR12-01, current-state evidence sync only)
+- [x] RF-5A-PR12-01 current-state evidence sync
+- [ ] `RF-5A-PR12-01_FOCUSED_REVIEW`
+- [ ] Ready for review — NOT AUTHORIZED / NOT PERFORMED

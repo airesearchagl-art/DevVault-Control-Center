@@ -144,6 +144,13 @@ restarting the app.
   languages ship together: a key that exists in one dictionary and not the other does not compile.
   Stored values (review state, resource state, freshness, event type, schema field, file name, error
   code) stay language-neutral, and what you typed is never translated.
+- **Control snapshot copy** (Phase 5A) — **Copy control snapshot (JSON)** on a review copies a
+  machine-readable, versioned description of that review's project (`dvcc.control-read` version 1):
+  its recorded and observed facts, each marked as observed, Human-entered or confirmed, derived,
+  unknown or withheld, with the time it was observed or recorded where one exists. It is built from
+  the same state the window shows, contains no local path, notes, thread link, review text, branch
+  name or provider session, and is copied only — nothing is written. See
+  `docs/control-read-contract-v1.md`.
 - **Open GitHub / ChatGPT / project folder** through a validated launcher.
 - **Attention-ordered queue** with filter, recovery banners and a readable history (`events.jsonl`).
 
@@ -182,6 +189,8 @@ restarting the app.
   repository runs as part of the observation, exactly as it would for any Git command you run
   yourself. DVCC switches the file-system monitor off for its own calls and removes the `GIT_*`
   variables that could redirect Git elsewhere, but it does not otherwise change your configuration.
+- Control Read (Phase 5A) is read-only and has no transport: no MCP, IPC or network endpoint, no new
+  native command, and no agent action. It reports what DVCC knows; it does not decide what anyone may do.
 - Phase 3 adds no network access and no automation: the review surface stays Human-operated, the
   prompts contain no local root, project notes or next action, and nothing the Human typed is
   translated.
