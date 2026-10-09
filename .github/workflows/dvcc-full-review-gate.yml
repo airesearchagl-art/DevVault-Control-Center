@@ -77,5 +77,14 @@ jobs:
         run: cargo check --manifest-path src-tauri/Cargo.toml
 
       # Synthetic fixtures only; the real-data audit (-RealData) is never run in CI.
+      # Started from Windows PowerShell 5.1, the same family as the powershell.exe the tests spawn.
       - name: G4 harness tests (synthetic)
-        run: npx vitest run --config scripts/vitest.audit.config.ts
+        shell: powershell
+        run: |
+          $required = @("Get-ChildItem", "Get-FileHash")
+          foreach ($name in $required) {
+            if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
+              throw "Required Windows PowerShell cmdlet unavailable"
+            }
+          }
+          npx vitest run --config scripts/vitest.audit.config.ts
