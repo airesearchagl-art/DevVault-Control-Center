@@ -17,15 +17,23 @@ restarting the app.
 > merged via PR #7), Phase 4b-2a (copy-only Resume Handoff, merged via PR #8; `main` after PR #8:
 > `fda753d147d136f961e5c45d51c32f42cbe28bfc`), Phase 4b-1.2 (discovery compatibility / read-only
 > contract closeout, merged via PR #9; `main` after PR #9:
-> `a54a77e12d2b144027d4dec96c1f14236f3715fd`) and Phase 4b-2b (Resume in Codex — a Human-confirmed
+> `a54a77e12d2b144027d4dec96c1f14236f3715fd`), Phase 4b-2b (Resume in Codex — a Human-confirmed
 > launch of one native Codex process, merged via PR #10; `main` after PR #10:
-> `2000a68fbc1c6ad1c573a30e820554c9110b4ce0`) are merged. Before merge, Phase 4b-2b passed its
-> real-launch dogfood gate (`REAL_CODEX_LAUNCH_DOGFOOD_GATE`: PASS — exactly one Human-authorized
-> launch, no second launch). On `main`, DVCC copies a Resume command for you to run, and — only
-> after your explicit confirmation — can start one native Codex process for an eligible Codex
-> session; it runs no shell, captures no provider output, and does not observe or control the
-> session after the process starts. Not released; no installer is published. Production: not
-> performed.
+> `2000a68fbc1c6ad1c573a30e820554c9110b4ce0`) and Phase 5A (Control Read Contract v1, merged via
+> PR #12; `main` after PR #12: `bd50c37c58e70afc101e9227db86be4ccb6b000c`) are merged. Before merge,
+> Phase 4b-2b passed its real-launch dogfood gate (`REAL_CODEX_LAUNCH_DOGFOOD_GATE`: PASS — exactly
+> one Human-authorized launch, no second launch). On `main`, DVCC copies a Resume command for
+> you to run, and — only after your explicit confirmation — can start one native Codex process
+> for an eligible Codex session; it runs no shell, captures no provider output, and
+> does not observe or control the session after the process starts.
+>
+> Control Read (Phase 5A) remains read-only: the Human UI offers **Copy control snapshot (JSON)**,
+> the operations are `get_control_snapshot`, `get_project_state` and `get_review_state`, and
+> `get_run_state` is reserved and fails closed. No MCP transport, no IPC endpoint, no agent write
+> authority and no Worker / Run authority.
+>
+> Phase 5A: merged / closed. Phase 5B: not started. Release: not performed. Production: not
+> performed. Not released; no installer is published.
 
 ## What it does
 

@@ -12,7 +12,9 @@
 - **QD-5A-04 (no transport)** — Control Read is reachable only through the Human copy action and the
   pure function; machine access is Phase 5C.
 - **QD-5A-05 (README status)** — the README Status block is unchanged on this branch; it is updated in
-  the post-merge current-state sync.
+  the post-merge current-state sync. **RESOLVED** by the post-Phase-5A-merge current-state repair:
+  the Status block records Phase 5A merged via PR #12 (`main` after PR #12: `bd50c37c…`), Phase 5B not
+  started, release / Production not performed, guarded by `src/test/docsContract.test.ts`.
 - **QD-5A-06 (pre-existing doc drift, out of scope)** — `docs/data-contract-v1.md` still calls Phase 3
   "under development" (lines 10 / 375).
 - **QD-5A-07 (test fixtures)** — Control Read test files each build their own small synthetic

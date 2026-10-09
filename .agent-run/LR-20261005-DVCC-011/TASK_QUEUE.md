@@ -34,5 +34,17 @@
 - [x] Draft PR #12 created — OPEN / DRAFT (base `main` @ `7efdc62c…`)
 - [x] `PHASE_5A_DRAFT_PR_CURRENT_HEAD_REVIEW` at `216f5ff2…` — FIX_REQUIRED (RF-5A-PR12-01, current-state evidence sync only)
 - [x] RF-5A-PR12-01 current-state evidence sync
-- [ ] `RF-5A-PR12-01_FOCUSED_REVIEW`
-- [ ] Ready for review — NOT AUTHORIZED / NOT PERFORMED
+- [x] `RF-5A-PR12-01_FOCUSED_REVIEW` — PASS (RF-5A-PR12-01 CLOSED)
+- [x] Ready for Review (`PHASE_5A_READY_FOR_REVIEW`)
+- [x] `PHASE_5A_FORMAL_PR_REVIEW` at `e67ec600…` — product PASS; BLOCKED_REQUIRED_CHECKS
+- [x] C2 required checks: workflow at `833d7528…` (run `37540114596` FAILURE) → workflow-only fix at `74726ac1…` (run `37864424364` SUCCESS)
+- [x] Post-C2 Formal Review — FULL / merge可 / required fixes none
+- [x] Formal Attestation — review `5464811514`, `commit_id` `74726ac1…`
+- [x] Human Merge Gate (`PHASE_5A_PR12_MERGE`, exact head `74726ac1…`, SQUASH)
+- [x] PR #12 merged — merge commit `bd50c37c…`
+- [x] Phase 5A merge verification
+- [x] Post-merge repository current-state repair — this PR
+
+Phase 5A queue: CLOSED.
+
+- [ ] Phase 5B — NOT STARTED / separate authorization required

@@ -87,6 +87,37 @@
   FIX_REQUIRED (RF-5A-PR12-01 — current-state evidence / documentation sync only; product finding NONE;
   harness finding NONE). Repair authorized for the current-state evidence files and the PR #12 body
   only; real-data G4 not re-run.
-- **Current state:** Draft PR #12 OPEN / DRAFT. Current gate: `PHASE_5A_DRAFT_PR_CURRENT_HEAD_REVIEW`
-  (RF-5A-PR12-01 repaired); next gate: `RF-5A-PR12-01_FOCUSED_REVIEW`. Ready: NOT AUTHORIZED / NOT
-  PERFORMED. Merge, release, Production, Phase 5B: not authorized.
+- RF-5A-PR12-01 repaired at `e67ec600174c66915debfc8c5c061b473eb57ecb` (Draft PR #12 OPEN / DRAFT at the
+  time). `RF-5A-PR12-01_FOCUSED_REVIEW` at `e67ec600…`: PASS (Required Fixes: none).
+  `PHASE_5A_READY_FOR_REVIEW = AUTHORIZED` (Draft → Ready only) → PR #12 Ready for review.
+- `PHASE_5A_FORMAL_PR_REVIEW` (FULL) at `e67ec600…`: product review PASS; merge gate
+  BLOCKED_REQUIRED_CHECKS (no Hosted CI). `PHASE_5A_REQUIRED_CHECKS_SETUP = AUTHORIZED` → C2 workflow
+  `.github/workflows/dvcc-full-review-gate.yml` at `833d7528fe8f03c5e0038b152c4fbc2a7b0fd883` (C2 run
+  `37540114596`: FAILURE, G4 harness tests 58 / 59). `PHASE_5A_C2_WORKFLOW_COMPAT_FIX = AUTHORIZED`
+  (workflow-only) → `74726ac104b3468dbd27543aa6ff143fc55b4885` (C2 run `37864424364`: SUCCESS). Product
+  and harness unchanged.
+- `PHASE_5A_POST_C2_FRESH_FORMAL_REVIEW` (independent session): Formal Review `5464811514` at
+  `74726ac1…` — FULL / merge可 / required fixes none.
+- `PHASE_5A_PR12_MERGE = AUTHORIZED` (exact head `74726ac1…`, SQUASH) → PR #12 merged; merge verified
+  fresh. No branch delete, tag, release or Production.
+- `PHASE_5A_POST_MERGE_CURRENT_STATE_REPAIR = AUTHORIZED` → README Status, docsContract and this run's
+  current-state records updated on `docs/post-phase5a-current-state` (from `bd50c37c…`) as a Draft PR.
+  Vault / Notion write: not authorized (`DVCC_DOCUMENTATION_SYNC_AUTHORIZATION` required).
+
+## Final closeout
+
+| | |
+|---|---|
+| PR #12 | merged (SQUASH) |
+| Reviewed / approved head | `74726ac104b3468dbd27543aa6ff143fc55b4885` |
+| Merge commit (`main` after PR #12) | `bd50c37c58e70afc101e9227db86be4ccb6b000c` |
+| Formal Review | `5464811514` — FULL / merge可 / required fixes none |
+| C2 run | `37864424364` — SUCCESS |
+| G4 | CLOSED |
+| Phase 5A | MERGED / CLOSED |
+| Phase 5B | NOT STARTED |
+| Release | NOT PERFORMED |
+| Production | NOT PERFORMED |
+
+Next gate: `PHASE_5A_POST_MERGE_SYNC_PR_REVIEW`; external documentation sync waits for
+`DVCC_DOCUMENTATION_SYNC_AUTHORIZATION`.
