@@ -609,9 +609,13 @@ reviewed head. Its delta from `0695f52d…` is limited to `EVIDENCE.md`, `RUN_ST
 `7ded60ee…` = 0. `G4_REAL_DATA_ATTEMPT.md` / `G4_REAL_DATA_AUDIT.md` untouched; the real-data audit,
 product tests and harness tests were not re-run.
 
-Current PR state after that record: see "Draft PR #12 — current state" below.
+PR history after that record: see "Draft PR #12 — pre-merge history" below; the current state is in
+"Post-merge closeout — PR #12 merged".
 
-## Draft PR #12 — current state
+## Draft PR #12 — pre-merge history
+
+Historical record of the Draft PR stage, kept as written at the time. Current state: see
+"Post-merge closeout — PR #12 merged" below.
 
 - Draft PR #12 created after the G4-D state sync: OPEN / DRAFT, base `main` @ `7efdc62c…`, head at
   creation `216f5ff20bd7e96576907aa88a099de4eb66871a`.
@@ -623,10 +627,67 @@ Current PR state after that record: see "Draft PR #12 — current state" below.
   not re-run.
 - Ready: NOT AUTHORIZED / NOT PERFORMED. Next gate: `RF-5A-PR12-01_FOCUSED_REVIEW`.
 
+## Post-merge closeout — PR #12 merged (current state)
+
+Recorded after the merge by the post-merge current-state repair, from fresh `main` @
+`bd50c37c58e70afc101e9227db86be4ccb6b000c`. The sections above stay as the record of each gate at its
+time.
+
+Gates after RF-5A-PR12-01:
+
+- `RF-5A-PR12-01_FOCUSED_REVIEW` at `e67ec600174c66915debfc8c5c061b473eb57ecb`: PASS (Required Fixes:
+  none; RF-5A-PR12-01 CLOSED).
+- `PHASE_5A_READY_FOR_REVIEW`: AUTHORIZED → PR #12 marked Ready for review.
+- `PHASE_5A_FORMAL_PR_REVIEW` (FULL) at `e67ec600…`: product review PASS; merge gate
+  BLOCKED_REQUIRED_CHECKS (Hosted CI not configured). Invalidated by the later head change.
+- `PHASE_5A_REQUIRED_CHECKS_SETUP`: C2 workflow `.github/workflows/dvcc-full-review-gate.yml` added at
+  `833d7528fe8f03c5e0038b152c4fbc2a7b0fd883`; C2 run `37540114596`: FAILURE (G4 harness tests 58 / 59;
+  every other check PASS).
+- `PHASE_5A_C2_WORKFLOW_COMPAT_FIX` (workflow-only) at `74726ac104b3468dbd27543aa6ff143fc55b4885`: C2 run
+  `37864424364`: SUCCESS. The workflow-only Windows PowerShell compatibility fix closed the Hosted CI
+  failure. The exact underlying TREE_BEFORE exception was not exposed by the privacy-safe harness.
+- `PHASE_5A_POST_C2_FRESH_FORMAL_REVIEW` (independent session): Formal Review `5464811514` at
+  `74726ac1…` — FULL / merge可 / required fixes none (`DEVVAULT_AI_REVIEW_ATTESTATION_V1`).
+- `PHASE_5A_PR12_MERGE`: AUTHORIZED (exact head `74726ac1…`, SQUASH) → merged.
+
+| Item | Value |
+|---|---|
+| PR #12 | MERGED |
+| Merge method | SQUASH |
+| Approved / reviewed head | `74726ac104b3468dbd27543aa6ff143fc55b4885` |
+| Merge commit / current `main` | `bd50c37c58e70afc101e9227db86be4ccb6b000c` |
+| Formal Review ID | `5464811514` (GitHub Pull Request Review; `commit_id` = reviewed head) |
+| Formal Review | FULL / merge可 / required fixes none |
+| C2 | SUCCESS (`DVCC Full Review Gate`, on the reviewed head) |
+| C2 run | `37864424364` |
+| G4 | CLOSED |
+| Phase 5A | MERGED / CLOSED |
+| Release | NOT PERFORMED |
+| Production | NOT PERFORMED |
+| Phase 5B | NOT STARTED |
+
+Head distinction: the Formal Review and C2 are bound to the reviewed head `74726ac1…`. The merge
+commit `bd50c37c…` is the squash of that head onto `main` @ `7efdc62c…` (single parent `7efdc62c…`;
+same tree as the reviewed head, `ef4084c0…`); it is not itself the reviewed head.
+
+Merge verification (fresh, after the merge): PR #12 `closed` / `merged: true`; merged head `74726ac1…`;
+`main` = `bd50c37c…`; merge commit reachable from `main`; branch `feat/control-read-contract-v1` not
+deleted; no tag, release or deployment.
+
+Post-merge current-state repair (branch `docs/post-phase5a-current-state` from `bd50c37c…`):
+`README.md` Status block (QD-5A-05 resolved), `src/test/docsContract.test.ts` (post-merge Status
+assertions, additive) and the current-state records of this run (`EVIDENCE.md`, `RUN_STATE.md`,
+`RUN_MANIFEST.md`, `TASK_QUEUE.md`, `QUALITY_DEBT.md`). Product, harness and Control Read contract
+delta: 0. Real-data G4 not re-run.
+
+Documentation Sync Trigger: YES (Phase 5A milestone changed). External sync (Vault / Notion) is not
+performed here; it needs `DVCC_DOCUMENTATION_SYNC_AUTHORIZATION`.
+
 ## Unverified items
 
-- Hosted CI: NOT CONFIGURED (the repository has no GitHub workflows); every verification in this
-  file is local.
+- Hosted CI: not configured when the verifications above were recorded — every verification table in
+  this file is local. C2 was added later (see "Post-merge closeout — PR #12 merged"); real-data G4,
+  mutation campaigns and running-app smokes are not run in Hosted CI.
 - `SOURCE_UNAVAILABLE` / `TARGET_UNAVAILABLE` / truncation are fixed by unit / integration tests only;
   the UI cannot reach them through the Copy button in a normal state (rev 3.2 §16).
 - The three regression INCONCLUSIVE clipboard checks above.

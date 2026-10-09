@@ -86,6 +86,28 @@ describe("README status", () => {
     expect(status).not.toMatch(/under review|no pull request has been opened|released via|is released|installer is available/i);
   });
 
+  it("records Phase 5A as merged via PR #12 and closed, with Phase 5B not started and nothing released", () => {
+    const status = readme.slice(readme.indexOf("> Status:"), readme.indexOf("## What it does"));
+    // Phase 5A (post-Phase-5A-merge current-state repair, QD-5A-05): merged via PR #12, with the new
+    // main SHA.
+    expect(status).toMatch(/Phase 5A \(Control Read Contract v1, merged via[\s>]+PR #12/);
+    expect(status).toMatch(/`main` after PR #12: `bd50c37c58e70afc101e9227db86be4ccb6b000c`/);
+    expect(status).toMatch(/Phase 5A: merged \/ closed\./);
+    // Control Read stays read-only and copy-only for the Human; get_run_state stays reserved, and
+    // there is no transport and no agent or Worker / Run authority.
+    expect(status).toMatch(/Control Read \(Phase 5A\) remains read-only/);
+    expect(status).toMatch(/\*\*Copy control snapshot \(JSON\)\*\*/);
+    for (const operation of ["get_control_snapshot", "get_project_state", "get_review_state"]) expect(status, operation).toContain(`\`${operation}\``);
+    expect(status).toMatch(/`get_run_state` is reserved and fails closed/);
+    expect(status).toMatch(/No MCP transport, no IPC endpoint, no agent write[\s>]+authority and no Worker \/ Run authority\./);
+    // The next phase has not started, and nothing is released or in Production.
+    expect(status).toMatch(/Phase 5B: not[\s>]+started\./);
+    expect(status).toMatch(/Not[\s>]+released; no[\s>]+installer is published/);
+    expect(status).toMatch(/Release: not[\s>]+performed\./);
+    expect(status).toMatch(/Production: not[\s>]+performed\./);
+    expect(status).not.toMatch(/Phase 5 (is )?complete|Phase 5B (is )?(started|in progress|merged)|Production (is )?complete/i);
+  });
+
   it("no current-facing README text describes Phase 4b-2b as under development or not merged", () => {
     // Every phase the README names is merged. A later in-progress phase must update this test
     // deliberately rather than inherit stale wording.

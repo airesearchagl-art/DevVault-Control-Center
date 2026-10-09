@@ -1,6 +1,10 @@
 # Run State — LR-20261005-DVCC-011
 
-Status: product READY CANDIDATE at `133576c944c55b8b50a4bdfec670d8651fdfb11e` (after RF-5A-IR-01).
+Status: **Phase 5A MERGED / CLOSED.** PR #12 squash-merged; `main` = merge commit
+`bd50c37c58e70afc101e9227db86be4ccb6b000c` (reviewed head `74726ac104b3468dbd27543aa6ff143fc55b4885`).
+Phase 5B: NOT STARTED. Release: NOT PERFORMED. Production: NOT PERFORMED.
+
+History: product READY CANDIDATE at `133576c944c55b8b50a4bdfec670d8651fdfb11e` (after RF-5A-IR-01).
 HD-5A-10 ADOPTED → Task Packet rev 3.3 → G4-A harness at `146ff68e…` → G4-B FIX_REQUIRED
 (RF-G4B-01 … 03) → Task Packet rev 3.4 repair at `0657794d…` → `G4_HARNESS_REPAIR_FOCUSED_REVIEW`:
 RF-G4B-01 … 03 CLOSED, RF-G4B-04 OPEN → Task Packet rev 3.5 (one-shot attempt marker) at `7ded60ee…`
@@ -11,8 +15,12 @@ none; coverage 3/11 ACCEPTABLE; QD-5A-11 QUALITY_DEBT / non-blocking) → **G4 C
 CANDIDATE.** Draft PR creation authorized → G4-D evidence-only state sync at `216f5ff2…` (not the G4-D
 reviewed head) → **Draft PR #12: OPEN / DRAFT** → `PHASE_5A_DRAFT_PR_CURRENT_HEAD_REVIEW` at
 `216f5ff2…`: FIX_REQUIRED (RF-5A-PR12-01, current-state evidence / documentation sync only; product
-and harness findings NONE) → current-state evidence sync (this update). Ready: NOT PERFORMED. No merge.
-No release. No Production.
+and harness findings NONE) → current-state evidence sync at `e67ec600…` → `RF-5A-PR12-01_FOCUSED_REVIEW`:
+PASS → Ready for review → `PHASE_5A_FORMAL_PR_REVIEW` at `e67ec600…`: product PASS, merge gate
+BLOCKED_REQUIRED_CHECKS → C2 workflow at `833d7528…` (C2 run `37540114596`: FAILURE) → workflow-only
+compatibility fix at `74726ac1…` (C2 run `37864424364`: SUCCESS) → Formal Review `5464811514` at
+`74726ac1…`: FULL / merge可 / required fixes none → `PHASE_5A_PR12_MERGE` (Human Merge Gate) →
+**PR #12 MERGED (SQUASH) as `bd50c37c…`** → post-merge current-state repair (this update; Draft PR).
 
 ```
 initial_authorized_packet:   rev 3.1
@@ -62,13 +70,23 @@ g4_d_reviewed_head:          0695f52ddc372dcfbdc988a7c4328c4f5a53e140
 coverage_judgment:           3/11 ACCEPTABLE (rev 3.5: only n < 3 is LOW_COVERAGE / INCONCLUSIVE)
 QD-5A-11:                    QUALITY_DEBT / non-blocking
 G4:                          CLOSED
-phase_5a:                    READY CANDIDATE
 draft_pr_creation:           AUTHORIZED after G4-D (state sync at 216f5ff20bd7e96576907aa88a099de4eb66871a)
-draft_pr:                    #12 OPEN / DRAFT (base main @ 7efdc62cd1a72679355d8488481c9b071ddd3081)
-ready:                       NOT AUTHORIZED / NOT PERFORMED
-current_gate:                PHASE_5A_DRAFT_PR_CURRENT_HEAD_REVIEW — FIX_REQUIRED at 216f5ff2… (RF-5A-PR12-01,
-                             current-state evidence sync only); RF-5A-PR12-01 repaired
-next_gate:                   RF-5A-PR12-01_FOCUSED_REVIEW
+RF-5A-PR12-01:               FIX_REQUIRED at 216f5ff2… → repaired at e67ec600174c66915debfc8c5c061b473eb57ecb
+                             → RF-5A-PR12-01_FOCUSED_REVIEW PASS (CLOSED)
+ready:                       PERFORMED (PHASE_5A_READY_FOR_REVIEW)
+c2:                          SUCCESS — run 37864424364 on 74726ac1… (earlier run 37540114596 FAILURE on
+                             833d7528fe8f03c5e0038b152c4fbc2a7b0fd883)
+formal_review:               5464811514 — FULL / merge可 / required fixes none (commit_id 74726ac1…)
+reviewed_head:               74726ac104b3468dbd27543aa6ff143fc55b4885
+pr_12:                       MERGED (SQUASH; created as Draft at 216f5ff2…; base main @ 7efdc62c…)
+merge_commit:                bd50c37c58e70afc101e9227db86be4ccb6b000c
+main:                        bd50c37c58e70afc101e9227db86be4ccb6b000c
+phase_5a:                    MERGED / CLOSED (READY CANDIDATE after G4-D)
+phase_5b:                    NOT STARTED
+release:                     NOT PERFORMED
+production:                  NOT PERFORMED
+current_gate:                post-merge current-state repair (Draft PR from docs/post-phase5a-current-state)
+next_gate:                   PHASE_5A_POST_MERGE_SYNC_PR_REVIEW
 ```
 
 ## Acceptance criteria (rev 3.2 §17)
@@ -123,12 +141,20 @@ G4 (rev 3.5 §19.1):
 - [x] G4-C one-shot real-data audit → attempt marker → `G4_REAL_DATA_AUDIT.md` (sanitized): PASS
 - [x] G4-D Fresh Independent G4 Review at `0695f52d…`: PASS (Required Fixes: none) → G4 CLOSED
 
-Draft PR:
+PR #12:
 - [x] G4-D evidence-only state sync at `216f5ff2…` (records the G4-D result; not the G4-D reviewed head)
 - [x] Draft PR #12 created — OPEN / DRAFT, base `main` @ `7efdc62c…`
 - [x] `PHASE_5A_DRAFT_PR_CURRENT_HEAD_REVIEW` at `216f5ff2…`: FIX_REQUIRED (RF-5A-PR12-01 — current-state
       evidence / documentation sync only; product finding NONE; harness finding NONE)
-- [x] RF-5A-PR12-01 current-state evidence sync (this update)
-- [ ] Ready for review — NOT AUTHORIZED / NOT PERFORMED
+- [x] RF-5A-PR12-01 current-state evidence sync at `e67ec600…`
+- [x] `RF-5A-PR12-01_FOCUSED_REVIEW` at `e67ec600…`: PASS
+- [x] Ready for review (`PHASE_5A_READY_FOR_REVIEW`)
+- [x] `PHASE_5A_FORMAL_PR_REVIEW` at `e67ec600…`: product PASS; BLOCKED_REQUIRED_CHECKS
+- [x] C2 setup at `833d7528…` (run `37540114596`: FAILURE) → workflow-only fix at `74726ac1…`
+      (run `37864424364`: SUCCESS)
+- [x] Post-C2 Formal Review `5464811514` at `74726ac1…`: FULL / merge可 / required fixes none
+- [x] Human Merge Gate `PHASE_5A_PR12_MERGE` → PR #12 merged (SQUASH) as `bd50c37c…`; merge verified
+- [x] Post-merge current-state repair (this update; Draft PR)
+- [ ] Phase 5B — NOT STARTED (separate authorization required)
 
-Next gate: `RF-5A-PR12-01_FOCUSED_REVIEW`.
+Next gate: `PHASE_5A_POST_MERGE_SYNC_PR_REVIEW`.
