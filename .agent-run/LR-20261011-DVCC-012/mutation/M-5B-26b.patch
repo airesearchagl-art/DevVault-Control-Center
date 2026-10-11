@@ -1,0 +1,13 @@
+diff --git a/src/domain/actionEligibility/assessEligibility.ts b/src/domain/actionEligibility/assessEligibility.ts
+index 6210283..beb1d60 100644
+--- a/src/domain/actionEligibility/assessEligibility.ts
++++ b/src/domain/actionEligibility/assessEligibility.ts
+@@ -119,7 +119,7 @@ export function assessActionEligibility(request: unknown, source: ControlReadSou
+     scope: ASSESSMENT_SCOPE,
+     revalidation: "REQUIRED_BEFORE_EXECUTION",
+     basis: { contract: "dvcc.control-read", version: 1, operation: "get_review_state" },
+-    not_evaluated: [...NOT_EVALUATED_SCOPES],
++    not_evaluated: NOT_EVALUATED_SCOPES.filter((scope) => scope !== "ACTION_PAYLOAD"),
+     data: {
+       review_session_id: basis.review_session_id,
+       project_id: basis.project_id,

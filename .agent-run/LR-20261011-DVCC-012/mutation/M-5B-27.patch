@@ -1,0 +1,22 @@
+diff --git a/src/domain/actionEligibility/checks.ts b/src/domain/actionEligibility/checks.ts
+index 10f5f4c..8b0e90a 100644
+--- a/src/domain/actionEligibility/checks.ts
++++ b/src/domain/actionEligibility/checks.ts
+@@ -67,7 +67,7 @@ export function stateGuardResult(reviewState: Fact<ReviewState>, refusal: Messag
+   if (reviewState.class === "BLOCKED") return fail("state_guard", "EVIDENCE_INCOMPLETE", [], reviewState.blocked_reason);
+   if (reviewState.class !== "HUMAN_CONFIRMED") return incomplete("state_guard");
+   const refs = [reviewState.evidence_ref];
+-  return refusal === null ? pass("state_guard", refs) : fail("state_guard", refusalReason(STATE_GUARD_REASONS, refusal), refs);
++  return refusal === null || !STATE_GUARD_REASONS.has(refusal.key) ? pass("state_guard", refs) : fail("state_guard", refusalReason(STATE_GUARD_REASONS, refusal), refs);
+ }
+ 
+ function presenceRefs(fact: PresenceFact | undefined): EvidenceRef[] {
+@@ -81,7 +81,7 @@ function presenceRefs(fact: PresenceFact | undefined): EvidenceRef[] {
+ export function verdictPrerequisitesResult(round: RoundStateV1, refusal: Message | null): CheckResultV1 {
+   const resultRefs = presenceRefs(round.result_captured);
+   const judgmentRefs = presenceRefs(round.judgment_captured);
+-  if (refusal !== null) {
++  if (refusal !== null && VERDICT_PREREQUISITE_REASONS.has(refusal.key)) {
+     const reason = refusalReason(VERDICT_PREREQUISITE_REASONS, refusal);
+     const refs = reason === "FINAL_JUDGMENT_NOT_CAPTURED" ? judgmentRefs : reason === "RESULT_NOT_CAPTURED" ? resultRefs : [];
+     return fail("verdict_prerequisites", reason, refs);

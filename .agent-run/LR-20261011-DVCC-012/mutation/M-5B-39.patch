@@ -1,0 +1,12 @@
+diff --git a/src/domain/actionEligibility/basis.ts b/src/domain/actionEligibility/basis.ts
+index b6071a8..399a822 100644
+--- a/src/domain/actionEligibility/basis.ts
++++ b/src/domain/actionEligibility/basis.ts
+@@ -115,7 +115,6 @@ export function scanIdentity(reviewSessionId: string, source: ControlReadSource)
+   const rules: IdentityRule[] = [];
+   if (outer.length >= 2) rules.push("I1");
+   if (inner.length >= 1) rules.push("I2");
+-  if (outer.length === 1 && outer[0].session !== null && outer[0].session.reviewSessionId !== reviewSessionId) rules.push("I3");
+   if (rules.length > 0) return { kind: "REVIEW_CONFLICT", rules };
+   if (outer.length === 0) return { kind: "NONE" };
+   const readable = readableReview(outer[0]);

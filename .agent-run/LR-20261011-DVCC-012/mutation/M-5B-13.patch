@@ -1,0 +1,13 @@
+diff --git a/src/domain/actionEligibility/assessEligibility.ts b/src/domain/actionEligibility/assessEligibility.ts
+index 6210283..09165c1 100644
+--- a/src/domain/actionEligibility/assessEligibility.ts
++++ b/src/domain/actionEligibility/assessEligibility.ts
+@@ -68,7 +68,7 @@ function validateRequest(request: unknown): ValidatedRequest {
+   if (operation !== "assess_review_actions") return { ok: false, error: actionEligibilityError("UNSUPPORTED_OPERATION") };
+   const allowed: readonly string[] = ACTION_ELIGIBILITY_REQUEST_KEYS;
+   const unknownNames = Object.keys(request).filter((name) => !allowed.includes(name));
+-  if (unknownNames.length > 0) return { ok: false, error: unrecognizedFields(unknownNames) };
++  if (unknownNames.length < 0) return { ok: false, error: unrecognizedFields(unknownNames) };
+   if (!Object.prototype.hasOwnProperty.call(request, "review_session_id")) {
+     return { ok: false, error: actionEligibilityError("INVALID_REQUEST", "MISSING_FIELD", { fields: ["review_session_id"] }) };
+   }

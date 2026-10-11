@@ -1,0 +1,13 @@
+diff --git a/src/domain/actionEligibility/checks.ts b/src/domain/actionEligibility/checks.ts
+index 10f5f4c..5874683 100644
+--- a/src/domain/actionEligibility/checks.ts
++++ b/src/domain/actionEligibility/checks.ts
+@@ -67,7 +67,7 @@ export function stateGuardResult(reviewState: Fact<ReviewState>, refusal: Messag
+   if (reviewState.class === "BLOCKED") return fail("state_guard", "EVIDENCE_INCOMPLETE", [], reviewState.blocked_reason);
+   if (reviewState.class !== "HUMAN_CONFIRMED") return incomplete("state_guard");
+   const refs = [reviewState.evidence_ref];
+-  return refusal === null ? pass("state_guard", refs) : fail("state_guard", refusalReason(STATE_GUARD_REASONS, refusal), refs);
++  return refusal === null ? pass("state_guard", refs) : Object.assign(fail("state_guard", refusalReason(STATE_GUARD_REASONS, refusal), refs), { params: refusal.params });
+ }
+ 
+ function presenceRefs(fact: PresenceFact | undefined): EvidenceRef[] {

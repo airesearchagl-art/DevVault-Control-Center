@@ -75,5 +75,5 @@ additional Notion write in this run; Standing Authorization unchanged.
 
 ## P3 — run folder commit
 
-- First commit contains only `.agent-run/LR-20261011-DVCC-012/`; `HEAD^` = base (verified after commit,
-  see EVIDENCE.md).
+- First commit `3d47c5e12cd1e2d89284def7f09dd434f4dc6a5d` contains only `.agent-run/LR-20261011-DVCC-012/`;
+  `HEAD^` = base; snapshot SHA-256 equal after commit (see EVIDENCE.md §1).

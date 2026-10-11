@@ -1,0 +1,17 @@
+diff --git a/src/domain/actionEligibility/basis.ts b/src/domain/actionEligibility/basis.ts
+index b6071a8..699712e 100644
+--- a/src/domain/actionEligibility/basis.ts
++++ b/src/domain/actionEligibility/basis.ts
+@@ -195,10 +195,10 @@ export function interpretBasis(reviewSessionId: string, source: ControlReadSourc
+     if (code === "INVALID_TARGET" || code === "SOURCE_UNAVAILABLE") return { ok: false, error: mapBasisError(result) };
+   }
+   const scan = scanIdentity(reviewSessionId, source);
+-  // 10a: a review-side identity conflict, before any lookup result is trusted.
+-  if (scan.kind === "REVIEW_CONFLICT") return { ok: false, error: identityMismatch() };
+   // 10b / 10c: not found / unavailable, from the closed table.
+   if (isErrorResult(result)) return { ok: false, error: mapBasisError(result) };
++  // 10a: a review-side identity conflict, before any lookup result is trusted.
++  if (scan.kind === "REVIEW_CONFLICT") return { ok: false, error: identityMismatch() };
+   if (scan.kind !== "UNIQUE_READABLE") return { ok: false, error: basisContractViolation() };
+   // 10d: the review's project is registered more than once.
+   if (scan.projectCount >= 2) return { ok: false, error: identityMismatch() };

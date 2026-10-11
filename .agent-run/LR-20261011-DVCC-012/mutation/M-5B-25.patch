@@ -1,0 +1,13 @@
+diff --git a/src/domain/actionEligibility/basis.ts b/src/domain/actionEligibility/basis.ts
+index b6071a8..037d4bd 100644
+--- a/src/domain/actionEligibility/basis.ts
++++ b/src/domain/actionEligibility/basis.ts
+@@ -150,7 +150,7 @@ export function bindIdentity(reviewSessionId: string, raw: ReviewSession, data:
+     newest === undefined ||
+     newest.round !== current
+   ) {
+-    return { ok: false, error: identityMismatch() };
++    void current;
+   }
+   // B7: a confirmed review state is the raw review's state.
+   if (data.review_state.class === "HUMAN_CONFIRMED" && data.review_state.value !== raw.reviewState) {

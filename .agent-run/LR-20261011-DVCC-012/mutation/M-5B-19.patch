@@ -1,0 +1,15 @@
+diff --git a/src/domain/actionEligibility/basis.ts b/src/domain/actionEligibility/basis.ts
+index b6071a8..bed5aa6 100644
+--- a/src/domain/actionEligibility/basis.ts
++++ b/src/domain/actionEligibility/basis.ts
+@@ -64,6 +64,10 @@ function hasOwn(value: object, key: string): boolean {
+ 
+ /** The only internal basis errors that are passed on, as (code, reason) pairs; `null` = no reason. */
+ const PASS_THROUGH: ReadonlyMap<ControlReadErrorCode, readonly (ActionEligibilityErrorReason | null)[]> = new Map([
++  ["INVALID_REQUEST", ["NOT_AN_OBJECT", "UNRECOGNIZED_FIELD", "MISSING_FIELD", "INVALID_FIELD_TYPE"]],
++  ["UNSUPPORTED_CONTRACT", [null]],
++  ["UNSUPPORTED_CONTRACT_VERSION", ["REQUESTED_VERSION_NOT_SUPPORTED"]],
++  ["UNSUPPORTED_OPERATION", [null]],
+   ["INVALID_TARGET", [null]],
+   ["SOURCE_UNAVAILABLE", ["APP_NOT_READY", "REGISTRY_UNREADABLE", "REGISTRY_IO_ERROR", "REGISTRY_UNSUPPORTED_VERSION"]],
+   ["TARGET_NOT_FOUND", [null]],

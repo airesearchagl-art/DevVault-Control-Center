@@ -1,0 +1,13 @@
+diff --git a/src/domain/actionEligibility/checks.ts b/src/domain/actionEligibility/checks.ts
+index 10f5f4c..c32fde9 100644
+--- a/src/domain/actionEligibility/checks.ts
++++ b/src/domain/actionEligibility/checks.ts
+@@ -145,7 +145,7 @@ export function freshnessAlignedResult(freshness: Fact<FreshnessValue>): CheckRe
+     case "DERIVED": {
+       if (freshness.value === "ALIGNED") return pass("freshness_aligned", freshness.derived_from);
+       const reason = NOT_ALIGNED.get(freshness.value);
+-      return reason === undefined ? incomplete("freshness_aligned") : fail("freshness_aligned", reason, freshness.derived_from);
++      return reason === undefined ? incomplete("freshness_aligned") : pass("freshness_aligned", freshness.derived_from);
+     }
+     case "UNKNOWN":
+       return fail("freshness_aligned", "FRESHNESS_UNKNOWN", [], freshness.unknown_reason);

@@ -1,0 +1,13 @@
+diff --git a/src/domain/actionEligibility/checks.ts b/src/domain/actionEligibility/checks.ts
+index 10f5f4c..5526d53 100644
+--- a/src/domain/actionEligibility/checks.ts
++++ b/src/domain/actionEligibility/checks.ts
+@@ -169,7 +169,7 @@ export function verdictConfirmationResult(reviewState: Fact<ReviewState>, verdic
+ 
+ /** `human_decision`: the action's own Human path supplies it at run time; never assumed here. */
+ export function humanDecisionResult(): CheckResultV1 {
+-  return result("human_decision", "NEEDS_HUMAN", [], "HUMAN_DECISION_REQUIRED");
++  return result("human_decision", "PASS", []);
+ }
+ 
+ export interface CheckContext {

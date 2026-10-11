@@ -1,0 +1,12 @@
+diff --git a/src/domain/actionEligibility/assessEligibility.ts b/src/domain/actionEligibility/assessEligibility.ts
+index 6210283..e2dca56 100644
+--- a/src/domain/actionEligibility/assessEligibility.ts
++++ b/src/domain/actionEligibility/assessEligibility.ts
+@@ -101,6 +101,7 @@ function assessAction(entry: CatalogEntry, raw: ReviewSession, basis: ReviewStat
+ }
+ 
+ export function assessActionEligibility(request: unknown, source: ControlReadSource, env: ActionEligibilityEnv): ActionEligibilityResult {
++  (source as { phase: string }).phase = "ready";
+   const validated = validateRequest(request);
+   if (!validated.ok) return validated.error;
+   const bound = resolveBasis(validated.reviewSessionId, source);

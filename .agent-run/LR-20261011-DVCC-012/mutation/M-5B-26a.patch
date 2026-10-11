@@ -1,0 +1,13 @@
+diff --git a/src/domain/actionEligibility/catalog.ts b/src/domain/actionEligibility/catalog.ts
+index 8fe5e91..118e7f9 100644
+--- a/src/domain/actionEligibility/catalog.ts
++++ b/src/domain/actionEligibility/catalog.ts
+@@ -49,7 +49,7 @@ export const ACTION_CATALOG: readonly CatalogEntry[] = [
+     executor: "HUMAN_UI",
+     rule: "eligibility.review.confirm-verdict@1",
+     checks: ["state_guard", "verdict_prerequisites", "project_registered", "reviewed_head_exact", "freshness_aligned", "human_decision"],
+-    payload: { evaluation: "NOT_EVALUATED", fields: Object.values(CONFIRM_VERDICT_PAYLOAD) },
++    payload: { evaluation: "NOT_APPLICABLE", fields: Object.values(CONFIRM_VERDICT_PAYLOAD) },
+   },
+   {
+     action_id: "review.start_next_round",

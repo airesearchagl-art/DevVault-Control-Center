@@ -1,0 +1,13 @@
+diff --git a/src/domain/actionEligibility/checks.ts b/src/domain/actionEligibility/checks.ts
+index 10f5f4c..55e1338 100644
+--- a/src/domain/actionEligibility/checks.ts
++++ b/src/domain/actionEligibility/checks.ts
+@@ -160,7 +160,7 @@ export function freshnessAlignedResult(freshness: Fact<FreshnessValue>): CheckRe
+ export function verdictConfirmationResult(reviewState: Fact<ReviewState>, verdict: RoundStateV1["verdict"] | undefined): CheckResultV1 {
+   if (reviewState.class === "BLOCKED") return fail("verdict_confirmation_recorded", "EVIDENCE_INCOMPLETE", [], reviewState.blocked_reason);
+   if (reviewState.class !== "HUMAN_CONFIRMED") return incomplete("verdict_confirmation_recorded");
+-  if (reviewState.confirmation !== "EXPLICIT") {
++  if (reviewState.confirmation !== "EXPLICIT" && reviewState.confirmation !== "ENTERED") {
+     return fail("verdict_confirmation_recorded", "VERDICT_CONFIRMATION_NOT_RECORDED", [reviewState.evidence_ref]);
+   }
+   const refs = verdict !== undefined && verdict.class === "HUMAN_CONFIRMED" ? [reviewState.evidence_ref, verdict.evidence_ref] : [reviewState.evidence_ref];
