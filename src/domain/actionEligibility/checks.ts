@@ -7,7 +7,7 @@ import type { ReviewSession } from "../review";
 import type { ReviewState } from "../states";
 import { guardAction } from "../transitions";
 import type { CatalogEntry } from "./catalog";
-import type { CheckId, CheckOutcome, CheckResultV1, Disposition, ReasonCode } from "./contract";
+import { NEEDS_HUMAN_CAPABLE_CHECKS, type CheckId, type CheckOutcome, type CheckResultV1, type Disposition, type ReasonCode } from "./contract";
 
 /**
  * Action Eligibility v1 checks (Phase 5B, Annex A5 / A6 / A8). Pure.
@@ -200,7 +200,7 @@ export function evaluateCheck(check: CheckId, entry: CatalogEntry, context: Chec
   }
 }
 
-const NEEDS_HUMAN_CAPABLE: ReadonlySet<CheckId> = new Set<CheckId>(["human_decision"]);
+const NEEDS_HUMAN_CAPABLE: ReadonlySet<CheckId> = new Set<CheckId>(NEEDS_HUMAN_CAPABLE_CHECKS);
 
 /**
  * Evaluates the checks in their fixed order and stops at the first `FAIL`: every later check is

@@ -164,6 +164,13 @@ describe("CHK — check mechanics", () => {
     expect(dispositionOf(results)).toBe("BLOCKED");
   });
 
+  it("support: runChecks refuses NEEDS_HUMAN from a check outside NEEDS_HUMAN_CAPABLE_CHECKS", () => {
+    const results = runChecks(["state_guard", "human_decision"], (check): CheckResultV1 => ({ check, outcome: "NEEDS_HUMAN", reason: "HUMAN_DECISION_REQUIRED", evidence_refs: [] }));
+    expect(results[0]).toEqual({ check: "state_guard", outcome: "FAIL", reason: "EVIDENCE_INCOMPLETE", evidence_refs: [] });
+    expect(results[1]).toEqual({ check: "human_decision", outcome: "NOT_EVALUATED", evidence_refs: [] });
+    expect(dispositionOf(results)).toBe("BLOCKED");
+  });
+
   it("CHK-ORD-CV a state refusal precedes the verdict prerequisites", () => {
     const source = sourceOf(fRev({ resultCapturedAt: null, reviewedHead: null }, { reviewState: "SUSPENDED", suspendedFrom: "REVIEWING" }));
     const confirm = assessOk(source).data.assessments[1];
