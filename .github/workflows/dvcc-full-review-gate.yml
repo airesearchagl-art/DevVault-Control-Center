@@ -74,7 +74,11 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cargo check
-        run: cargo check --manifest-path src-tauri/Cargo.toml
+        run: cargo check --locked --manifest-path src-tauri/Cargo.toml
+
+      # Compiles the Rust test targets only; no Rust test is run here.
+      - name: Rust test targets compile (no run)
+        run: cargo test --no-run --locked --manifest-path src-tauri/Cargo.toml
 
       # Synthetic fixtures only; the real-data audit (-RealData) is never run in CI.
       # Started from Windows PowerShell 5.1, the same family as the powershell.exe the tests spawn.
