@@ -14,6 +14,16 @@ import {
   UNKNOWN_REASONS,
 } from "../domain/controlRead/contract";
 import { EVIDENCE_REF_KINDS, REVIEW_FIELDS, REVIEW_ROUND_FIELDS } from "../domain/controlRead/evidenceRef";
+import {
+  ACTION_ELIGIBILITY_ERROR_REASONS,
+  ACTION_IDS,
+  CHECK_IDS,
+  CHECK_OUTCOMES,
+  DISPOSITIONS,
+  NOT_EVALUATED_SCOPES,
+  PAYLOAD_FIELDS,
+  REASON_CODES,
+} from "../domain/actionEligibility/contract";
 import { REVIEW_EVENT_TYPES } from "../domain/events";
 import { EVIDENCE_REASONS, EVIDENCE_SOURCES, EVIDENCE_STATUSES } from "../domain/evidenceReuse";
 import { INVALIDATION_REASONS } from "../domain/revalidation";
@@ -206,5 +216,45 @@ describe("README provider data boundary (DF-06 / HD-4B12-02)", () => {
     expect(boundary).toMatch(/does not claim every provider file stays byte-identical/);
     expect(readme).not.toMatch(/all provider files (are|remain|stay) (unchanged|untouched|byte-identical)/i);
     expect(readme).not.toMatch(/provider files are never (modified|touched)/i);
+  });
+});
+
+describe("docs/action-eligibility-contract-v1.md (Phase 5B)", () => {
+  const eligibility = readFileSync("docs/action-eligibility-contract-v1.md", "utf8");
+  const listed = (names: readonly string[]) => {
+    for (const name of names) expect(eligibility, name).toContain(`\`${name}\``);
+  };
+
+  it("DOC-01 names every disposition", () => listed(DISPOSITIONS));
+  it("DOC-02 names every action id", () => listed(ACTION_IDS));
+  it("DOC-03 names every check id", () => listed(CHECK_IDS));
+  it("DOC-04 names every check outcome", () => listed(CHECK_OUTCOMES));
+  it("DOC-05 names all 17 reason codes", () => {
+    expect(REASON_CODES).toHaveLength(17);
+    listed(REASON_CODES);
+  });
+  it("DOC-06 names all 8 error codes", () => {
+    expect(CONTROL_READ_ERROR_CODES).toHaveLength(8);
+    listed(CONTROL_READ_ERROR_CODES);
+  });
+  it("DOC-07 names all 15 error reasons", () => {
+    expect(ACTION_ELIGIBILITY_ERROR_REASONS).toHaveLength(15);
+    listed(ACTION_ELIGIBILITY_ERROR_REASONS);
+  });
+  it("DOC-08 names all 4 payload fields", () => {
+    expect(PAYLOAD_FIELDS).toHaveLength(4);
+    listed(PAYLOAD_FIELDS);
+  });
+  it("DOC-09 names all 4 not-evaluated scopes", () => {
+    expect(NOT_EVALUATED_SCOPES).toHaveLength(4);
+    listed(NOT_EVALUATED_SCOPES);
+  });
+  it("DOC-10 states the fixed envelope values and that an assessment is never an authorization", () => {
+    expect(eligibility).toContain("`dvcc.action-eligibility`, version `1`");
+    for (const value of ['`authority: "NONE"`', '`scope: "ACTION_LEVEL"`', '`revalidation: "REQUIRED_BEFORE_EXECUTION"`']) expect(eligibility, value).toContain(value);
+    expect(eligibility).toContain('`basis: { contract: "dvcc.control-read", version: 1, operation: "get_review_state" }`');
+    expect(eligibility).toContain("`assess_review_actions`");
+    expect(eligibility).toMatch(/\*\*never an authorization\*\*/);
+    expect(eligibility).toMatch(/No MCP server, IPC channel, named pipe, HTTP\s+endpoint, Tauri command or UI exists for it/);
   });
 });

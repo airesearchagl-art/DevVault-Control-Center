@@ -1,0 +1,21 @@
+diff --git a/src/domain/actionEligibility/basis.ts b/src/domain/actionEligibility/basis.ts
+index b6071a8..9a7dfbc 100644
+--- a/src/domain/actionEligibility/basis.ts
++++ b/src/domain/actionEligibility/basis.ts
+@@ -79,14 +79,14 @@ export function mapBasisError(result: unknown): ActionEligibilityError {
+     return basisContractViolation();
+   }
+   const error = result.error;
+-  if (!isPlainObject(error) || Object.keys(error).some((key) => key !== "code" && key !== "reason")) return basisContractViolation();
++  if (!isPlainObject(error)) return basisContractViolation();
+   const code = error.code;
+   const reason = hasOwn(error, "reason") ? error.reason : null;
+   for (const [allowedCode, reasons] of PASS_THROUGH) {
+     if (code !== allowedCode) continue;
+     const match = reasons.find((allowed) => allowed === reason);
+     if (match === undefined) return basisContractViolation();
+-    return match === null ? actionEligibilityError(allowedCode) : actionEligibilityError(allowedCode, match);
++    return { ...actionEligibilityError(allowedCode), error: { ...(error as ActionEligibilityError["error"]) } };
+   }
+   return basisContractViolation();
+ }

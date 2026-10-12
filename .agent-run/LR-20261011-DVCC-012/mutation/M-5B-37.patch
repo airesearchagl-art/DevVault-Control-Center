@@ -1,0 +1,12 @@
+diff --git a/src/domain/actionEligibility/basis.ts b/src/domain/actionEligibility/basis.ts
+index b6071a8..4bcfd39 100644
+--- a/src/domain/actionEligibility/basis.ts
++++ b/src/domain/actionEligibility/basis.ts
+@@ -201,7 +201,6 @@ export function interpretBasis(reviewSessionId: string, source: ControlReadSourc
+   if (isErrorResult(result)) return { ok: false, error: mapBasisError(result) };
+   if (scan.kind !== "UNIQUE_READABLE") return { ok: false, error: basisContractViolation() };
+   // 10d: the review's project is registered more than once.
+-  if (scan.projectCount >= 2) return { ok: false, error: identityMismatch() };
+   // 11: the success envelope's shape, then post-binding identity.
+   if (!isSuccessShape(result)) return { ok: false, error: basisContractViolation() };
+   return bindIdentity(reviewSessionId, scan.raw, result.data);

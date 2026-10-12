@@ -1,0 +1,13 @@
+diff --git a/src/domain/actionEligibility/assessEligibility.ts b/src/domain/actionEligibility/assessEligibility.ts
+index 6210283..38a19e4 100644
+--- a/src/domain/actionEligibility/assessEligibility.ts
++++ b/src/domain/actionEligibility/assessEligibility.ts
+@@ -115,7 +115,7 @@ export function assessActionEligibility(request: unknown, source: ControlReadSou
+     operation: "assess_review_actions",
+     assessment_id: assessmentId,
+     generated_at: generatedAt,
+-    authority: "NONE",
++    authority: "READ" as string as "NONE",
+     scope: ASSESSMENT_SCOPE,
+     revalidation: "REQUIRED_BEFORE_EXECUTION",
+     basis: { contract: "dvcc.control-read", version: 1, operation: "get_review_state" },

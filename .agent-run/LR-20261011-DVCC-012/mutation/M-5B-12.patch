@@ -1,0 +1,13 @@
+diff --git a/src/domain/actionEligibility/assessEligibility.ts b/src/domain/actionEligibility/assessEligibility.ts
+index 6210283..6e8a5a9 100644
+--- a/src/domain/actionEligibility/assessEligibility.ts
++++ b/src/domain/actionEligibility/assessEligibility.ts
+@@ -58,7 +58,7 @@ function validateRequest(request: unknown): ValidatedRequest {
+   const contract = request.contract;
+   if (contract !== ACTION_ELIGIBILITY_CONTRACT) return { ok: false, error: actionEligibilityError("UNSUPPORTED_CONTRACT") };
+   const version = request.version;
+-  if (version !== ACTION_ELIGIBILITY_VERSION) {
++  if (version !== ACTION_ELIGIBILITY_VERSION && version !== 2 && version !== "1") {
+     return {
+       ok: false,
+       error: actionEligibilityError("UNSUPPORTED_CONTRACT_VERSION", "REQUESTED_VERSION_NOT_SUPPORTED", { supported_versions: [1] }),

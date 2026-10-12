@@ -1,0 +1,13 @@
+diff --git a/src/domain/actionEligibility/checks.ts b/src/domain/actionEligibility/checks.ts
+index 10f5f4c..5084bc3 100644
+--- a/src/domain/actionEligibility/checks.ts
++++ b/src/domain/actionEligibility/checks.ts
+@@ -93,7 +93,7 @@ export function verdictPrerequisitesResult(round: RoundStateV1, refusal: Message
+ 
+ /** `project_registered`: the review's project is in the registry (Control Read's own answer). */
+ export function projectRegisteredResult(freshness: Fact<FreshnessValue>, projectId: string): CheckResultV1 {
+-  if (freshness.class === "UNKNOWN" && freshness.unknown_reason === "PROJECT_NOT_REGISTERED") {
++  if (freshness.class === "UNKNOWN" && freshness.unknown_reason === "NOT_TRACKED_BY_DVCC") {
+     return fail("project_registered", "PROJECT_NOT_REGISTERED", [], "PROJECT_NOT_REGISTERED");
+   }
+   const ref = projectRef(projectId);

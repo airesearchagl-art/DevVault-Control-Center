@@ -1,0 +1,13 @@
+diff --git a/src/domain/actionEligibility/checks.ts b/src/domain/actionEligibility/checks.ts
+index 10f5f4c..ee8750a 100644
+--- a/src/domain/actionEligibility/checks.ts
++++ b/src/domain/actionEligibility/checks.ts
+@@ -123,7 +123,7 @@ function headResult(check: CheckId, fact: Fact<string> & { binding?: string }, e
+ 
+ /** `expected_head_exact`: the recorded expected HEAD is a full commit SHA (Control Read's binding). */
+ export function expectedHeadResult(fact: RoundStateV1["expected_head"]): CheckResultV1 {
+-  const exact = fact.class === "HUMAN_CONFIRMED" && fact.binding === "EXACT";
++  const exact = fact.class === "HUMAN_CONFIRMED" && fact.binding !== "MISSING";
+   return headResult("expected_head_exact", fact, exact, { notRecorded: "EXPECTED_HEAD_NOT_RECORDED", notExact: "EXPECTED_HEAD_NOT_EXACT" });
+ }
+ 

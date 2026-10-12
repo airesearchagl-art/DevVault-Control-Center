@@ -1,0 +1,13 @@
+diff --git a/src/domain/actionEligibility/checks.ts b/src/domain/actionEligibility/checks.ts
+index 10f5f4c..c51ae33 100644
+--- a/src/domain/actionEligibility/checks.ts
++++ b/src/domain/actionEligibility/checks.ts
+@@ -182,7 +182,7 @@ export function evaluateCheck(check: CheckId, entry: CatalogEntry, context: Chec
+   const round = basis.rounds[0];
+   switch (check) {
+     case "state_guard":
+-      return stateGuardResult(basis.review_state, guardAction(raw, entry.domain_type));
++      return stateGuardResult(basis.review_state, raw.reviewState === "NEW" && entry.domain_type === "startReview" ? null : guardAction(raw, entry.domain_type));
+     case "verdict_prerequisites":
+       return verdictPrerequisitesResult(round, actionRefusal(raw, "confirmVerdict"));
+     case "project_registered":

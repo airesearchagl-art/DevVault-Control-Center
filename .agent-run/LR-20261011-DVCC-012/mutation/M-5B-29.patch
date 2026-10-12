@@ -1,0 +1,21 @@
+diff --git a/src/domain/actionEligibility/assessEligibility.ts b/src/domain/actionEligibility/assessEligibility.ts
+index 6210283..12a1b65 100644
+--- a/src/domain/actionEligibility/assessEligibility.ts
++++ b/src/domain/actionEligibility/assessEligibility.ts
+@@ -1,6 +1,6 @@
+ import { ECHOABLE_FIELD_NAME, type ControlReadSource, type ReviewStateV1 } from "../controlRead/contract";
+ import type { ReviewSession } from "../review";
+-import { actionEligibilityError, resolveBasis } from "./basis";
++import { actionEligibilityError, BASIS_ENV, resolveBasis } from "./basis";
+ import { ACTION_CATALOG, type CatalogEntry } from "./catalog";
+ import { dispositionOf, evaluateCheck, reasonsOf, runChecks } from "./checks";
+ import {
+@@ -113,7 +113,7 @@ export function assessActionEligibility(request: unknown, source: ControlReadSou
+     contract: ACTION_ELIGIBILITY_CONTRACT,
+     version: ACTION_ELIGIBILITY_VERSION,
+     operation: "assess_review_actions",
+-    assessment_id: assessmentId,
++    assessment_id: assessmentId === "" ? assessmentId : BASIS_ENV.newSnapshotId(),
+     generated_at: generatedAt,
+     authority: "NONE",
+     scope: ASSESSMENT_SCOPE,
