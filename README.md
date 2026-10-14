@@ -19,8 +19,10 @@ restarting the app.
 > contract closeout, merged via PR #9; `main` after PR #9:
 > `a54a77e12d2b144027d4dec96c1f14236f3715fd`), Phase 4b-2b (Resume in Codex — a Human-confirmed
 > launch of one native Codex process, merged via PR #10; `main` after PR #10:
-> `2000a68fbc1c6ad1c573a30e820554c9110b4ce0`) and Phase 5A (Control Read Contract v1, merged via
-> PR #12; `main` after PR #12: `bd50c37c58e70afc101e9227db86be4ccb6b000c`) are merged. Before merge,
+> `2000a68fbc1c6ad1c573a30e820554c9110b4ce0`), Phase 5A (Control Read Contract v1, merged via
+> PR #12; `main` after PR #12: `bd50c37c58e70afc101e9227db86be4ccb6b000c`; current-state repair via
+> PR #13) and Phase 5B (Action Eligibility Contract v1, Domain-only, merged via PR #14; `main` after
+> PR #14: `1cd78c33bbef36963f34ea6d26f2e7e51c4c78a3`) are merged. Before merge,
 > Phase 4b-2b passed its real-launch dogfood gate (`REAL_CODEX_LAUNCH_DOGFOOD_GATE`: PASS — exactly
 > one Human-authorized launch, no second launch). On `main`, DVCC copies a Resume command for
 > you to run, and — only after your explicit confirmation — can start one native Codex process
@@ -32,8 +34,22 @@ restarting the app.
 > `get_run_state` is reserved and fails closed. No MCP transport, no IPC endpoint, no agent write
 > authority and no Worker / Run authority.
 >
-> Phase 5A: merged / closed. Phase 5B: not started. Release: not performed. Production: not
-> performed. Not released; no installer is published.
+> Action Eligibility (Phase 5B) is a Domain-only decision contract: `dvcc.action-eligibility`
+> version `1` (`assess_review_actions`) is a read-only assessment of which review actions would be
+> refused, wait only on a Human decision, or met every action-level check. It is never an
+> authorization and keeps `authority: "NONE"`. There is no MCP, IPC, Tauri or UI wiring, no Worker
+> execution, no execution authority and no Worker / Run authority.
+>
+> CI-R1 and CI-R2 are merged via PR #15 (`main` after PR #15:
+> `6df0755e3eea80f1e4dbdb0280bbca9ff6f6d828`): the C2 gate runs `cargo check --locked` (CI-R1) and
+> compiles the Rust test targets with `cargo test --no-run --locked` (CI-R2). C2 run `38330904910`
+> on the PR #15 head: SUCCESS — Product tests 1698 PASS, G4 synthetic 59 PASS, Rust test targets
+> compiled. The 107 Rust tests were compiled but not run (0 executed); no Rust test result is
+> claimed.
+>
+> Phase 5A: merged / closed. Phase 5B: merged / closed (PR #14). Phase 5C: planned / not started;
+> implementation authorization not issued. Release: not performed. Production: not performed. Not
+> released; no installer is published.
 
 ## What it does
 

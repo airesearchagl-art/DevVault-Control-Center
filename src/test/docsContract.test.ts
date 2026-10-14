@@ -96,7 +96,7 @@ describe("README status", () => {
     expect(status).not.toMatch(/under review|no pull request has been opened|released via|is released|installer is available/i);
   });
 
-  it("records Phase 5A as merged via PR #12 and closed, with Phase 5B not started and nothing released", () => {
+  it("records Phase 5A as merged via PR #12 and closed, with nothing released", () => {
     const status = readme.slice(readme.indexOf("> Status:"), readme.indexOf("## What it does"));
     // Phase 5A (post-Phase-5A-merge current-state repair, QD-5A-05): merged via PR #12, with the new
     // main SHA.
@@ -110,12 +110,39 @@ describe("README status", () => {
     for (const operation of ["get_control_snapshot", "get_project_state", "get_review_state"]) expect(status, operation).toContain(`\`${operation}\``);
     expect(status).toMatch(/`get_run_state` is reserved and fails closed/);
     expect(status).toMatch(/No MCP transport, no IPC endpoint, no agent write[\s>]+authority and no Worker \/ Run authority\./);
-    // The next phase has not started, and nothing is released or in Production.
-    expect(status).toMatch(/Phase 5B: not[\s>]+started\./);
+    // Phase 5B is merged and closed, Phase 5C has not started, and nothing is released or in
+    // Production.
+    expect(status).toMatch(/Phase 5B: merged \/ closed \(PR #14\)\./);
     expect(status).toMatch(/Not[\s>]+released; no[\s>]+installer is published/);
     expect(status).toMatch(/Release: not[\s>]+performed\./);
     expect(status).toMatch(/Production: not[\s>]+performed\./);
-    expect(status).not.toMatch(/Phase 5 (is )?complete|Phase 5B (is )?(started|in progress|merged)|Production (is )?complete/i);
+    expect(status).not.toMatch(/Phase 5 (is )?complete|Phase 5B (is )?(started|in progress)|Phase 5C (is )?(started|in progress|merged|complete)|Production (is )?complete/i);
+  });
+
+  it("records Phase 5B as merged via PR #14 and closed, CI-R1 / CI-R2 via PR #15, and Phase 5C not started", () => {
+    const status = readme.slice(readme.indexOf("> Status:"), readme.indexOf("## What it does"));
+    // Phase 5B (post-PR15 current-state repair, DVCC-POST-PR15-README-REPAIR-01): merged via PR #14,
+    // with the main SHA after PR #14; Phase 5A's current-state repair went in via PR #13.
+    expect(status).toMatch(/current-state repair via[\s>]+PR #13/);
+    expect(status).toMatch(/Phase 5B \(Action Eligibility Contract v1, Domain-only, merged via PR #14/);
+    expect(status).toMatch(/`main` after[\s>]+PR #14: `1cd78c33bbef36963f34ea6d26f2e7e51c4c78a3`/);
+    expect(status).not.toMatch(/Phase 5B: not[\s>]+started/);
+    // The Phase 5B contract only assesses: no authority, no wiring, no Worker execution.
+    expect(status).toMatch(/`dvcc\.action-eligibility`[\s>]+version `1`/);
+    expect(status).toContain('`authority: "NONE"`');
+    expect(status).toMatch(/no MCP, IPC, Tauri or UI wiring, no Worker[\s>]+execution, no execution authority and no Worker \/ Run authority\./);
+    // CI-R1 / CI-R2 merged via PR #15, with the main SHA and the C2 evidence of the PR #15 head.
+    expect(status).toMatch(/CI-R1 and CI-R2 are merged via PR #15/);
+    expect(status).toMatch(/`main` after PR #15:[\s>]+`6df0755e3eea80f1e4dbdb0280bbca9ff6f6d828`/);
+    expect(status).toContain("`cargo check --locked` (CI-R1)");
+    expect(status).toContain("`cargo test --no-run --locked` (CI-R2)");
+    expect(status).toMatch(/C2 run `38330904910`[\s>]+on the PR #15 head: SUCCESS/);
+    expect(status).toMatch(/Product tests 1698 PASS, G4 synthetic 59 PASS/);
+    // The Rust test targets are compiled, not run: no Rust test may be claimed as passed.
+    expect(status).toMatch(/107 Rust tests were compiled but not run \(0 executed\)/);
+    expect(status).not.toMatch(/Rust tests?:?[\s>]+(passed|PASS)|107[\s>]+(Rust tests?:?[\s>]+)?(passed|PASS)/i);
+    // Phase 5C has not started and its implementation is not authorized.
+    expect(status).toMatch(/Phase 5C: planned \/ not started;[\s>]+implementation authorization not issued\./);
   });
 
   it("no current-facing README text describes Phase 4b-2b as under development or not merged", () => {
