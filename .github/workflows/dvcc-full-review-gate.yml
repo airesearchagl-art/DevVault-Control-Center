@@ -80,6 +80,10 @@ jobs:
       - name: Rust test targets compile (no run)
         run: cargo test --no-run --locked --manifest-path src-tauri/Cargo.toml
 
+      - name: Rust tests execute (CI-R3)
+        timeout-minutes: 10
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml -- --show-output
+
       # Synthetic fixtures only; the real-data audit (-RealData) is never run in CI.
       # Started from Windows PowerShell 5.1, the same family as the powershell.exe the tests spawn.
       - name: G4 harness tests (synthetic)
