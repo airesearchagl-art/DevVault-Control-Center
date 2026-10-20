@@ -131,18 +131,56 @@ describe("README status", () => {
     expect(status).toMatch(/`dvcc\.action-eligibility`[\s>]+version `1`/);
     expect(status).toContain('`authority: "NONE"`');
     expect(status).toMatch(/no MCP, IPC, Tauri or UI wiring, no Worker[\s>]+execution, no execution authority and no Worker \/ Run authority\./);
-    // CI-R1 / CI-R2 merged via PR #15, with the main SHA and the C2 evidence of the PR #15 head.
+    // CI-R1 / CI-R2 merged via PR #15, with the main SHA; its C2 evidence is checked as history below.
     expect(status).toMatch(/CI-R1 and CI-R2 are merged via PR #15/);
     expect(status).toMatch(/`main` after PR #15:[\s>]+`6df0755e3eea80f1e4dbdb0280bbca9ff6f6d828`/);
     expect(status).toContain("`cargo check --locked` (CI-R1)");
     expect(status).toContain("`cargo test --no-run --locked` (CI-R2)");
-    expect(status).toMatch(/C2 run `38330904910`[\s>]+on the PR #15 head: SUCCESS/);
-    expect(status).toMatch(/Product tests 1698 PASS, G4 synthetic 59 PASS/);
-    // The Rust test targets are compiled, not run: no Rust test may be claimed as passed.
-    expect(status).toMatch(/107 Rust tests were compiled but not run \(0 executed\)/);
-    expect(status).not.toMatch(/Rust tests?:?[\s>]+(passed|PASS)|107[\s>]+(Rust tests?:?[\s>]+)?(passed|PASS)/i);
     // Phase 5C has not started and its implementation is not authorized.
     expect(status).toMatch(/Phase 5C: planned \/ not started;[\s>]+implementation authorization not issued\./);
+  });
+
+  it("records CI-R3 via PR #17 and CI-R4 via PR #18 with the current C2 evidence", () => {
+    const status = readme.slice(readme.indexOf("> Status:"), readme.indexOf("## What it does"));
+    // Post-PR18 current-state repair (DVCC-POST-PR18-README-REPAIR-01): C2 runs the Rust tests
+    // (CI-R3) and three environment-dependent checks print a fixed EXECUTED marker (CI-R4).
+    expect(status).toMatch(/CI-R3 is merged via[\s>]+PR #17/);
+    expect(status).toMatch(/`main` after PR #17: `91da83fc1f31b550d4c116ed999941bf35284a79`/);
+    expect(status).toMatch(/with `cargo test --locked -- --show-output`/);
+    expect(status).toMatch(/CI-R4 is merged via PR #18/);
+    expect(status).toMatch(/`main` after PR #18:[\s>]+`9f86c186413bcc96f5d9ea2ea5c5cc1fd3345465`/);
+    for (const marker of ["E5-CHAIN", "E5-RELATIVE", "P4B2B-EXE-NETLINK"]) expect(status, marker).toContain(`\`${marker}\``);
+    // 105 of the 107 Rust tests pass and 2 are ignored: never 107 passed.
+    expect(status).not.toMatch(/\b107[\s>]+(Rust[\s>]+)?(tests?:?[\s>]+)?(passed|PASS)|Rust tests?:?[\s>]+107[\s>]+(passed|PASS)/i);
+
+    const start = status.indexOf("Current CI evidence:");
+    const end = status.indexOf("Historical record (PR #15");
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const current = status.slice(start, end);
+    expect(current).toMatch(/C2 run `39367427280` on the PR #18 head[\s>]+\(`f525fbbbb702f176edc6e6f0b42b24ab795e7962`\): SUCCESS/);
+    expect(current).toMatch(/Product tests 1699 PASS, G4 synthetic[\s>]+59 PASS/);
+    expect(current).toMatch(/Rust tests 105 PASS \/ 0 FAIL \/ 2 ignored \(of 107 tests;/);
+    expect(current).toMatch(/`EXECUTED` 8, `SKIPPED` 0; each of the three CI-R4 markers appeared once\./);
+    // A green run covers the hosted runner only: it never verifies every OS-dependent branch, and
+    // the compile-only wording of PR #15 is not the current state.
+    expect(current).toMatch(/does not verify every OS-dependent branch/);
+    expect(current).not.toMatch(/(all|every) OS-dependent branch(es)? (is |are )?(verified|covered)|fully verified/i);
+    expect(current).not.toMatch(/0 executed|compiled but not run/);
+  });
+
+  it("keeps the PR #15 compile-only CI evidence as a historical record", () => {
+    const status = readme.slice(readme.indexOf("> Status:"), readme.indexOf("## What it does"));
+    const start = status.indexOf("Historical record (PR #15, before CI-R3):");
+    const end = status.indexOf("Phase 5A: merged / closed.");
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const history = status.slice(start, end);
+    expect(history).toMatch(/C2 run `38330904910` on the PR #15 head: SUCCESS/);
+    expect(history).toMatch(/Product tests 1698 PASS, G4 synthetic 59 PASS/);
+    // At PR #15 the Rust test targets were compiled, not run: no Rust test is claimed as passed there.
+    expect(history).toMatch(/107 Rust tests were compiled but not run \(0 executed\)/);
+    expect(history).not.toMatch(/Rust tests?:?[\s>]+(\d+[\s>]+)?(passed|PASS)/i);
   });
 
   it("no current-facing README text describes Phase 4b-2b as under development or not merged", () => {
