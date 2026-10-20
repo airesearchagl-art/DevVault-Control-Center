@@ -468,6 +468,7 @@ mod tests {
         }
         let through = link.join("codex.exe");
         assert_eq!(code(validate_codex_executable(&through.to_string_lossy())), "CODEX_EXECUTABLE_UNTRUSTED");
+        eprintln!("P4B2B-EXE-NETLINK: EXECUTED");
     }
 
     // --- thread cwd ---
