@@ -319,12 +319,13 @@ mod tests {
         let name = unique_name();
         let (release, holder) = hold_on_another_thread(&name);
 
-        let started = Instant::now();
+        // No lower bound on the elapsed time: a wait's time-out is only as accurate as the system
+        // clock tick and can end before the requested interval (Microsoft Learn, "Wait Functions",
+        // section "Wait Functions and Time-out Intervals").
         let mut built = false;
         let result = with_startup_gate(&name, Duration::from_millis(200), |_gate| built = true);
         assert_eq!(result, Err(StartupLockState::NotOwned));
         assert!(!built, "a process without the gate must not build the app");
-        assert!(started.elapsed() >= Duration::from_millis(200));
 
         release.send(()).unwrap();
         holder.join().unwrap();
