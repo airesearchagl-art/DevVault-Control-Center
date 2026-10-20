@@ -42,10 +42,23 @@ restarting the app.
 >
 > CI-R1 and CI-R2 are merged via PR #15 (`main` after PR #15:
 > `6df0755e3eea80f1e4dbdb0280bbca9ff6f6d828`): the C2 gate runs `cargo check --locked` (CI-R1) and
-> compiles the Rust test targets with `cargo test --no-run --locked` (CI-R2). C2 run `38330904910`
-> on the PR #15 head: SUCCESS — Product tests 1698 PASS, G4 synthetic 59 PASS, Rust test targets
-> compiled. The 107 Rust tests were compiled but not run (0 executed); no Rust test result is
-> claimed.
+> compiles the Rust test targets with `cargo test --no-run --locked` (CI-R2). CI-R3 is merged via
+> PR #17 (`main` after PR #17: `91da83fc1f31b550d4c116ed999941bf35284a79`): C2 runs the Rust tests
+> with `cargo test --locked -- --show-output`. CI-R4 is merged via PR #18 (`main` after PR #18:
+> `9f86c186413bcc96f5d9ea2ea5c5cc1fd3345465`): `E5-CHAIN`, `E5-RELATIVE` and `P4B2B-EXE-NETLINK`
+> print a fixed `EXECUTED` marker after their assertions pass.
+>
+> Current CI evidence: C2 run `39367427280` on the PR #18 head
+> (`f525fbbbb702f176edc6e6f0b42b24ab795e7962`): SUCCESS — Product tests 1699 PASS, G4 synthetic
+> 59 PASS, Rust tests 105 PASS / 0 FAIL / 2 ignored (of 107 tests; the 2 ignored tests need a
+> temporary mapped network drive and are not run in CI). Environment-dependent markers:
+> `EXECUTED` 8, `SKIPPED` 0; each of the three CI-R4 markers appeared once. This is evidence for
+> the hosted Windows runner only and does not verify every OS-dependent branch: the ignored tests,
+> the `SKIPPED` paths and other Windows configurations are not exercised.
+>
+> Historical record (PR #15, before CI-R3): C2 run `38330904910` on the PR #15 head: SUCCESS —
+> Product tests 1698 PASS, G4 synthetic 59 PASS, Rust test targets compiled. At that point the
+> 107 Rust tests were compiled but not run (0 executed); no Rust test result was claimed then.
 >
 > Phase 5A: merged / closed. Phase 5B: merged / closed (PR #14). Phase 5C: planned / not started;
 > implementation authorization not issued. Release: not performed. Production: not performed. Not
