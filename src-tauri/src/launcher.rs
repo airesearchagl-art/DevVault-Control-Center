@@ -586,6 +586,7 @@ mod tests {
                     .code,
                 "NETWORK_TARGET"
             );
+            eprintln!("E5-CHAIN: EXECUTED");
         }
     }
 
@@ -604,6 +605,7 @@ mod tests {
             resolved,
             plain(fs::canonicalize(target.join("inner")).unwrap())
         );
+        eprintln!("E5-RELATIVE: EXECUTED");
     }
 
     #[test]
