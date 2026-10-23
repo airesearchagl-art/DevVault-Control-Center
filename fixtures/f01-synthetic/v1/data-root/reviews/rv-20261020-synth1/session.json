@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "reviewSessionId": "rv-20261020-synth1",
+  "projectId": "synthetic-alpha",
+  "prNumber": 7,
+  "reviewType": "SENTINEL_REVIEW_TYPE",
+  "reviewRound": 1,
+  "resourceState": "HOT",
+  "reviewState": "FIX_REQUIRED",
+  "suspendedFrom": null,
+  "chatgptThreadTitle": "SENTINEL_THREAD_TITLE",
+  "chatgptThreadUrl": "https://chatgpt.com/c/example-sentinel-thread",
+  "nextAction": "SENTINEL_REVIEW_NEXT_ACTION",
+  "rounds": [
+    {
+      "round": 1,
+      "expectedHead": "f01a5e17f01a5e17f01a5e17f01a5e17f01a5e17",
+      "reviewedHead": "f01a5e17f01a5e17f01a5e17f01a5e17f01a5e17",
+      "requestSavedAt": "2026-10-20T00:05:00.000Z",
+      "resultCapturedAt": "2026-10-20T00:30:00.000Z",
+      "verdict": "FIX_REQUIRED",
+      "verdictConfirmedAt": "2026-10-20T00:32:00.000Z",
+      "verdictNote": "SENTINEL_VERDICT_NOTE"
+    }
+  ],
+  "createdAt": "2026-10-20T00:00:00.000Z",
+  "updatedAt": "2026-10-20T00:32:00.000Z"
+}
