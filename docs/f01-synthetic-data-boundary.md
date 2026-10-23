@@ -36,8 +36,10 @@ data, and any change to what DVCC publishes.
 The tooling never writes the manifest. `print-manifest` prints the manifest the definitions imply, for
 review; the test requires the committed manifest to equal it **and** pins the manifest's own SHA-256.
 Changing the fixture therefore needs a reviewed change to the definitions, the manifest and the pin.
-`generate` writes only the 7 fixture files into `data-root` and refuses when that folder is a link or
-holds anything else.
+`generate` writes only the 7 fixture files into `data-root`. The CLI always targets `data-root`; the
+tests call the same function on a `dvcc-f01-*` temp folder, and any other root is refused. Before
+anything is written, it refuses a folder that is a link or holds anything else. It uses the same
+scan as the verifier, so an unknown folder is refused without being entered.
 
 ## 3. Verification rules (reference verifier)
 
@@ -48,15 +50,15 @@ Fail closed: any finding rejects the whole folder and returns no bytes.
 | V-F01-01 | Only the fixture folder or a `dvcc-f01-*` folder directly in the OS temp folder may be verified; anything else is refused before it is listed | `ROOT_NOT_ALLOWED` | tested |
 | V-F01-02 | Manifest is strict: closed keys, relative lowercase paths without `..`, unique entries, size ≤ 64 KiB, lowercase 64-hex SHA-256, `runtime_managed` is exactly `.dvcc.lock` | `MANIFEST_INVALID` | tested (13 variants) |
 | V-F01-03 | The manifest lives outside the data folder (no self-hash) and is pinned by the test | — | tested |
-| V-F01-04 | Exactly the manifest's file set: nothing missing, nothing extra. An unknown folder is reported once and not entered; unknown files are never opened | `MISSING_FILE`, `MISSING_DIRECTORY`, `UNEXPECTED_ENTRY` | tested |
+| V-F01-04 | Exactly the manifest's file set: nothing missing, nothing extra. The scan enters only the manifest's folders: any other folder (including one named like the lock, an expected file or a backup) is recorded at its entrance and never listed. Unknown files are never opened | `MISSING_FILE`, `MISSING_DIRECTORY`, `UNEXPECTED_ENTRY` (or the folder's own code: `RUNTIME_FILE_INVALID`, `NOT_EXPECTED_KIND`, `TRANSIENT_STORAGE_FILE`) | tested on the real scan: no listing call inside such a folder, one finding even with 65 files inside, no bytes returned |
 | V-F01-05 | Size, then SHA-256 of the bytes actually read | `CONTENT_MISMATCH` | tested (same size and other size) |
 | V-F01-06 | Expected values come only from the committed manifest, never from the data being checked | `CONTENT_MISMATCH` | tested (a manifest that disagrees with the data rejects it) |
 | V-F01-07 | DVCC temp / backup / set-aside names (`*.tmp-*`, `*.bak`, `*.corrupt-*`) | `TRANSIENT_STORAGE_FILE` | tested |
 | V-F01-08 | `.dvcc.lock` may exist only as an empty regular file; it is never hashed or returned | `RUNTIME_FILE_INVALID` | tested (no lock held) |
-| V-F01-09 | An entry Node's `lstat` reports as a link is rejected and not entered (expected for Windows symbolic links and junctions; not exercised on disk here) | `LINK_OR_REPARSE` | decision logic tested; no link was created on disk |
+| V-F01-09 | An entry Node's `lstat` reports as a link is rejected and not entered (expected for Windows symbolic links and junctions; not exercised on disk here) | `LINK_OR_REPARSE` (root: `ROOT_INVALID`) | tested on the real scan with a simulated `lstat` result; no link was created on disk |
 | V-F01-10 | Each entry's resolved path must equal the resolved root plus its relative path | `LINK_OR_REPARSE` | decision logic tested; no redirection was created on disk |
 | V-F01-11 | A file is read through one handle whose device and file ID must equal the listing | `CHANGED_OR_UNREADABLE` | normal path tested; the race was not reproduced |
-| V-F01-12 | At most 64 entries, depth 4, 64 KiB per file | `LIMIT_EXCEEDED`, `CHANGED_OR_UNREADABLE` | entry limit tested |
+| V-F01-12 | At most 64 listed entries (the root and the manifest's folders only), depth 4, 64 KiB per file | `LIMIT_EXCEEDED`, `CHANGED_OR_UNREADABLE` | entry limit tested in the root and in a review folder |
 | V-F01-13 | Findings carry fixed codes and a relative path only when it matches a safe pattern (otherwise `null`); no absolute path, no error text | — | tested |
 | V-F01-14 | On success the verified bytes are returned, and only they are used afterwards | — | tested: a later disk change does not reach the response |
 
@@ -204,8 +206,10 @@ verified" (V-F01-14). DVCC does not have this today: storage commands re-read fi
 - HD-06, the application's SHA-256 implementation, is undecided. The reference verifier uses Node's
   built-in `crypto` and implies nothing for Rust.
 - Earlier mutation counts (38 / 42 variants) are not used as a fixed condition here. This change was
-  checked locally by injecting five faults into the verifier (hash comparison, transient-name rejection,
-  link rejection, missing-file reporting, root restriction); the tests caught each one.
+  checked locally by injecting faults one at a time; the tests caught each one:
+  - in the verifier: hash comparison, transient-name rejection, link rejection, missing-file
+    reporting, root restriction, and descent into folders outside the manifest (RF-F01-IR01-01);
+  - in the generator: foreign-entry refusal and root restriction.
 - How a pilot DVCC is pointed at a copy of the fixture (`DVCC_DATA_DIR`), and what happens to the lock
   file and backups it creates there, needs its own runbook.
 

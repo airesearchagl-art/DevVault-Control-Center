@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DATA_ROOT,
   FIXTURE,
@@ -13,6 +13,7 @@ import {
   TEMP_COPY_PREFIX,
   evaluateEntries,
   fixtureFiles,
+  generateFixture,
   manifestText,
   parseManifest,
   readManifest,
@@ -35,6 +36,33 @@ import { MemoryStorage } from "./memoryStorage";
  * loading path (loadAll -> appReducer -> controlReadSourceFrom) into the pure `readControl`.
  */
 
+/**
+ * The real `node:fs`, except that every `readdirSync` call is recorded and `lstatSync` reports the
+ * paths in `linkPaths` as links. This lets the tests observe the verifier's actual scan, and exercise
+ * its link handling, without creating a link or reparse point on disk.
+ */
+const fsProbe = vi.hoisted(() => ({ readdirCalls: [] as string[], linkPaths: new Set<string>() }));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  const { resolve } = await import("node:path");
+  const key = (target: unknown): string => resolve(String(target)).toLowerCase();
+  const readdirSync = ((dir: unknown, options?: unknown) => {
+    fsProbe.readdirCalls.push(String(dir));
+    return (actual.readdirSync as (dir: unknown, options?: unknown) => unknown)(dir, options);
+  }) as typeof actual.readdirSync;
+  const lstatSync = ((target: unknown, options?: unknown) => {
+    const stat = (actual.lstatSync as (target: unknown, options?: unknown) => object)(target, options);
+    if (!fsProbe.linkPaths.has(key(target))) return stat;
+    return Object.assign(Object.create(Object.getPrototypeOf(stat)), stat, {
+      isSymbolicLink: () => true,
+      isDirectory: () => false,
+      isFile: () => false,
+    });
+  }) as typeof actual.lstatSync;
+  return { ...actual, default: { ...actual, readdirSync, lstatSync }, readdirSync, lstatSync };
+});
+
 /** SHA-256 of fixtures/f01-synthetic/v1/manifest.json. Changing the fixture means changing this too. */
 const MANIFEST_SHA256 = "9c7696259730769f353fbd458b44cb83bf45ed4c56fa2b415c8f32e2bc43d23d";
 
@@ -48,9 +76,34 @@ const OPERATIONS = {
 
 const copies: string[] = [];
 
+beforeEach(() => {
+  fsProbe.readdirCalls.length = 0;
+  fsProbe.linkPaths.clear();
+});
+
 afterEach(() => {
+  fsProbe.linkPaths.clear();
   for (const dir of copies.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
+
+const simulateLink = (target: string): void => {
+  fsProbe.linkPaths.add(path.resolve(target).toLowerCase());
+};
+
+/** `readdirSync` calls made for `folder` or anything below it. */
+function listedInside(folder: string): string[] {
+  const base = path.resolve(folder).toLowerCase();
+  return fsProbe.readdirCalls.filter((dir) => {
+    const resolved = path.resolve(dir).toLowerCase();
+    return resolved === base || resolved.startsWith(`${base}${path.sep}`);
+  });
+}
+
+/** Creates `dir` holding one file more than the entry limit. */
+function fillFolder(dir: string): void {
+  mkdirSync(dir, { recursive: true });
+  for (let i = 0; i <= LIMITS.maxEntries; i += 1) writeFileSync(path.join(dir, `f-${i}.txt`), "x");
+}
 
 function tempDir(prefix: string = TEMP_COPY_PREFIX): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -260,6 +313,119 @@ describe("verifyDataRoot: fails closed on any difference from the manifest", () 
       expect(rel).toMatch(/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/);
       expect(rel.toLowerCase()).not.toContain(os.tmpdir().toLowerCase());
     }
+  });
+});
+
+describe("verifyDataRoot scan: enters only the manifest's folders (RF-F01-IR01-01)", () => {
+  function expectRejectedUnread(root: string, folder: string, expected: string[]): void {
+    const result = verifyDataRoot(root, readManifest());
+    expect(findings(result)).toEqual(expected);
+    expect(result.ok).toBe(false);
+    expect(result.files).toBeNull();
+    expect(listedInside(at(root, folder))).toEqual([]);
+  }
+
+  it("lists the root and the manifest's folders (the probe sees the real scan)", () => {
+    const root = copyFixture();
+    fsProbe.readdirCalls.length = 0;
+    expect(verifyDataRoot(root, readManifest()).ok).toBe(true);
+    expect(fsProbe.readdirCalls.map((dir) => path.relative(root, dir).replaceAll("\\", "/")).sort()).toEqual(["", "reviews", REVIEW_DIR]);
+  });
+
+  it("an unknown review folder with 65 files is one UNEXPECTED_ENTRY and is never listed", () => {
+    const root = copyFixture();
+    fillFolder(at(root, "reviews/rv-20261021-other1"));
+    expectRejectedUnread(root, "reviews/rv-20261021-other1", ["UNEXPECTED_ENTRY reviews/rv-20261021-other1"]);
+  });
+
+  it("an unknown top-level folder with nested folders and 65 files is one UNEXPECTED_ENTRY and is never listed", () => {
+    const root = copyFixture();
+    fillFolder(at(root, "unknown-folder"));
+    fillFolder(at(root, "unknown-folder/nested"));
+    expectRejectedUnread(root, "unknown-folder", ["UNEXPECTED_ENTRY unknown-folder"]);
+  });
+
+  it("folders named like a lock, an expected file or a backup are not entered either", () => {
+    const lock = copyFixture();
+    fillFolder(at(lock, ".dvcc.lock"));
+    expectRejectedUnread(lock, ".dvcc.lock", ["RUNTIME_FILE_INVALID .dvcc.lock"]);
+
+    const expectedFile = copyFixture();
+    unlinkSync(at(expectedFile, "settings.json"));
+    fillFolder(at(expectedFile, "settings.json"));
+    expectRejectedUnread(expectedFile, "settings.json", ["NOT_EXPECTED_KIND settings.json"]);
+
+    const backup = copyFixture();
+    fillFolder(at(backup, "projects.json.bak"));
+    expectRejectedUnread(backup, "projects.json.bak", ["TRANSIENT_STORAGE_FILE projects.json.bak"]);
+  });
+
+  it("the entry limit still applies inside the manifest's folders", () => {
+    const root = copyFixture();
+    for (let i = 0; i < LIMITS.maxEntries; i += 1) writeFileSync(at(root, `${REVIEW_DIR}/extra-${i}.md`), "");
+    const result = verifyDataRoot(root, readManifest());
+    expect(findings(result)).toEqual(["LIMIT_EXCEEDED null"]);
+    expect(result.files).toBeNull();
+  });
+
+  it("a folder reported as a link is rejected and never listed", () => {
+    const root = copyFixture();
+    simulateLink(at(root, "reviews"));
+    expectRejectedUnread(root, "reviews", ["LINK_OR_REPARSE reviews"]);
+  });
+
+  it("a root reported as a link is rejected before anything is listed", () => {
+    const root = copyFixture();
+    simulateLink(root);
+    fsProbe.readdirCalls.length = 0;
+    const result = verifyDataRoot(root, readManifest());
+    expect(findings(result)).toEqual(["ROOT_INVALID null"]);
+    expect(result.files).toBeNull();
+    expect(fsProbe.readdirCalls).toEqual([]);
+  });
+});
+
+describe("generateFixture: refuses foreign entries and links before writing", () => {
+  const written = (root: string): boolean => existsSync(at(root, "projects.json"));
+
+  it("generates exactly the committed fixture into an empty temp folder", () => {
+    const root = tempDir();
+    generateFixture(root);
+    expect(findings(verifyDataRoot(root, readManifest()))).toEqual([]);
+  });
+
+  it("refuses an unknown folder without listing it or writing anything", () => {
+    const root = tempDir();
+    fillFolder(at(root, "unknown-folder"));
+    expect(() => generateFixture(root)).toThrow("FIXTURE_FOLDER_HAS_FOREIGN_ENTRY");
+    expect(listedInside(at(root, "unknown-folder"))).toEqual([]);
+    expect(written(root)).toBe(false);
+  });
+
+  it("refuses a foreign file without writing anything", () => {
+    const root = tempDir();
+    writeFileSync(at(root, "notes.txt"), "extra\n");
+    expect(() => generateFixture(root)).toThrow("FIXTURE_FOLDER_HAS_FOREIGN_ENTRY");
+    expect(written(root)).toBe(false);
+  });
+
+  it("refuses an entry or a root reported as a link", () => {
+    const linkedEntry = tempDir();
+    mkdirSync(at(linkedEntry, "reviews"));
+    simulateLink(at(linkedEntry, "reviews"));
+    expect(() => generateFixture(linkedEntry)).toThrow("FIXTURE_FOLDER_HAS_FOREIGN_ENTRY");
+    expect(written(linkedEntry)).toBe(false);
+
+    const linkedRoot = tempDir();
+    simulateLink(linkedRoot);
+    expect(() => generateFixture(linkedRoot)).toThrow("FIXTURE_FOLDER_INVALID");
+    expect(readdirSync(linkedRoot)).toEqual([]);
+  });
+
+  it("refuses a root other than data-root or a dvcc-f01- temp folder", () => {
+    const other = tempDir("dvcc-other-");
+    expect(() => generateFixture(other)).toThrow("ROOT_NOT_ALLOWED");
+    expect(readdirSync(other)).toEqual([]);
   });
 });
 

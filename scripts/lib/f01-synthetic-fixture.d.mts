@@ -69,4 +69,4 @@ export declare function evaluateEntries<E extends ListedEntry>(
   read: (entry: E) => Buffer | null,
 ): VerifyResult;
 export declare function verifyDataRoot(root: string, manifest: unknown): VerifyResult;
-export declare function generateFixture(): void;
+export declare function generateFixture(root?: string): void;

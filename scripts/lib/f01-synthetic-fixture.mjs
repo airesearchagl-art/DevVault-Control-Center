@@ -241,11 +241,13 @@ export function parseManifest(value) {
 }
 
 /**
- * Lists every entry under `root` without following links. An entry is `redirected` when the path
+ * Lists the entries under `root` without following links, entering only the folders in
+ * `allowedDirs` (the manifest's folders). Any other folder is listed as one entry and never read,
+ * so its contents count toward no limit and are never opened. An entry is `redirected` when the path
  * the OS resolves for it is not the plain `root/<rel>` path (a junction or mount point somewhere on
- * the way). Neither links nor redirected directories are entered.
+ * the way). Neither links nor redirected folders are entered.
  */
-function scanTree(root) {
+function scanTree(root, allowedDirs) {
   const realRoot = realpathSync.native(root);
   const entries = [];
   const walk = (dir, rel, depth) => {
@@ -258,7 +260,7 @@ function scanTree(root) {
       const kind = stat.isSymbolicLink() ? "link" : stat.isDirectory() ? "dir" : stat.isFile() ? "file" : "other";
       const redirected = kind !== "link" && !samePath(realpathSync.native(abs), path.join(realRoot, ...entryRel.split("/")));
       entries.push({ path: entryRel, kind, size: Number(stat.size), redirected, dev: stat.dev, ino: stat.ino });
-      if (kind === "dir" && !redirected) {
+      if (kind === "dir" && !redirected && allowedDirs.has(entryRel)) {
         if (depth + 1 >= LIMITS.maxDepth) throw new LimitExceeded();
         walk(abs, entryRel, depth + 1);
       }
@@ -374,7 +376,7 @@ export function verifyDataRoot(root, manifestValue) {
   try {
     const stat = lstatSync(root);
     if (stat.isSymbolicLink() || !stat.isDirectory()) return rejected([finding("ROOT_INVALID", null)]);
-    entries = scanTree(root);
+    entries = scanTree(root, manifest.dirs);
   } catch (error) {
     return rejected([finding(error instanceof LimitExceeded ? "LIMIT_EXCEEDED" : "SCAN_FAILED", null)]);
   }
@@ -386,24 +388,26 @@ export function verifyDataRoot(root, manifestValue) {
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Rewrites data-root from the definitions. Refuses (throws) when the fixture folder is a link or
- * holds anything the definitions do not describe, so it never writes through a link or over data
- * that does not belong to the fixture.
+ * Writes the fixture files from the definitions into `root` (the CLI always uses data-root; the
+ * tests use a `dvcc-f01-*` temp folder). Refuses (throws) before writing anything when the root is
+ * not allowed, when the folder is a link, or when it holds anything the definitions do not describe
+ * (an unknown folder is not entered), so it never writes through a link or over foreign data.
  */
-export function generateFixture() {
+export function generateFixture(root = DATA_ROOT) {
+  if (!isAllowedRoot(root)) throw new Error("ROOT_NOT_ALLOWED");
   const files = fixtureFiles();
   const manifest = parseManifest(JSON.parse(manifestText(files)));
-  for (const dir of [FIXTURE_DIR, DATA_ROOT]) {
+  for (const dir of samePath(root, DATA_ROOT) ? [FIXTURE_DIR, DATA_ROOT] : [root]) {
     if (existsSync(dir) && (lstatSync(dir).isSymbolicLink() || !lstatSync(dir).isDirectory())) throw new Error("FIXTURE_FOLDER_INVALID");
   }
-  if (existsSync(DATA_ROOT)) {
-    for (const entry of scanTree(DATA_ROOT)) {
+  if (existsSync(root)) {
+    for (const entry of scanTree(root, manifest.dirs)) {
       const known = (entry.kind === "file" && files.has(entry.path)) || (entry.kind === "dir" && manifest.dirs.has(entry.path));
       if (!known || entry.redirected) throw new Error("FIXTURE_FOLDER_HAS_FOREIGN_ENTRY");
     }
   }
   for (const [rel, text] of files) {
-    const target = path.join(DATA_ROOT, ...rel.split("/"));
+    const target = path.join(root, ...rel.split("/"));
     mkdirSync(path.dirname(target), { recursive: true });
     writeFileSync(target, text, "utf8");
   }
