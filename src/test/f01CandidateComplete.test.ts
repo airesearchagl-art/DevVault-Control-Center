@@ -1,7 +1,7 @@
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   T2_CHECKS,
   createAccessGate,
@@ -19,7 +19,7 @@ import { ReviewHub } from "../services/reviewHub";
 import { createLocaleStore, loadSettings } from "../services/settings";
 import { PROJECTS_TARGET, StorageError } from "../services/storage";
 import type { MemoryStorage } from "./memoryStorage";
-import { HUB_CALLS, SETTINGS_CALLS, trackService, verifyMemoryStorage, type ServiceCall } from "./f01ServiceWiring";
+import { HUB_CALLS, SETTINGS_CALLS, trackService, verifyMemoryStorage, type ServiceCall, type Tracking } from "./f01ServiceWiring";
 import {
   BASELINE,
   CODEX_PATH,
@@ -53,7 +53,8 @@ import {
  *
  * S: updates tracked from the service call (`SERVICE_AND_STORAGE` wiring): the real `ReviewHub` and
  *    settings store, with updates counted from the moment they are called, including the time they
- *    wait in the service's own queue.
+ *    wait in the service's own queue. A reload is one update of its own, from its call until after its
+ *    `loaded` dispatch (RF-F01-CANDIDATE-IR01-01).
  * T: the candidate T2 (`t2Check: "REVERIFY_STORAGE"`) compared with the original (`SOURCE_ONLY`), over
  *    the in-memory store.
  * D: the same comparison over a `dvcc-f01-*` temp copy on disk, verified by the reference disk verifier.
@@ -247,7 +248,8 @@ describe("S: updates tracked from the service call", () => {
     const reloading = r.wiring.reload();
     await until(() => r.held.waiting.length === 1, "set-aside held");
     expect(r.held.waiting[0].operation).toBe("quarantine");
-    expect(counts(r)).toEqual({ operations: 1, writes: 1 });
+    // The reload and the hub.load inside it, each with its own token.
+    expect(counts(r)).toEqual({ operations: 2, writes: 1 });
     r.held.release();
     await until(() => r.held.waiting.length === 1, "restore held");
     expect(r.held.waiting[0].operation).toBe("restoreBackup");
@@ -256,23 +258,138 @@ describe("S: updates tracked from the service call", () => {
     await until(() => r.held.waiting.length === 1, "read after the restore held");
     expect(r.held.waiting[0].operation).toBe("read");
     // Both storage writes have settled; the load that made them has not.
-    expect(counts(r)).toEqual({ operations: 1, writes: 0 });
+    expect(counts(r)).toEqual({ operations: 2, writes: 0 });
     expect(await r.gate.turnOn()).toEqual({ access: "OFF", code: "OPERATION_PENDING" });
     r.held.holding = false;
     r.held.holdingReads = false;
     r.held.release();
     await reloading;
     expect(updatesIn(r.log)).toEqual([
+      "call app.reload",
       "call hub.load",
       "begin storage.quarantine",
       "end storage.quarantine",
       "begin storage.restoreBackup",
       "end storage.restoreBackup",
       "settle hub.load",
+      "settle app.reload",
     ]);
-    expect(r.log.at(-1)).toBe("notify loaded");
+    expect(r.log.slice(-2)).toEqual(["notify loaded", "settle app.reload"]);
     expect(counts(r)).toEqual({ operations: 0, writes: 0 });
     expect(await r.gate.turnOn()).toEqual({ access: "OFF", code: "VERIFICATION_FAILED" });
+  });
+
+  // RF-F01-CANDIDATE-IR01-01: `reload()` asks `hub.info()` first, a read that can wait in the hub queue.
+  it.each<[Tracking, T2Check]>([
+    ["STORAGE", "SOURCE_ONLY"],
+    ["SERVICE_AND_STORAGE", "SOURCE_ONLY"],
+    ["SERVICE_AND_STORAGE", "REVERIFY_STORAGE"],
+  ])("a reload waiting in the hub queue behind a held read (%s tracking, t2Check %s)", async (tracking, t2Check) => {
+    const r = await onRig("KEEP", { t2Check }, tracking);
+    const services = tracking === "SERVICE_AND_STORAGE";
+    const pastT1 = verifiedTicket(r);
+    const atLoaded: ReturnType<typeof counts>[] = [];
+    r.app.listen((type) => {
+      if (type === "loaded") atLoaded.push(counts(r));
+    });
+    r.held.holdingReads = true;
+    const loading = r.wiring.hub.loadArtifacts(FIXTURE.reviewId);
+    await until(() => r.held.waiting.length === 1, "read held");
+    const reloading = r.wiring.reload();
+    if (services) {
+      // OFF from the call itself, before hub.info() has left the queue.
+      expect(counts(r)).toEqual({ operations: 1, writes: 0 });
+      expect(r.gate.status()).toMatchObject({ access: "OFF", reason: "OPERATION_STARTED" });
+    }
+    await flush();
+    // hub.info() still waits behind the held read: hub.load() has not been called.
+    expect(r.held.waiting.map((call) => call.operation)).toEqual(["read"]);
+    expect(r.app.dispatched.filter((type) => type === "loaded")).toHaveLength(1);
+    const fresh = r.gate.receive(SNAPSHOT_REQUEST);
+    if (services) {
+      expect(updatesIn(r.log)).toEqual(["call app.reload"]);
+      expect(counts(r)).toEqual({ operations: 1, writes: 0 });
+      expectRefused(pastT1.send(), t2Check === "REVERIFY_STORAGE" ? "UPDATE_PENDING" : "ACCESS_OFF");
+      expectRefused(fresh.verify(), "ACCESS_OFF");
+      expectRefused(fresh.send(), "ACCESS_OFF");
+      expect(await r.gate.turnOn()).toEqual({ access: "OFF", code: "OPERATION_PENDING" });
+      expectRefused(r.gate.handle(SNAPSHOT_REQUEST), "ACCESS_OFF");
+    } else {
+      // The storage-only wiring sees nothing until the load's data is dispatched: both requests go out.
+      expect(updatesIn(r.log)).toEqual([]);
+      expect(counts(r)).toEqual({ operations: 0, writes: 0 });
+      expect(r.gate.status().access).toBe("ON");
+      expect(pastT1.send()).toEqual(SENT);
+      expect(fresh.verify()).toEqual({ status: "VERIFIED" });
+      expect(fresh.send()).toEqual(SENT);
+      expect(await r.gate.turnOn()).toEqual({ access: "ON" });
+      expect(r.gate.handle(SNAPSHOT_REQUEST)).toEqual(SENT);
+    }
+    r.held.holdingReads = false;
+    r.held.release();
+    expect(await loading).not.toBeNull();
+    await reloading;
+    // At the dispatch, hub.load() has settled; with service tracking the reload itself has not.
+    expect(atLoaded).toEqual([{ operations: services ? 1 : 0, writes: 0 }]);
+    if (services) {
+      expect(updatesIn(r.log)).toEqual(["call app.reload", "call hub.load", "settle hub.load", "settle app.reload"]);
+      expect(r.log.slice(-2)).toEqual(["notify loaded", "settle app.reload"]);
+    } else {
+      expect(updatesIn(r.log)).toEqual([]);
+      expect(r.log.at(-1)).toBe("notify loaded");
+    }
+    expect(counts(r)).toEqual({ operations: 0, writes: 0 });
+    // Nothing turns access back ON by itself.
+    expect(r.gate.status()).toMatchObject({ access: "OFF", reason: services ? "OPERATION_SETTLED" : "EVENT" });
+    expect(r.transport.calls()).toBe(services ? 0 : 3);
+    expect(await r.gate.turnOn()).toEqual({ access: "ON" });
+    expect(r.gate.handle(SNAPSHOT_REQUEST)).toEqual(SENT);
+    expect(r.transport.calls()).toBe(services ? 1 : 4);
+  });
+
+  it("a reload whose hub.info() fails: its update still ends, hub.load() is never called, and nothing turns ON by itself", async () => {
+    const r = await onTracked("KEEP");
+    const pastT1 = verifiedTicket(r);
+    const info = vi.spyOn(r.memory, "info").mockRejectedValueOnce(new StorageError("READ_FAILED", "synthetic info failure"));
+    const reloading = r.wiring.reload();
+    expect(counts(r)).toEqual({ operations: 1, writes: 0 });
+    expect(r.gate.status()).toMatchObject({ access: "OFF", reason: "OPERATION_STARTED" });
+    await expect(reloading).rejects.toMatchObject({ code: "READ_FAILED" });
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(updatesIn(r.log)).toEqual(["call app.reload", "settle app.reload"]);
+    expect(r.log).not.toContain("notify loaded");
+    expect(counts(r)).toEqual({ operations: 0, writes: 0 });
+    expect(r.gate.status()).toMatchObject({ access: "OFF", reason: "OPERATION_SETTLED" });
+    expectRefused(pastT1.send(), "ACCESS_OFF");
+    expect(r.transport.calls()).toBe(0);
+    // The store and the app state are unchanged, so an explicit ON works again.
+    expect(await r.gate.turnOn()).toEqual({ access: "ON" });
+  });
+
+  it("dispose while a reload waits in the hub queue: the gate stays CLOSED after the reload settles", async () => {
+    const r = await onTracked("KEEP");
+    const pastT1 = verifiedTicket(r);
+    r.held.holdingReads = true;
+    const loading = r.wiring.hub.loadArtifacts(FIXTURE.reviewId);
+    await until(() => r.held.waiting.length === 1, "read held");
+    const reloading = r.wiring.reload();
+    expect(counts(r)).toEqual({ operations: 1, writes: 0 });
+    r.wiring.dispose();
+    expect(r.gate.status()).toMatchObject({ access: "OFF", reason: "CLOSED" });
+    r.held.holdingReads = false;
+    r.held.release();
+    expect(await loading).not.toBeNull();
+    await reloading;
+    // The load ran and its data reached the app, but no app event reached the gate any more.
+    expect(r.app.dispatched.filter((type) => type === "loaded")).toHaveLength(2);
+    expect(updatesIn(r.log)).toEqual(["call app.reload", "call hub.load", "settle hub.load", "settle app.reload"]);
+    expect(r.log).not.toContain("notify loaded");
+    expect(counts(r)).toEqual({ operations: 0, writes: 0 });
+    expect(r.gate.status()).toMatchObject({ access: "OFF", reason: "CLOSED" });
+    expect(await r.gate.turnOn()).toEqual({ access: "OFF", code: "CLOSED" });
+    expectRefused(pastT1.send(), "ACCESS_OFF");
+    expectRefused(r.gate.handle(SNAPSHOT_REQUEST), "ACCESS_OFF");
+    expect(r.transport.calls()).toBe(0);
   });
 
   it.each<[string, "hub" | "settings", "projects.json" | "settings.json"]>([
@@ -433,7 +550,7 @@ describe("S: updates tracked from the service call", () => {
     r.memory.failingWrites.clear();
     r.log.length = 0;
     await r.wiring.reload();
-    expect(updatesIn(r.log)).toEqual(["call hub.load", "settle hub.load"]);
+    expect(updatesIn(r.log)).toEqual(["call app.reload", "call hub.load", "settle hub.load", "settle app.reload"]);
     expect(r.gate.status().access).toBe("OFF");
     expect(await r.gate.turnOn()).toEqual({ access: "ON" });
     expectRefused(old.send(), "EPOCH_MISMATCH");

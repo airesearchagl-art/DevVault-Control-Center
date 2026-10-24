@@ -1,9 +1,9 @@
 # F01 product integration: remaining conditions (preparation)
 
-Status: **preparation for RF-5C-F01** (task `DVCC-F01-CANDIDATE-COMPLETE-01`). This list shows, item by
-item, what a product integration of the F01 access gate would still need. **It is not an adoption or
-an authorization. It does not close F01, and it starts no product implementation.** DVCC itself is
-unchanged.
+Status: **preparation for RF-5C-F01** (tasks `DVCC-F01-CANDIDATE-COMPLETE-01` and
+`DVCC-F01-CANDIDATE-IR01-FIX-01`). This list shows, item by item, what a product integration of the F01
+access gate would still need. **It is not an adoption or an authorization. It does not close F01, and it
+starts no product implementation.** DVCC itself is unchanged.
 
 The candidates and their evidence are in [`f01-synthetic-data-boundary.md`](f01-synthetic-data-boundary.md)
 (§6.5 to §6.9). Some items carry a **proposal** with its reasons. A proposal is a suggestion for the
@@ -43,7 +43,8 @@ item.
   - An unknown member or operation is treated as an update (fail closed).
 - **Verified (memory).**
   - The §6.8 and §6.9 scenarios, all started from real service calls.
-  - Fault injection: 15 wiring and gate variants (§6.8) and 11 tracking variants (§6.9).
+  - Fault injection: 15 wiring and gate variants (§6.8), 11 tracking variants and 5 reload variants
+    (§6.9).
   - A missed notification from a writer outside the wiring is shown as such (§6.8).
 - **Not verified.**
   - `App.tsx` itself, `tauriStorage`, and the Rust commands.
@@ -117,9 +118,14 @@ item.
   - `close()`: T0 is refused from then on, and the status reason stays `CLOSED`.
   - `dispose()`: unsubscribes, stops reporting dispatches, and closes the gate.
   - `hub.load` is tracked as an update, because recovery may write.
+  - With `SERVICE_AND_STORAGE`, `reload()` is one update (`app.reload`) of its own, from the call until
+    after the `loaded` dispatch. That covers the time `hub.info()` waits in the hub queue
+    (RF-F01-CANDIDATE-IR01-01).
 - **Verified (memory).**
   - Dispose before, together with, or after the end of a call.
   - A reload that recovers a broken file.
+  - A reload waiting behind a held read, with both T2 modes; a reload whose `hub.info()` fails; dispose
+    while a reload waits.
   - Resume after a failed update: reload, re-verify, explicit ON.
 - **Not verified.** The `App.tsx` lifecycle: window close, React StrictMode effects run twice, and hot
   reload. A gate created again after dispose was not tested either.
@@ -127,6 +133,8 @@ item.
   store, and whichever module owns the gate.
 - **Decisions before adoption.**
   - What owns the gate: one per window, or one per data root.
+  - Which other app-level sequences call several service members and must count as one update.
+    Only `reload` was modeled.
   - Whether a reload keeps the same gate (OFF) or creates a new one.
   - What a StrictMode mount, unmount and mount again means for `close()`.
 - **Proposal.** Create the gate and the wiring in one effect, and close the gate in that effect's

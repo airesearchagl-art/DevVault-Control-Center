@@ -248,7 +248,10 @@ export interface ServiceWiring {
   readonly backend: StorageBackend;
   readonly hub: ReviewHub;
   readonly settings: LocaleStore;
-  /** App.tsx `reload`: storage info, `hub.load()`, then a `loaded` dispatch. */
+  /**
+   * App.tsx `reload`: storage info, `hub.load()`, then a `loaded` dispatch. With `SERVICE_AND_STORAGE`
+   * the whole reload is one update (`app.reload`), from the call until after the dispatch.
+   */
   reload(): Promise<void>;
   /** App.tsx start-up: the preferences are read and adopted by the settings store. */
   loadSettings(): Promise<void>;
@@ -263,14 +266,16 @@ export interface ServiceWiring {
  * - `STORAGE`: storage operations only (DVCC-F01-SERVICE-INTEGRATION-01). An update waiting in a
  *   service queue is not seen until it reaches storage;
  * - `SERVICE_AND_STORAGE`: also every update of the hub and the settings store, from the call
- *   (`trackService`), as a separate count (DVCC-F01-CANDIDATE-COMPLETE-01).
+ *   (`trackService`), and each `reload()` from its call until after its `loaded` dispatch, as a
+ *   separate count (DVCC-F01-CANDIDATE-COMPLETE-01, RF-F01-CANDIDATE-IR01-01).
  */
 export type Tracking = "STORAGE" | "SERVICE_AND_STORAGE";
 
 /**
  * Connects the real services to the gate, the way App.tsx connects them to the reducer:
  * - every storage operation of the hub and of the settings store goes through `observeStorage`;
- * - with `SERVICE_AND_STORAGE`, every hub and settings update goes through `trackService` as well;
+ * - with `SERVICE_AND_STORAGE`, every hub and settings update goes through `trackService` as well,
+ *   and `reload()` is tracked as one update of its own;
  * - `hub.subscribe` feeds `hubCommitted` to the app, as in App.tsx;
  * - every app dispatch is reported to the gate by its action type.
  */
@@ -294,9 +299,18 @@ export function wireServices(
     hub,
     settings,
     async reload() {
-      const storage = await hub.info();
-      const data = await hub.load();
-      app.dispatch({ type: "loaded", storage, data });
+      // `hub.info()` is a read that can wait in the hub queue, and once `hub.load()` settles the app
+      // has not adopted its data yet (RF-F01-CANDIDATE-IR01-01). So with service tracking the reload is
+      // one update from this call until after the dispatch, with a token of its own: `hub.load` and the
+      // storage writes end only theirs. It ends whether the reload succeeds or fails.
+      const token = services ? gate.beginOperation("app.reload") : null;
+      try {
+        const storage = await hub.info();
+        const data = await hub.load();
+        app.dispatch({ type: "loaded", storage, data });
+      } finally {
+        token?.end();
+      }
     },
     async loadSettings() {
       settings.adopt(await loadSettings(backend));

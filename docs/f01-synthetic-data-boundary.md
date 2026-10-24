@@ -1,9 +1,9 @@
 # F01 synthetic-only pilot data boundary (preparation)
 
 Status: **preparation for RF-5C-F01** (tasks `DVCC-F01-SYNTHETIC-PREP-01`,
-`DVCC-F01-ACCESS-GATE-HARNESS-01`, `DVCC-F01-SERVICE-INTEGRATION-01`, `DVCC-F01-CANDIDATE-COMPLETE-01`). This document is a candidate
-specification. It does not close F01, adopt an architecture, start Phase 5C or authorize any transport.
-Nothing in DVCC itself changes.
+`DVCC-F01-ACCESS-GATE-HARNESS-01`, `DVCC-F01-SERVICE-INTEGRATION-01`, `DVCC-F01-CANDIDATE-COMPLETE-01`,
+`DVCC-F01-CANDIDATE-IR01-FIX-01`). This document is a candidate specification. It does not close F01,
+adopt an architecture, start Phase 5C or authorize any transport. Nothing in DVCC itself changes.
 
 "Implemented" below means implemented in one of these, and not in the DVCC application:
 - the **reference verifier** (`scripts/lib/f01-synthetic-fixture.mjs`, tests in
@@ -466,6 +466,16 @@ handled here by test-only candidates. Neither is a decision to adopt it. The tes
     `loadArtifacts` are reads. `subscribe`, `snapshot`, `session`, `adopt` and the store's getters are
     local.
   - `wireServices(..., "SERVICE_AND_STORAGE")` uses it. The default (`"STORAGE"`) is the §6.8 wiring.
+- **The reload as one update (RF-F01-CANDIDATE-IR01-01).** The wiring's `reload()`, like App.tsx's, asks
+  `hub.info()`, then calls `hub.load()`, then dispatches `loaded`.
+  - `hub.info()` is a read, and it can wait in the hub queue behind another call. When `hub.load()`
+    settles, the app has not dispatched its data yet.
+  - With `SERVICE_AND_STORAGE`, `reload()` calls `beginOperation("app.reload")` as it is called. It
+    ends that token after the `loaded` dispatch, or when the reload fails.
+  - The token is its own: `hub.load` and the storage writes end only theirs. A reload alone counts 1,
+    and 2 while its `hub.load` is pending.
+  - With `STORAGE`, `reload()` is unchanged. `loadSettings()` is unchanged in both: it only reads
+    storage, and `adopt` is local.
 - **Gate additions.**
   - `beginOperation(name)` and `pendingOperations()`. T0 is refused while the count is above zero
     (`OPERATION_PENDING`, checked before `WRITE_PENDING`).
@@ -517,7 +527,10 @@ The candidate covers the state at the moment of its checks. It does not cover:
 |---|---|
 | An edit waiting in the hub queue behind a held read | OFF at the call (`OPERATION_STARTED`) while storage has not been asked to write. A ticket past T1 is refused, and T0 is refused (`OPERATION_PENDING`). With the §6.8 wiring (`STORAGE`), the queued edit is invisible: the ticket is sent, T0 turns ON again, and another request is served before the edit reaches storage |
 | An update still queued after the one before it settled | the first update failed, no write is in progress and the store verifies, yet T0 is refused (`OPERATION_PENDING`) |
-| A reload that recovers a broken `projects.json` | the load is pending from its call. After its set-aside and restore writes have settled (writes 0), it is still pending (operations 1), and T0 is refused |
+| A reload that recovers a broken `projects.json` | the reload and its load are pending from the call. After the set-aside and restore writes have settled (writes 0), both are still pending (operations 2), and T0 is refused |
+| A reload waiting in the hub queue behind a held read (`hub.info()` not yet run), with both T2 modes | OFF at the call (`OPERATION_STARTED`, operations 1). While it waits, nothing is sent: a ticket past T1 is refused (`ACCESS_OFF`, or `UPDATE_PENDING` with the candidate T2), a new request is refused at T1 and at T2 (`ACCESS_OFF`), and T0 is refused (`OPERATION_PENDING`). At the `loaded` dispatch, `hub.load` has settled and the reload has not (operations 1). Afterwards both counts are 0, and access stays OFF until an explicit T0. With the §6.8 wiring (`STORAGE`), access stays ON while the reload waits: the ticket, the new request and a request after T0 are all sent (3) |
+| A reload whose `hub.info()` fails | OFF at the call. The reload's token ends on the rejection, `hub.load` is never called, and nothing is dispatched. Both counts are 0, and access stays OFF until an explicit T0 |
+| Dispose while a reload waits | the reload still runs and its data reaches the app, but no event reaches the gate. Its token ends, the reason stays `CLOSED`, and T0 is refused (`CLOSED`) |
 | A hub edit and a settings save overlapping, one of them failing, in either settle order (4 cases) | both are counted from the call, before either reaches storage. After the first settles, T0 is refused. At the end both counts are 0, and the store shows only the change that succeeded |
 | A Codex path save queued behind a language save (settings queue) | counted from its call, and each call settles on its own. The path is stored as a string only |
 | An update refused before storage (unknown project, unknown review, a settings store that will not write) | OFF from the call, and nothing is written. Once it settles, only an explicit T0 turns ON, and an old ticket stays refused (`EPOCH_MISMATCH`) |
@@ -659,6 +672,18 @@ one machine, so it says nothing about V-10.
 
   The 31 gate variants and the 15 wiring variants above were run again on the changed code, and every
   one was still caught.
+- The reload fix of §6.9 (RF-F01-CANDIDATE-IR01-01) was checked the same way. Before the fix, the four
+  new `SERVICE_AND_STORAGE` reload tests failed at their first check: nothing was pending at the call.
+  - With either T2, access stayed ON while the reload waited. The ticket past T1, a new request and a
+    request after T0 were all sent (3), and nothing was pending at the `loaded` dispatch.
+  - When `hub.info()` failed, access stayed ON, and the ticket was sent.
+
+  Five variants were applied one at a time over the three gate test files (209 tests), and each made at
+  least one test fail. Every touched file's SHA-256 was checked after each restore. The variants: the
+  reload not tracked; tracked only once `hub.info()` has resolved; ended when `hub.load()` settles,
+  before the dispatch; ended only on success; and the `STORAGE` default tracking the reload as well.
+  The 21 candidate variants, the 31 gate variants and the 15 wiring variants were run again on the
+  fixed code, and every one was still caught.
 - How a pilot DVCC is pointed at a copy of the fixture (`DVCC_DATA_DIR`), and what happens to the lock
   file and backups it creates there, needs its own runbook.
 
