@@ -1,0 +1,49 @@
+{
+  "format": "dvcc.f01-synthetic-manifest",
+  "version": 1,
+  "fixture_id": "f01-synthetic-v1",
+  "hash": "sha256",
+  "files": [
+    {
+      "path": "projects.json",
+      "size": 510,
+      "sha256": "1f3e1b28165ec0facdeae382664fbf28605e794373a132db52ce44290b9a5246"
+    },
+    {
+      "path": "reviews/rv-20261020-synth1/checkpoint.md",
+      "size": 25,
+      "sha256": "272b662079a71754b0b95128c01a31e4d4dcecf33cd2f74796d6af5c0a21d4da"
+    },
+    {
+      "path": "reviews/rv-20261020-synth1/events.jsonl",
+      "size": 1179,
+      "sha256": "f2351962a526ad0ea9ce26654c0ef8dfc72d550dfc72c57cc8541bca429e71d9"
+    },
+    {
+      "path": "reviews/rv-20261020-synth1/request-r1.md",
+      "size": 33,
+      "sha256": "903079a99c33b05855a72aeb15cb57f7b69f000296b5fd085dd15854b8537574"
+    },
+    {
+      "path": "reviews/rv-20261020-synth1/result-r1.md",
+      "size": 31,
+      "sha256": "5bdef5a5dfed2412c9713056a2e37f8b203266bae6b6ea477565663968655792"
+    },
+    {
+      "path": "reviews/rv-20261020-synth1/session.json",
+      "size": 937,
+      "sha256": "bdc7a12f1fb7bc0c0f51f7457cb4f6b12f0255c912df7a65439056d8aa927741"
+    },
+    {
+      "path": "settings.json",
+      "size": 43,
+      "sha256": "79f3dec1efbc4e3b58774acc34e3d85fa97bb4ff7ba06acf39653ea35136133f"
+    }
+  ],
+  "runtime_managed": [
+    {
+      "path": ".dvcc.lock",
+      "rule": "OPTIONAL_EMPTY_REGULAR_FILE"
+    }
+  ]
+}

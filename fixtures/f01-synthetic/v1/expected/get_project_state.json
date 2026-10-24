@@ -1,0 +1,62 @@
+{
+  "contract": "dvcc.control-read",
+  "version": 1,
+  "operation": "get_project_state",
+  "snapshot_id": "snap-f0100000-0000-4000-8000-000000000001",
+  "generated_at": "2026-10-20T01:00:00.000Z",
+  "complete": true,
+  "limits_applied": [],
+  "omitted_sections": [
+    "ide_sessions",
+    "runs",
+    "action_eligibility",
+    "queue_order"
+  ],
+  "data": {
+    "project_id": "synthetic-alpha",
+    "registry_health": "ok",
+    "repository": {
+      "class": "HUMAN_CONFIRMED",
+      "value": {
+        "host": "github.com",
+        "owner": "example-org",
+        "name": "synthetic-alpha"
+      },
+      "confirmation": "ENTERED",
+      "recorded_at": null,
+      "evidence_ref": "dvcc:project/synthetic-alpha/repository"
+    },
+    "local_root": {
+      "class": "DERIVED",
+      "value": true,
+      "rule": "project.local-root-presence@1",
+      "derived_from": [
+        "dvcc:project/synthetic-alpha/local-root"
+      ],
+      "basis_observed_at": null,
+      "basis_recorded_at": null,
+      "path": {
+        "class": "BLOCKED",
+        "blocked_reason": "WITHHELD_BY_POLICY"
+      }
+    },
+    "git": {
+      "head": {
+        "class": "UNKNOWN",
+        "unknown_reason": "NOT_OBSERVED"
+      },
+      "dirty": {
+        "class": "UNKNOWN",
+        "unknown_reason": "NOT_OBSERVED"
+      },
+      "detached": {
+        "class": "UNKNOWN",
+        "unknown_reason": "NOT_OBSERVED"
+      }
+    },
+    "review_session_ids": [
+      "rv-20261020-synth1"
+    ],
+    "closed_review_count": 0
+  }
+}

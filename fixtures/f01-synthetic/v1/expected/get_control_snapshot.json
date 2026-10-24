@@ -1,0 +1,153 @@
+{
+  "contract": "dvcc.control-read",
+  "version": 1,
+  "operation": "get_control_snapshot",
+  "snapshot_id": "snap-f0100000-0000-4000-8000-000000000001",
+  "generated_at": "2026-10-20T01:00:00.000Z",
+  "complete": true,
+  "limits_applied": [],
+  "omitted_sections": [
+    "ide_sessions",
+    "runs",
+    "action_eligibility",
+    "queue_order"
+  ],
+  "data": {
+    "project": {
+      "project_id": "synthetic-alpha",
+      "registry_health": "ok",
+      "repository": {
+        "class": "HUMAN_CONFIRMED",
+        "value": {
+          "host": "github.com",
+          "owner": "example-org",
+          "name": "synthetic-alpha"
+        },
+        "confirmation": "ENTERED",
+        "recorded_at": null,
+        "evidence_ref": "dvcc:project/synthetic-alpha/repository"
+      },
+      "local_root": {
+        "class": "DERIVED",
+        "value": true,
+        "rule": "project.local-root-presence@1",
+        "derived_from": [
+          "dvcc:project/synthetic-alpha/local-root"
+        ],
+        "basis_observed_at": null,
+        "basis_recorded_at": null,
+        "path": {
+          "class": "BLOCKED",
+          "blocked_reason": "WITHHELD_BY_POLICY"
+        }
+      },
+      "git": {
+        "head": {
+          "class": "UNKNOWN",
+          "unknown_reason": "NOT_OBSERVED"
+        },
+        "dirty": {
+          "class": "UNKNOWN",
+          "unknown_reason": "NOT_OBSERVED"
+        },
+        "detached": {
+          "class": "UNKNOWN",
+          "unknown_reason": "NOT_OBSERVED"
+        }
+      },
+      "review_session_ids": [
+        "rv-20261020-synth1"
+      ],
+      "closed_review_count": 0
+    },
+    "reviews": [
+      {
+        "review_session_id": "rv-20261020-synth1",
+        "project_id": "synthetic-alpha",
+        "file_health": "ok",
+        "review_state": {
+          "class": "HUMAN_CONFIRMED",
+          "value": "FIX_REQUIRED",
+          "confirmation": "EXPLICIT",
+          "recorded_at": null,
+          "evidence_ref": "dvcc:review/rv-20261020-synth1/field/review-state"
+        },
+        "resource_state": {
+          "class": "HUMAN_CONFIRMED",
+          "value": "HOT",
+          "confirmation": "ENTERED",
+          "recorded_at": null,
+          "evidence_ref": "dvcc:review/rv-20261020-synth1/field/resource-state"
+        },
+        "pr_number": {
+          "class": "HUMAN_CONFIRMED",
+          "value": 7,
+          "confirmation": "ENTERED",
+          "recorded_at": null,
+          "evidence_ref": "dvcc:review/rv-20261020-synth1/field/pr-number"
+        },
+        "current_round": 1,
+        "rounds": [
+          {
+            "round": 1,
+            "expected_head": {
+              "class": "HUMAN_CONFIRMED",
+              "value": "f01a5e17f01a5e17f01a5e17f01a5e17f01a5e17",
+              "confirmation": "ENTERED",
+              "recorded_at": null,
+              "evidence_ref": "dvcc:review/rv-20261020-synth1/round/1/expected-head",
+              "binding": "EXACT"
+            },
+            "reviewed_head": {
+              "class": "HUMAN_CONFIRMED",
+              "value": "f01a5e17f01a5e17f01a5e17f01a5e17f01a5e17",
+              "confirmation": "ENTERED",
+              "recorded_at": "2026-10-20T00:30:00.000Z",
+              "evidence_ref": "dvcc:review/rv-20261020-synth1/round/1/reviewed-head"
+            },
+            "result_captured": {
+              "class": "DERIVED",
+              "value": true,
+              "rule": "round.result-presence@1",
+              "derived_from": [
+                "dvcc:review/rv-20261020-synth1/round/1/result"
+              ],
+              "basis_observed_at": null,
+              "basis_recorded_at": "2026-10-20T00:30:00.000Z"
+            },
+            "verdict": {
+              "class": "HUMAN_CONFIRMED",
+              "value": "FIX_REQUIRED",
+              "confirmation": "EXPLICIT",
+              "recorded_at": "2026-10-20T00:32:00.000Z",
+              "evidence_ref": "dvcc:review/rv-20261020-synth1/round/1/verdict"
+            },
+            "judgment_captured": {
+              "class": "DERIVED",
+              "value": false,
+              "rule": "round.judgment-presence@1",
+              "derived_from": [
+                "dvcc:review/rv-20261020-synth1/round/1/judgment"
+              ],
+              "basis_observed_at": null,
+              "basis_recorded_at": null
+            },
+            "risk_tier": {
+              "class": "UNKNOWN",
+              "unknown_reason": "NOTHING_RECORDED"
+            }
+          }
+        ],
+        "freshness": {
+          "class": "UNKNOWN",
+          "unknown_reason": "NOT_OBSERVED"
+        }
+      }
+    ],
+    "unattributable_review_count": 0,
+    "external_gates": {
+      "class": "UNKNOWN",
+      "unknown_reason": "NOT_TRACKED_BY_DVCC"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{"v":1,"ts":"2026-10-20T00:00:00.000Z","type":"review_created","reviewSessionId":"rv-20261020-synth1","round":1,"reviewState":{"from":null,"to":"NEW"},"resourceState":{"from":null,"to":"HOT"},"note":null}
+{"v":1,"ts":"2026-10-20T00:00:00.000Z","type":"review_ready","reviewSessionId":"rv-20261020-synth1","round":1,"reviewState":{"from":"NEW","to":"READY_FOR_REVIEW"},"resourceState":null,"note":null}
+{"v":1,"ts":"2026-10-20T00:05:00.000Z","type":"request_saved","reviewSessionId":"rv-20261020-synth1","round":1,"reviewState":null,"resourceState":null,"note":"request-r1.md"}
+{"v":1,"ts":"2026-10-20T00:06:00.000Z","type":"review_started","reviewSessionId":"rv-20261020-synth1","round":1,"reviewState":{"from":"READY_FOR_REVIEW","to":"REVIEWING"},"resourceState":null,"note":null}
+{"v":1,"ts":"2026-10-20T00:30:00.000Z","type":"result_captured","reviewSessionId":"rv-20261020-synth1","round":1,"reviewState":null,"resourceState":null,"note":"result-r1.md"}
+{"v":1,"ts":"2026-10-20T00:32:00.000Z","type":"verdict_confirmed","reviewSessionId":"rv-20261020-synth1","round":1,"reviewState":{"from":"REVIEWING","to":"FIX_REQUIRED"},"resourceState":null,"note":"SENTINEL_EVENT_NOTE"}

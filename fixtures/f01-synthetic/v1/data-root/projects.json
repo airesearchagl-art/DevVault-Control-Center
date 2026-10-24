@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "projects": [
+    {
+      "projectId": "synthetic-alpha",
+      "displayName": "SENTINEL_DISPLAY_NAME",
+      "repositoryUrl": "https://github.com/example-org/synthetic-alpha",
+      "localRoot": "X:\\SENTINEL_LOCAL_ROOT\\synthetic-alpha",
+      "developmentIde": "SENTINEL_IDE_LABEL",
+      "nextAction": "SENTINEL_PROJECT_NEXT_ACTION",
+      "notes": "SENTINEL_PROJECT_NOTES",
+      "createdAt": "2026-10-20T00:00:00.000Z",
+      "updatedAt": "2026-10-20T00:00:00.000Z"
+    }
+  ]
+}
