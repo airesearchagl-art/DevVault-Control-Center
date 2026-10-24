@@ -1,14 +1,19 @@
 # F01 synthetic-only pilot data boundary (preparation)
 
 Status: **preparation for RF-5C-F01** (tasks `DVCC-F01-SYNTHETIC-PREP-01`,
-`DVCC-F01-ACCESS-GATE-HARNESS-01`). This document is a candidate specification. It does not close F01,
-adopt an architecture, start Phase 5C or authorize any transport. Nothing in DVCC itself changes.
+`DVCC-F01-ACCESS-GATE-HARNESS-01`, `DVCC-F01-SERVICE-INTEGRATION-01`). This document is a candidate
+specification. It does not close F01, adopt an architecture, start Phase 5C or authorize any transport.
+Nothing in DVCC itself changes.
 
-"Implemented" below means implemented in the **reference verifier**
-(`scripts/lib/f01-synthetic-fixture.mjs`, tests in `src/test/f01SyntheticFixture.test.ts`) or in the
-**access-gate harness** (`scripts/lib/f01-access-gate-harness.mjs`, tests in
-`src/test/f01AccessGateHarness.test.ts`) — not in the DVCC application. Everything the application would
-need is listed in §6 as **NOT IMPLEMENTED**.
+"Implemented" below means implemented in one of these, and not in the DVCC application:
+- the **reference verifier** (`scripts/lib/f01-synthetic-fixture.mjs`, tests in
+  `src/test/f01SyntheticFixture.test.ts`);
+- the **access-gate harness** (`scripts/lib/f01-access-gate-harness.mjs`, tests in
+  `src/test/f01AccessGateHarness.test.ts`);
+- the **test-only service wiring** (`src/test/f01ServiceWiring.ts`, tests in
+  `src/test/f01ServiceIntegration.test.ts`).
+
+Everything the application would need is listed in §6 as **NOT IMPLEMENTED**.
 
 Out of scope: named pipes, process identity, DS-5C-01, MCP / tunnel / DOT connections, access to real
 data, and any change to what DVCC publishes.
@@ -24,6 +29,8 @@ data, and any change to what DVCC publishes.
 | `src/test/f01SyntheticFixture.test.ts` | Tests (part of `npm test`) |
 | `scripts/lib/f01-access-gate-harness.mjs` (+ `.d.mts`) | Candidate §6.5 / §6.6 access gate for synthetic data only: not imported by the product, no CLI, recording transport only (Node built-ins only) |
 | `src/test/f01AccessGateHarness.test.ts` | Tests of the gate (part of `npm test`) |
+| `src/test/f01ServiceWiring.ts` | Test-only wiring of the real `ReviewHub` and settings store to the gate (§6.8): storage observer, held writes, in-memory verification. Not imported by the product |
+| `src/test/f01ServiceIntegration.test.ts` | Tests started from real service calls (part of `npm test`) |
 
 ## 2. The synthetic fixture
 
@@ -192,8 +199,9 @@ Additions to the rules above:
 What the tests show, and what they do not:
 
 - **Events are simulated.** The tests call `notify`, or dispatch through the stand-in, which calls it.
-  Nothing connects the gate to the real `ReviewHub`, `App.tsx`, the settings service or the Tauri storage
-  commands, so it is not shown that every real path reports its change.
+  The harness tests connect the gate to neither the real `ReviewHub`, `App.tsx`, the settings service
+  nor the Tauri storage commands, so they do not show that every real path reports its change. §6.8
+  connects the real `ReviewHub` and settings store through test-only wiring.
 - **Changes on disk are real file edits** in the temp copy: a different language, a Codex path added to
   `settings.json`, an appended event, a removed file, and a `.bak`, `.tmp-` or `.corrupt-` file. The
   gate sees them only when it verifies the folder at T0 or T1. Until then access stays ON, because nothing
@@ -302,6 +310,133 @@ Not resolved by the harness:
 - Verification findings never leave the machine except as fixed codes.
 - The checks in §4 (no sentinel, no path, no file name) are a gate for any future adapter.
 
+### 6.8 Real services through test-only wiring
+
+Task `DVCC-F01-SERVICE-INTEGRATION-01`. **Still NOT IMPLEMENTED in DVCC.** `src/test/f01ServiceWiring.ts`
+is a candidate for how the product could connect the gate. Nothing in the product imports it. The tests
+are in `src/test/f01ServiceIntegration.test.ts`.
+
+What runs for real, and what stands in:
+
+| Part | In these tests |
+|---|---|
+| `ReviewHub`: its serial queue, `TrackedStorage`, `subscribe` and commit | real |
+| Settings: `loadSettings`, `createLocaleStore` (`save`, `saveCodexExecutablePath`, its own write queue) | real |
+| `loadAll` recovery (set-aside, restore from backup) and `setAsideProjectsFile`, through the hub | real |
+| `appReducer`, `controlReadSourceFrom`, `readControl` | real |
+| Storage | `MemoryStorage`, the in-memory mirror of the Rust storage semantics, seeded with the verified fixture. No Tauri command runs |
+| App.tsx | a stand-in that wires the hub and the reducer as App.tsx does: `subscribe` → `hubCommitted`, and `reload` → `loaded` |
+| A write in progress | `HeldStorage` holds each write until the test releases it. No timer is involved |
+| Transport | the recording stand-in |
+
+The wiring:
+
+- **Storage observer (`observeStorage`).** Every operation of the hub and of the settings store passes
+  through it.
+  - A write calls `gate.beginWrite()` before the store is touched, so access turns OFF at once. Writes
+    are `write`, `appendLine`, `quarantine`, `restoreBackup`, and any operation the observer does not
+    know.
+  - The write's token ends when the operation settles: resolved, rejected, or thrown synchronously.
+  - A write to `settings.json` is reported as `settings.write`, the others as `storage.*`. An unknown
+    operation is reported under its own name, which the gate treats as unknown (`UNKNOWN_EVENT`).
+  - A read (`info`, `read`, `listReviews`, `assertUnchanged`) is an undecided event. Each test states
+    `OFF` or `KEEP`.
+- **Hub subscription.** `hub.subscribe` feeds `hubCommitted` to the reducer. Every dispatch is reported
+  to the gate under its action type.
+- **Verifying the store the services use.**
+  - T0 and T1 verify the in-memory store against the pinned manifest with the reference verifier's own
+    decision function (`evaluateEntries`). They read the store directly, not through the observer.
+  - Disk is used only to write the store out to a `dvcc-f01-*` temp copy, which the disk verifier then
+    checks.
+- **Dispose** unsubscribes and closes the gate. Since events can no longer arrive, T0 is refused from
+  then on (`CLOSED`).
+
+Additions to the gate harness:
+
+- `beginWrite(event)` returns a token with `end()`. The gate keeps a pending count, and `turnOn()` is
+  refused while it is above zero (`WRITE_PENDING`). Each token's `end()` counts once.
+- A `verifyStorage` option. The default, the data folder on disk, is unchanged for the earlier tests.
+- `close()`.
+
+This is a candidate in-process mechanism. It does not implement or reproduce `DataRoot::exclusive`, and
+it says nothing about other processes.
+
+**Results.** Every scenario below starts from real service calls; the tests never call `notify` for these.
+
+| Scenario | Result |
+|---|---|
+| Hub project edit, held in progress | OFF as the write starts, before the data changes. While it is pending: a ticket past T1 is refused, new requests are refused, and T0 is refused (`WRITE_PENDING`). Once it settles: `hubCommitted`, still OFF, and T0 refused (`VERIFICATION_FAILED`) |
+| A write succeeds, or fails | access never comes back ON by itself. After a failure the data is unchanged, and an explicit T0 turns ON |
+| Two overlapping writes (hub and settings), in either settle order, both succeeding or both failing | while one is still pending, T0 is refused (`WRITE_PENDING`) |
+| Exceptions | a synchronous throw and a rejection both end their tokens. A token ended three times counts once. An old ticket stays refused (`EPOCH_MISMATCH`) |
+| `ReviewHub.apply` (a session write, then an event append) | OFF from the first write; the commit follows both |
+| Language save | OFF through the storage write alone. The source digest does not change, because settings are not in the source |
+| Fictional Codex path saved, then cleared | stored as a string only; nothing looks it up or starts it, and it never reaches the source. Clearing it restores the bytes but leaves `settings.json.bak`, so T0 stays refused |
+| Reload of a broken `projects.json` that has a valid backup | `quarantine` and `restoreBackup` each keep access OFF while in progress, then `loaded`. T0 is refused (`.bak`, `.corrupt-1`) |
+| Each storage write called through the observer | OFF from its start, pending until it settles |
+| `CONFLICT`, from the hub or from the settings store | OFF, and nothing is overwritten. The settings store becomes read-only, and later saves never reach storage |
+| Consecutive settings saves | the second starts only after the first settles (settings queue). Pending throughout; T0 refused |
+| Unsubscribe | commits no longer reach the app, but writes still turn access OFF, and T0 refuses the stale state |
+| Dispose | the gate is closed; T0 is refused even over unchanged data |
+| Reads (loading review artifacts) | with `OFF`, access turns OFF. With `KEEP`, it stays ON, and no artifact body reaches a response |
+| Unknown storage operation | OFF, and pending until it settles |
+| Ordered sequences | see below |
+| In memory compared with on disk | five changes made by service calls give the same findings in memory as in a written-out temp copy: a language save, a project edit, a new review, recovery from backup, and a set-aside. For the last two, a broken `projects.json` is planted first. The unchanged store verifies on disk as well |
+| Restoring content | does not turn access ON. Only an explicit T0, once the store equals the baseline, does |
+| Disclosure | the three operations equal the goldens. Five error responses are checked as well. No response carries a sentinel, path, setting, artifact body, binding value or secret-like pattern |
+
+The ordered sequences:
+
+- a write during T0 gives `CHANGED_DURING_CHECK`;
+- a write between T1 and T2 refuses the send;
+- after a failure, a reload and an explicit ON serve the goldens again, and the old ticket stays refused;
+- interleaved tickets are each sent at most once, and only before the write;
+- releasing a held write is not the same as settling it.
+
+What this does not show, and what still constrains it:
+
+- **A writer that bypasses the observer is a missed notification.** This was tested with a settings store
+  on the unobserved backend:
+  - the write raises no event, and access stays ON;
+  - a ticket already past T1 is still sent, because T2 does not re-verify and settings are not in the
+    source;
+  - the next T1 refuses.
+
+  So every writer must be wired.
+- **Writes queued inside a service are not counted** (the settings queue, the hub queue). They count
+  only once they reach storage. Nothing has changed before then, but the gate cannot see a pending
+  intention.
+- **Memory has no links, handles, reparse points or temp files** (temp files come from Rust's
+  `write_atomic`). Those rules stay with the disk verifier (§3) and its tests.
+- **The Rust side did not run.** `MemoryStorage` mirrors the Rust semantics; the Tauri commands and Rust
+  storage were not executed.
+- **One process only.** Other processes (an editor, a sync client) are seen only when T0 or T1 verifies
+  the store.
+
+Product behavior recorded here, not changed:
+
+- **A partial failure that commits nothing.** In a suspend, `checkpoint.md` is written first. If the
+  following `session.json` write fails, nothing is committed, so there is no `hubCommitted`. The source
+  digest does not change either, because artifacts are not in the source. Only the storage observer and
+  verification see the change.
+- **A failed event append** is returned as a warning, and the session write is still committed.
+- **Settings writes bypass `ReviewHub`** (already noted in §5).
+
+None of these is a defect of the product as specified. A hub subscription alone would miss the first and
+the settings writes.
+
+Decisions needed before any product integration:
+
+- **Placement.** Where the observer sits: around `tauriStorage`, for every writer including the settings
+  store and any future one. Also how that placement is enforced.
+- **The lock.** How a write in progress relates to `DataRoot::exclusive`, and whether other processes
+  are in scope.
+- **Undecided actions.** Whether reads and UI-only actions turn access OFF (§6.5).
+- **T2.** Whether T2 should re-verify the store. That would close the bypass and other-process window,
+  at the cost of one verification per send.
+- **`close()`.** What it means in the app's lifecycle: window close, reload, StrictMode effects.
+- **The real data folder.** Its production verifier (HD-06, reparse checks).
+
 ## 7. Not verified, not decided
 
 - Real Windows behavior of the reference verifier with links, junctions and other reparse tags.
@@ -310,8 +445,10 @@ Not resolved by the harness:
 - SHA-256 cost for V-10 (not measured).
 - HD-06, the application's SHA-256 implementation, is undecided. The reference verifier and the
   access-gate harness use Node's built-in `crypto` and imply nothing for Rust.
-- The access gate is connected to nothing real. No event from `ReviewHub`, `App.tsx`, the settings
-  service or the storage commands reaches it, and no folder watcher exists (§6.5).
+- The product connects the gate to nothing, and no folder watcher exists (§6.5).
+  - The test-only wiring (§6.8) connects the real `ReviewHub`, settings store and reducer, but only over
+    an in-memory store.
+  - `App.tsx` itself, the Tauri storage commands and the Rust side are not connected.
 - The harness reuses the reference verifier, so the Windows lock and reparse-point items above remain
   unverified.
 - The window between T2 and the actual send, and file changes by other processes after T1, are not
@@ -340,6 +477,15 @@ Not resolved by the harness:
   In some variants another check still refused the request. Those were caught by tests that assert
   which stage refused, or with which code. For example, without the T1 digest check the request is still
   refused at T2, and the test fails because a response was built at T1.
+- The service wiring (§6.8) was checked the same way. One guard was disabled at a time (15 variants),
+  and each made at least one test fail:
+  - in the gate: a starting write that does not turn access OFF; T0 ignoring pending writes; a boolean
+    instead of a count; a token that counts every `end()`; `close()` not blocking T0; old tickets not
+    refused at T2;
+  - in the wiring: a rejected write, or one that throws synchronously, never ending its token; access
+    turned OFF only once a write has settled; unknown operations treated as reads; the hub subscription
+    removed; dispatches not reported to the gate; the settings store on the unobserved backend; dispose
+    not closing the gate; the in-memory verifier skipping backups.
 - How a pilot DVCC is pointed at a copy of the fixture (`DVCC_DATA_DIR`), and what happens to the lock
   file and backups it creates there, needs its own runbook.
 
@@ -350,6 +496,7 @@ node scripts/lib/f01-synthetic-fixture.mjs verify
 node scripts/lib/f01-synthetic-fixture.mjs print-manifest
 npx vitest run src/test/f01SyntheticFixture.test.ts
 npx vitest run src/test/f01AccessGateHarness.test.ts
+npx vitest run src/test/f01ServiceIntegration.test.ts
 npm run typecheck
 ```
 
