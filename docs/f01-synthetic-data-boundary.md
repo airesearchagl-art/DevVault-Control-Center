@@ -1,7 +1,7 @@
 # F01 synthetic-only pilot data boundary (preparation)
 
 Status: **preparation for RF-5C-F01** (tasks `DVCC-F01-SYNTHETIC-PREP-01`,
-`DVCC-F01-ACCESS-GATE-HARNESS-01`, `DVCC-F01-SERVICE-INTEGRATION-01`). This document is a candidate
+`DVCC-F01-ACCESS-GATE-HARNESS-01`, `DVCC-F01-SERVICE-INTEGRATION-01`, `DVCC-F01-CANDIDATE-COMPLETE-01`). This document is a candidate
 specification. It does not close F01, adopt an architecture, start Phase 5C or authorize any transport.
 Nothing in DVCC itself changes.
 
@@ -11,7 +11,10 @@ Nothing in DVCC itself changes.
 - the **access-gate harness** (`scripts/lib/f01-access-gate-harness.mjs`, tests in
   `src/test/f01AccessGateHarness.test.ts`);
 - the **test-only service wiring** (`src/test/f01ServiceWiring.ts`, tests in
-  `src/test/f01ServiceIntegration.test.ts`).
+  `src/test/f01ServiceIntegration.test.ts` and `src/test/f01CandidateComplete.test.ts`).
+
+What the product would still need before any integration is listed item by item in
+[`f01-product-integration-conditions.md`](f01-product-integration-conditions.md).
 
 Everything the application would need is listed in §6 as **NOT IMPLEMENTED**.
 
@@ -31,6 +34,9 @@ data, and any change to what DVCC publishes.
 | `src/test/f01AccessGateHarness.test.ts` | Tests of the gate (part of `npm test`) |
 | `src/test/f01ServiceWiring.ts` | Test-only wiring of the real `ReviewHub` and settings store to the gate (§6.8): storage observer, held writes, in-memory verification. Not imported by the product |
 | `src/test/f01ServiceIntegration.test.ts` | Tests started from real service calls (part of `npm test`) |
+| `src/test/f01GateRig.ts` | Test-only set-up shared by the two service test files (fixture baseline, rig, helpers). Not imported by the product |
+| `src/test/f01CandidateComplete.test.ts` | Tests of the service-entry tracking and the candidate T2 (§6.9), in memory and on a temp copy (part of `npm test`) |
+| `docs/f01-product-integration-conditions.md` | The remaining conditions for a product integration, item by item (not an adoption) |
 
 ## 2. The synthetic fixture
 
@@ -300,7 +306,8 @@ Not resolved by the harness:
   transport run in one synchronous call. A real transport is asynchronous and leaves the process.
 - **A file change by another process after T1.** T2 does not re-verify the folder, so the request
   verified at T1 is still sent, with the payload built at T1. The next T1 refuses. This residual window
-  is tested as such.
+  is tested as such. A T2 that re-verifies the store is kept beside it as a candidate for comparison
+  (§6.9); the default is unchanged.
 - **Holding `DataRoot::exclusive` during T1, and bounding that time.** The harness has no lock, so this
   is not modeled.
 
@@ -405,7 +412,7 @@ What this does not show, and what still constrains it:
   So every writer must be wired.
 - **Writes queued inside a service are not counted** (the settings queue, the hub queue). They count
   only once they reach storage. Nothing has changed before then, but the gate cannot see a pending
-  intention.
+  intention. §6.9 adds a candidate that counts them from the service call.
 - **Memory has no links, handles, reparse points or temp files** (temp files come from Rust's
   `write_atomic`). Those rules stay with the disk verifier (§3) and its tests.
 - **The Rust side did not run.** `MemoryStorage` mirrors the Rust semantics; the Tauri commands and Rust
@@ -433,26 +440,170 @@ Decisions needed before any product integration:
   are in scope.
 - **Undecided actions.** Whether reads and UI-only actions turn access OFF (§6.5).
 - **T2.** Whether T2 should re-verify the store. That would close the bypass and other-process window,
-  at the cost of one verification per send.
+  at the cost of one verification per send. §6.9 has the candidate and the comparison; nothing is
+  decided.
 - **`close()`.** What it means in the app's lifecycle: window close, reload, StrictMode effects.
 - **The real data folder.** Its production verifier (HD-06, reparse checks).
+
+### 6.9 Updates tracked from the service call, and a T2 that re-verifies the store (candidates)
+
+Task `DVCC-F01-CANDIDATE-COMPLETE-01`. **Still NOT IMPLEMENTED in DVCC.** Two gaps left by §6.8 are
+handled here by test-only candidates. Neither is a decision to adopt it. The tests are in
+`src/test/f01CandidateComplete.test.ts`. The set-up shared with the §6.8 tests moved to
+`src/test/f01GateRig.ts`; the §6.8 test bodies are unchanged.
+
+**Gap 1: an update waiting in a service queue was not counted.** The candidate:
+
+- **Tracking from the call (`trackService`, in `f01ServiceWiring.ts`).** It wraps the real `ReviewHub`
+  and the real settings store.
+  - An update calls `gate.beginOperation()` when it is called, before the service queues it. Its token
+    ends when the returned promise settles (resolved, including a refusal result, or rejected) or when
+    the call throws synchronously.
+  - The members are classified in typed tables (`HUB_CALLS`, `SETTINGS_CALLS`) over every public
+    member, so a member added or removed without a classification fails the typecheck. A member
+    missing from the table at run time is tracked as an update (fail closed).
+  - `hub.load` is an update, because recovery may set a file aside or restore it. `info` and
+    `loadArtifacts` are reads. `subscribe`, `snapshot`, `session`, `adopt` and the store's getters are
+    local.
+  - `wireServices(..., "SERVICE_AND_STORAGE")` uses it. The default (`"STORAGE"`) is the §6.8 wiring.
+- **Gate additions.**
+  - `beginOperation(name)` and `pendingOperations()`. T0 is refused while the count is above zero
+    (`OPERATION_PENDING`, checked before `WRITE_PENDING`).
+  - Once the gate is closed, its status reason stays `CLOSED`.
+- **What the two counts mean.**
+  - `pendingOperations`: service updates called and not yet settled. This includes updates waiting in
+    the hub's or the settings store's queue, and updates that never reach storage.
+  - `pendingWrites`: storage write calls started at the backend and not yet settled.
+  - A storage write that settles ends only its own token, never the update that made it.
+
+  Neither count is a lock. This does not implement or reproduce `DataRoot::exclusive`, and it says
+  nothing about other processes.
+
+**Gap 2: T2 did not look at storage.** The candidate is `t2Check: "REVERIFY_STORAGE"`. The default stays
+`SOURCE_ONLY`, the original T2, and every test that relies on it is unchanged. The candidate T2 runs
+these checks in order:
+
+1. The ticket is `VERIFIED`. Then:
+   - the gate is not closed (`CLOSED`);
+   - no update or write is pending (`UPDATE_PENDING`);
+   - access is ON (`ACCESS_OFF`);
+   - the epoch is current (`EPOCH_MISMATCH`).
+2. The manifest bytes hash to the pin and to the binding (`MANIFEST_CHANGED`).
+3. The store verifies against that manifest (`VERIFICATION_FAILED`). Then it checks that nothing moved
+   during the verification (closed, pending, binding or epoch; `CHANGED_DURING_CHECK`).
+4. The live source is read. It checks again that nothing moved during the read
+   (`CHANGED_DURING_CHECK`), then that the digest equals the binding and the T1 digest
+   (`SOURCE_CHANGED`).
+5. The payload is handed over, once. A check that throws gives `CHECK_FAILED`.
+
+How refusals behave:
+
+- `MANIFEST_CHANGED`, `VERIFICATION_FAILED`, `SOURCE_CHANGED` and `CHECK_FAILED` turn access OFF.
+- The other codes mean that access is already OFF or the ticket is out of date.
+- Every refusal makes the ticket `REFUSED` and drops its payload.
+- `CLOSED` and `UPDATE_PENDING` come from the candidate only. In this gate, closing or starting an
+  update already clears the binding. Without these two checks the same tickets would be refused with
+  `ACCESS_OFF`; the checks give the more specific code.
+
+The candidate covers the state at the moment of its checks. It does not cover:
+
+- anything after the hand-over;
+- the history between checks: a change made and undone between T1 and T2 is not seen;
+- an asynchronous real send.
+
+**Results: tracking from the call** (`SERVICE_AND_STORAGE`, in memory, from real service calls).
+
+| Scenario | Result |
+|---|---|
+| An edit waiting in the hub queue behind a held read | OFF at the call (`OPERATION_STARTED`) while storage has not been asked to write. A ticket past T1 is refused, and T0 is refused (`OPERATION_PENDING`). With the §6.8 wiring (`STORAGE`), the queued edit is invisible: the ticket is sent, T0 turns ON again, and another request is served before the edit reaches storage |
+| An update still queued after the one before it settled | the first update failed, no write is in progress and the store verifies, yet T0 is refused (`OPERATION_PENDING`) |
+| A reload that recovers a broken `projects.json` | the load is pending from its call. After its set-aside and restore writes have settled (writes 0), it is still pending (operations 1), and T0 is refused |
+| A hub edit and a settings save overlapping, one of them failing, in either settle order (4 cases) | both are counted from the call, before either reaches storage. After the first settles, T0 is refused. At the end both counts are 0, and the store shows only the change that succeeded |
+| A Codex path save queued behind a language save (settings queue) | counted from its call, and each call settles on its own. The path is stored as a string only |
+| An update refused before storage (unknown project, unknown review, a settings store that will not write) | OFF from the call, and nothing is written. Once it settles, only an explicit T0 turns ON, and an old ticket stays refused (`EPOCH_MISMATCH`) |
+| A partial write, then a failure (suspend: `checkpoint.md` written, `session.json` failing) | pending until the call settles, then OFF. T0 refuses the partial change |
+| Dispose before, together with, or after the end of a call | the gate stays closed (`CLOSED`), and both counts return to 0. The commit reaches the app only when it came before dispose |
+| Resume | after a failed update: a reload, re-verification and an explicit ON serve the goldens again. The old ticket stays refused |
+| The tracker itself (a stand-in service, because the real services never throw synchronously) | a synchronous throw, a rejection and a refusal result each end the token. An update token counts once. An unknown hub method is tracked as an update |
+
+**Results: the candidate T2 compared with the original.**
+
+| After T1, not reported | `SOURCE_ONLY` (and the default) | `REVERIFY_STORAGE` |
+|---|---|---|
+| Seven file changes: the language in `settings.json`, the checkpoint body, a `session.json` field, an appended event, an added `.bak`, an added `.tmp-` file, a removed `request-r1.md` | sent (the payload built at T1). The next T1 refuses | `VERIFICATION_FAILED`, OFF, nothing sent. Same findings in memory and on disk |
+| A settings store on the unobserved backend saves the language | sent | `VERIFICATION_FAILED` |
+| The manifest bytes change | sent | `MANIFEST_CHANGED` |
+| A tracked update is pending at T2 | `ACCESS_OFF` | `UPDATE_PENDING` |
+| The wiring was disposed | `ACCESS_OFF` | `CLOSED` |
+| The source changed in place without an event | `SOURCE_CHANGED` | `SOURCE_CHANGED` |
+| A ticket from before OFF → T0 → ON | `EPOCH_MISMATCH` | `EPOCH_MISMATCH` |
+| The same ticket sent twice | sent once, then `OUT_OF_ORDER` | the same |
+
+These were tested with the candidate only:
+
+- **During the T2 store verification:** a settings save called, a storage write started, OFF, or dispose.
+  The result is `CHANGED_DURING_CHECK`, and the source is not read afterwards.
+- **During the T2 source read, after a successful verification:** an unchanged hub commit, a settings
+  save called, or OFF. The result is `CHANGED_DURING_CHECK`.
+- **Refused tickets stay refused.** This holds after the store is restored and access is ON again. A
+  throwing check gives `CHECK_FAILED` and turns access OFF, and that ticket can never be sent.
+- **Disclosure.** The three operations equal the goldens, in memory and on disk. Five error responses
+  were checked as well. No response carries a sentinel, path, setting, artifact body, binding value or
+  secret-like pattern.
+
+The §6.8 test of the missed notification is kept: with the original T2, the write that bypasses the
+wiring still goes out.
+
+**Where each result comes from.**
+
+- **Memory.** `MemoryStorage`, verified by `verifyMemoryStorage` (the reference verifier's
+  `evaluateEntries`). This covers every service scenario and the T2 comparisons above.
+- **Disk.** The reference disk verifier (`verifyDataRoot`) on `dvcc-f01-*` temp copies written from the
+  committed baseline.
+  - The unchanged copy serves the goldens with both T2 modes.
+  - The seven file changes give the same findings on disk as in memory. The original T2 sends; the
+    candidate refuses.
+- Neither covers links, junctions, other reparse points or Windows locks.
+
+**Cost (informal, not V-10).** One local run over a temp copy of the 7-file fixture, with a trivial source
+and response, n = 300 (Node 24, Windows 11):
+
+| Measured | Median | p95 |
+|---|---|---|
+| the folder verification alone | 3.1 ms | 3.9 ms |
+| one `handle()` with `SOURCE_ONLY` | 3.3 ms | 4.2 ms |
+| one `handle()` with `REVERIFY_STORAGE` | 7.2 ms | 9.5 ms |
+
+The candidate verifies the folder twice per request. The run used synthetic size, Node's crypto and
+one machine, so it says nothing about V-10.
+
+**What still constrains these candidates.**
+
+- **Unwired writers.** The candidate T2 sees a writer that bypasses the wiring only if its change is
+  still there at T2. Service tracking never sees it.
+- **The lock.** How the counts relate to `DataRoot::exclusive` and to Rust's command order is not
+  modeled.
+- **Other processes** are seen only through the T0, T1 and T2 verifications.
+- **Still open from earlier sections:** the T2-to-send window, and the undecided events (§6.5).
 
 ## 7. Not verified, not decided
 
 - Real Windows behavior of the reference verifier with links, junctions and other reparse tags.
 - Reading metadata of a held `.dvcc.lock` (§6.1).
 - The listing/reading race of V-F01-11 (not reproduced).
-- SHA-256 cost for V-10 (not measured).
+- SHA-256 cost for V-10 (not measured). §6.9 records one informal local timing over the 7-file synthetic
+  fixture, which says nothing about V-10.
 - HD-06, the application's SHA-256 implementation, is undecided. The reference verifier and the
   access-gate harness use Node's built-in `crypto` and imply nothing for Rust.
 - The product connects the gate to nothing, and no folder watcher exists (§6.5).
-  - The test-only wiring (§6.8) connects the real `ReviewHub`, settings store and reducer, but only over
-    an in-memory store.
+  - The test-only wiring (§6.8, and the service-entry tracking of §6.9) connects the real `ReviewHub`,
+    settings store and reducer, but only over an in-memory store.
   - `App.tsx` itself, the Tauri storage commands and the Rust side are not connected.
 - The harness reuses the reference verifier, so the Windows lock and reparse-point items above remain
   unverified.
 - The window between T2 and the actual send, and file changes by other processes after T1, are not
-  resolved (§6.6).
+  resolved (§6.6). The candidate T2 of §6.9 re-verifies the store at T2. That moves the last check to
+  T2, but the window after it remains, and nothing about it is decided.
 - Whether the undecided actions turn access OFF (§6.5) is still open.
 - Earlier mutation counts (38 / 42 variants) are not used as a fixed condition here. The reference
   verifier was checked locally by injecting faults one at a time; the tests caught each one:
@@ -486,6 +637,28 @@ Decisions needed before any product integration:
     turned OFF only once a write has settled; unknown operations treated as reads; the hub subscription
     removed; dispatches not reported to the gate; the settings store on the unobserved backend; dispose
     not closing the gate; the in-memory verifier skipping backups.
+- The candidates of §6.9 were checked the same way. One guard was disabled at a time (21 variants), the
+  three gate test files were run (204 tests), and each variant made at least one test fail. Every
+  touched file's SHA-256 was checked after each restore:
+  - service-entry tracking: tracking removed altogether; T0 ignoring pending updates; an update token
+    that counts every `end()`; a called update that does not turn access OFF; an update ending when
+    the call returns rather than when its promise settles; a rejected update, or one that throws
+    synchronously, never ending its token; `hub.load` classified as a read; an unknown member passed
+    through untracked; the settings store not tracked; a settled storage write that also ends pending
+    updates;
+  - candidate T2: the manifest check; the store verification result; the re-check after the
+    verification; the re-check after the source read; a throwing check that keeps the ticket sendable;
+    the epoch check; the pending check; the closed check; the source digest check; and the default
+    silently switched to the candidate.
+
+  Some variants were refused anyway by another check, and were caught by the code a test expects. Two
+  examples:
+  - Without the candidate's epoch check, an old ticket is still refused, with `CHANGED_DURING_CHECK`.
+  - When a throwing check keeps the ticket, the epoch still stops it from being sent later; the test
+    fails on the code.
+
+  The 31 gate variants and the 15 wiring variants above were run again on the changed code, and every
+  one was still caught.
 - How a pilot DVCC is pointed at a copy of the fixture (`DVCC_DATA_DIR`), and what happens to the lock
   file and backups it creates there, needs its own runbook.
 
@@ -497,6 +670,7 @@ node scripts/lib/f01-synthetic-fixture.mjs print-manifest
 npx vitest run src/test/f01SyntheticFixture.test.ts
 npx vitest run src/test/f01AccessGateHarness.test.ts
 npx vitest run src/test/f01ServiceIntegration.test.ts
+npx vitest run src/test/f01CandidateComplete.test.ts
 npm run typecheck
 ```
 
