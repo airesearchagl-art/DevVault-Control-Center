@@ -223,6 +223,24 @@ function verifiedTicket(r: Rig): ReturnType<AccessGate["receive"]> {
   return ticket;
 }
 
+/** A `readSource` that raises one event during its first read, then reads the live state. */
+function raiseOnce(r: Rig, raise: (r: Rig) => void): () => unknown {
+  let raised = false;
+  return () => {
+    if (!raised) {
+      raised = true;
+      raise(r);
+    }
+    return controlReadSourceFrom(r.app.state);
+  };
+}
+
+/** OFF events raised from inside a read of the live source (RF-F01-GATE-IR01-01 / -02). */
+const OFF_DURING_READ: [string, (r: Rig) => void][] = [
+  ["a notified settings.write", (r) => r.gate.notify("settings.write")],
+  ["a dispatched hubCommitted with unchanged data", (r) => r.app.dispatch({ type: "hubCommitted", snapshot: r.data })],
+];
+
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve = (): void => undefined;
   const promise = new Promise<void>((done) => {
@@ -310,11 +328,29 @@ describe("T0: turning access ON", () => {
         return sourceFromVerified(files);
       },
     });
+    let reads = 0;
+    r.hooks.readSource = () => {
+      reads += 1;
+      return controlReadSourceFrom(r.app.state);
+    };
     const pending = r.gate.turnOn();
     r.app.dispatch({ type: "hubCommitted", snapshot: r.data });
     hold.resolve();
     expect(await pending).toEqual({ access: "OFF", code: "CHANGED_DURING_CHECK" });
     expect(r.gate.binding()).toBeNull();
+    // Stopped before the live source was read.
+    expect(reads).toBe(0);
+  });
+
+  it.each(OFF_DURING_READ)("stays OFF when an OFF event arrives while T0 reads the live source: %s", async (_, raise) => {
+    const r = await rig();
+    r.hooks.readSource = raiseOnce(r, raise);
+    expect(await r.gate.turnOn()).toEqual({ access: "OFF", code: "CHANGED_DURING_CHECK" });
+    expect(r.gate.status().access).toBe("OFF");
+    expect(r.gate.binding()).toBeNull();
+    for (const operation of OPERATION_NAMES) expectRefused(r.gate.handle(request(operation)), "ACCESS_OFF");
+    expect(r.responses).toEqual([]);
+    expect(r.transport.calls()).toBe(0);
   });
 
   it.each<[string, Partial<AccessGateOptions<unknown>>]>([
@@ -498,6 +534,17 @@ describe("§6.5: access turns OFF on a change, and requests in flight are refuse
     expect(r.gate.status().access).toBe("OFF");
   });
 
+  it.each(OFF_DURING_READ)("an OFF event raised while T1 reads the live source refuses before a response is built: %s", async (_, raise) => {
+    const r = await onRig();
+    r.hooks.readSource = raiseOnce(r, raise);
+    const ticket = r.gate.receive(SNAPSHOT_REQUEST);
+    expectRefused(ticket.verify(), "CHANGED_DURING_CHECK");
+    expect(ticket.state()).toBe("REFUSED");
+    expect(r.gate.status()).toMatchObject({ access: "OFF", reason: "EVENT" });
+    expect(r.responses).toEqual([]);
+    expect(r.transport.calls()).toBe(0);
+  });
+
   it("an event raised while T1 runs refuses that request", async () => {
     const r = await onRig();
     r.hooks.duringRespond = () => r.app.dispatch({ type: "hubCommitted", snapshot: r.data });
@@ -532,6 +579,22 @@ describe("§6.6: a change between T1 and T2", () => {
     const ticket = verifiedTicket(r);
     r.app.dispatch({ type: "hubCommitted", snapshot: r.data });
     expectRefused(ticket.send(), "ACCESS_OFF");
+    expect(r.transport.calls()).toBe(0);
+  });
+
+  it.each(OFF_DURING_READ)("an OFF event raised while T2 reads the live source refuses without throwing: %s", async (_, raise) => {
+    const r = await onRig();
+    const ticket = verifiedTicket(r);
+    r.hooks.readSource = raiseOnce(r, raise);
+    const send = (): StageResult => ticket.send();
+    expect(send).not.toThrow();
+    expect(ticket.state()).toBe("REFUSED");
+    expectRefused(ticket.send(), "CHANGED_DURING_CHECK");
+    expect(r.gate.status()).toMatchObject({ access: "OFF", reason: "EVENT" });
+    expect(r.transport.calls()).toBe(0);
+    // The payload was dropped: the ticket stays refused after access is ON again.
+    expect(await r.gate.turnOn()).toEqual({ access: "ON" });
+    expectRefused(ticket.send(), "CHANGED_DURING_CHECK");
     expect(r.transport.calls()).toBe(0);
   });
 

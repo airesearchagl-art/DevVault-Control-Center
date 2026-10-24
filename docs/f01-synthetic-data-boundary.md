@@ -179,7 +179,7 @@ The application side is the app's own loading path and reducer, held by a small 
 | Rule | Harness behavior | Evidence |
 |---|---|---|
 | 1 | A new gate is OFF at epoch 0. Every request is refused with `ACCESS_OFF`, and no response is built | tested |
-| 2 | `turnOn()` requires three checks: the manifest bytes hash to the pinned SHA-256; the folder verifies against that manifest; and the live source equals the source the app's loading path builds from the verified bytes. Only then does it record the binding: manifest ID, source digest and a new epoch | tested, including two refusals: a manifest rebuilt from changed data (the pin refuses it even though it describes the folder), and an event during the asynchronous part of T0 (`CHANGED_DURING_CHECK`) |
+| 2 | `turnOn()` requires three checks: the manifest bytes hash to the pinned SHA-256; the folder verifies against that manifest; and the live source equals the source the app's loading path builds from the verified bytes. Only then does it record the binding: manifest ID, source digest and a new epoch | tested, including these refusals: a manifest rebuilt from changed data (the pin refuses it even though it describes the folder); an event during the asynchronous part of T0, which stops it before the live source is read; and an OFF event raised while T0 reads the live source, caught by an epoch check just before the binding is recorded (RF-F01-GATE-IR01-01). Both events give `CHANGED_DURING_CHECK` |
 | 3 | `notify(event)` turns access OFF and advances the epoch on any of these: `loaded`, `hubCommitted`, `gitObserved`, `fatal`, `settings.write`, `storage.write` / `appendLine` / `quarantine` / `restoreBackup`, `verification.failed`, or any unknown event. A failed or throwing check at T0, T1 or T2 has the same effect | tested with simulated events, each with requests in flight |
 | 4 | Only `turnOn()` turns access ON. The harness has no timer and no clock | tested: restoring the state or the files, undecided events and new requests all leave access OFF; the source contains no timer or clock call |
 
@@ -235,19 +235,34 @@ verified" (V-F01-14). DVCC does not have this today: storage commands re-read fi
 **Harness result (synthetic data only; still NOT IMPLEMENTED in DVCC).**
 
 - **T0** works as in §6.5 rule 2.
+- **Re-check after every read.** Reading the live source can run other code, and that code may raise
+  an event. After each read (at T0, T1 and T2) the gate therefore checks again:
+  - that the epoch has not moved;
+  - at T1 and T2, also that access is still ON under the same binding.
+
+  If either has changed, the request is refused with `CHANGED_DURING_CHECK`. The tests raise an OFF
+  event from inside the read at each stage.
 - **T1 (`ticket.verify()`)** checks the following:
   - access is ON and the ticket's epoch is current;
   - the manifest ID equals the binding;
   - the folder verifies again;
-  - the source digest equals the binding.
+  - after reading the live source, access and epoch are unchanged. An OFF raised by the read refuses the
+    request before any response is built;
+  - the source digest equals the binding;
+  - after the response is built, access and epoch are still unchanged.
 
   The response is built from a deep-frozen copy parsed back from the digested text, and is serialized at
   once. A later change to the live objects cannot reach it, even one made in place. This was tested by
   changing the state while the response was being built: the response stayed as expected, and T2 refused
   to send it.
-- **T2 (`ticket.send()`)** checks that access is ON, that the epoch is current, and that the live source
-  digest equals both the binding and the T1 digest. Only then is the payload handed to the transport, at
-  most once. The transport is a recording stand-in; nothing is sent.
+- **T2 (`ticket.send()`)** checks the following:
+  - access is ON and the epoch is current;
+  - after reading the live source, access is still ON under the same binding and the epoch is unchanged;
+  - the digest equals both that binding and the T1 digest.
+
+  Only then is the payload handed to the transport, at most once. An OFF raised by the read itself gives
+  a fixed refusal, never an exception. The ticket becomes `REFUSED` and its payload is dropped
+  (RF-F01-GATE-IR01-02). The transport is a recording stand-in; nothing is sent.
 - **Epochs.** Every OFF advances the epoch, and so does every ON.
   - A ticket from before an OFF is refused (`EPOCH_MISMATCH`), even after access is ON again with the
     same digest.
@@ -307,14 +322,17 @@ Not resolved by the harness:
   - in the verifier: hash comparison, transient-name rejection, link rejection, missing-file
     reporting, root restriction, and descent into folders outside the manifest (RF-F01-IR01-01);
   - in the generator: foreign-entry refusal and root restriction.
-- The access-gate harness was checked the same way. Its stop decisions were removed one at a time (25
+- The access-gate harness was checked the same way. Its stop decisions were removed one at a time (31
   variants), and each made at least one test fail:
-  - T0: the manifest pin, the folder verification, the live-versus-verified source check, and the
-    change-during-T0 check;
+  - T0: the manifest pin; the folder verification; the live-versus-verified source check; the epoch
+    check after the asynchronous part, the one after the final read, or both;
   - events: OFF events ignored, unknown events ignored, and undecided events ignored under `OFF`;
-  - T1: the ON check, one or both epoch checks, the manifest identity, the folder re-verification, the
-    source digest, the change-during-T1 check, and a throwing check that leaves access ON;
-  - T2: the ON check, the epoch check, the source digest, and a throwing check that leaves access ON;
+  - T1: the ON check; the first or all epoch checks; the manifest identity; the folder
+    re-verification; the source digest; the check after the read; the check after building the
+    response; and a throwing check that leaves access ON;
+  - T2: the ON check; one or both epoch checks; the source digest; the check after the read; the defect
+    found in review restored (no check after the read, compared with the live binding); and a throwing
+    check that leaves access ON;
   - structure: a response built from the live source, an unfrozen copy, a source key left out of the
     digest, a refusal that carries the response, an OFF that does not advance the epoch, and a ticket
     accepted while OFF.

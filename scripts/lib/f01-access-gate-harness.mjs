@@ -180,6 +180,10 @@ const refusal = (code) => Object.freeze({ status: "REFUSED", code });
  *   source digest still equals the bound one and the one checked at T1. Only then is the payload
  *   handed to the transport, once.
  *
+ * Reading the live source can run other code, which may raise an event. So after every read, at T0,
+ * T1 and T2, the gate checks again that access is ON (T1 / T2) and that the epoch has not moved, and
+ * refuses with `CHANGED_DURING_CHECK` otherwise.
+ *
  * Every OFF advances the epoch, so a ticket from before an OFF is refused even after access is ON
  * again with the same data. A refusal of an out-of-date ticket does not turn access OFF again: it
  * says nothing about the current data. Any failed or throwing check does. Nothing turns access back ON
@@ -248,6 +252,9 @@ export function createAccessGate(options) {
     } catch {
       return fail("CHECK_FAILED");
     }
+    // The read itself may have raised an event (RF-F01-GATE-IR01-01). Nothing after this check runs
+    // other code before the binding is recorded.
+    if (epoch !== start) return fail("CHANGED_DURING_CHECK");
     if (live !== expected) return fail("SOURCE_NOT_VERIFIED");
     epoch += 1;
     binding = Object.freeze({ manifestId: manifest.id, sourceDigest: live, epoch });
@@ -297,6 +304,7 @@ export function createAccessGate(options) {
         if (manifest.id !== bound.manifestId) return stop("MANIFEST_CHANGED");
         if (!verifyDataRoot(root, manifest.value).ok) return stop("VERIFICATION_FAILED");
         const snapshot = snapshotSource(readSource());
+        if (binding !== bound || !current()) return refuse("CHANGED_DURING_CHECK");
         if (snapshot.digest !== bound.sourceDigest) return stop("SOURCE_CHANGED");
         const text = JSON.stringify(respond(request, snapshot.value));
         if (typeof text !== "string") return stop("CHECK_FAILED");
@@ -314,13 +322,16 @@ export function createAccessGate(options) {
       if (state !== "VERIFIED") return outOfOrder();
       if (binding === null) return refuse("ACCESS_OFF");
       if (!current()) return refuse("EPOCH_MISMATCH");
+      const bound = binding;
       let digest;
       try {
         digest = snapshotSource(readSource()).digest;
       } catch {
         return stop("CHECK_FAILED");
       }
-      if (digest !== binding.sourceDigest || digest !== checkedDigest) return stop("SOURCE_CHANGED");
+      // The read itself may have raised an event (RF-F01-GATE-IR01-02).
+      if (binding !== bound || !current()) return refuse("CHANGED_DURING_CHECK");
+      if (digest !== bound.sourceDigest || digest !== checkedDigest) return stop("SOURCE_CHANGED");
       const text = payload;
       payload = null;
       checkedDigest = null;
