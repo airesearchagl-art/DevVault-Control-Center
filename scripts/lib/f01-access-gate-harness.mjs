@@ -4,8 +4,9 @@
 // storage changes) and §6.6 (T0 / T1 / T2), exercised only against the synthetic fixture. Nothing in
 // the product imports this file and it has no CLI. Sending is a recording stand-in: it counts calls
 // and keeps the payloads in memory, and nothing leaves the process. Events reach the gate only through
-// `notify` and `beginWrite`, called by the tests or by test-only wiring (src/test/f01ServiceWiring.ts);
-// the harness itself does not hook into the application or watch any folder.
+// `notify`, `beginWrite` and `beginOperation`, called by the tests or by test-only wiring
+// (src/test/f01ServiceWiring.ts); the harness itself does not hook into the application or watch any
+// folder.
 //
 // SHA-256 comes from Node's built-in crypto for this harness only. It decides nothing about the
 // application's SHA-256 implementation (HD-06).
@@ -64,6 +65,7 @@ export const TURN_ON_FAILURE_CODES = Object.freeze([
   "SOURCE_NOT_VERIFIED",
   "CHANGED_DURING_CHECK",
   "CHECK_FAILED",
+  "OPERATION_PENDING",
   "WRITE_PENDING",
   "CLOSED",
 ]);
@@ -78,7 +80,16 @@ export const REFUSAL_CODES = Object.freeze([
   "CHANGED_DURING_CHECK",
   "CHECK_FAILED",
   "OUT_OF_ORDER",
+  // Only the candidate T2 (`t2Check: "REVERIFY_STORAGE"`) gives these two.
+  "CLOSED",
+  "UPDATE_PENDING",
 ]);
+
+/**
+ * What T2 checks. `SOURCE_ONLY` is the original order and stays the default. `REVERIFY_STORAGE` is a
+ * candidate kept beside it for comparison (DVCC-F01-CANDIDATE-COMPLETE-01); choosing it is not a decision.
+ */
+export const T2_CHECKS = Object.freeze(["SOURCE_ONLY", "REVERIFY_STORAGE"]);
 
 /** The Control Read source keys (`src/app/controlReadSource.ts`), sorted. Nothing else is digested. */
 export const SOURCE_KEYS = Object.freeze(["gitObservations", "phase", "projects", "projectsHealth", "reviews"]);
@@ -182,6 +193,12 @@ const refusal = (code) => Object.freeze({ status: "REFUSED", code });
  * - T2 `ticket.send()` (immediately before sending): access ON, the epoch is current, and the live
  *   source digest still equals the bound one and the one checked at T1. Only then is the payload
  *   handed to the transport, once.
+ * - T2 with `t2Check: "REVERIFY_STORAGE"` (a candidate kept beside the default for comparison): the
+ *   gate is not closed, no service update or storage write is pending, access is ON under a current
+ *   epoch, the manifest still hashes to the pin and the binding, the store verifies again, and the live
+ *   source digest equals the bound one and the one checked at T1. After the store verification and
+ *   after the source read it checks again that nothing moved before the payload is handed over. This
+ *   covers the moment of the check only, not anything after the hand-over.
  *
  * Reading the live source can run other code, which may raise an event. So after every read, at T0,
  * T1 and T2, the gate checks again that access is ON (T1 / T2) and that the epoch has not moved, and
@@ -196,9 +213,18 @@ const refusal = (code) => Object.freeze({ status: "REFUSED", code });
  * the caller invokes when the write settles, whether it succeeded or failed. While any write is
  * pending, `turnOn()` is refused (`WRITE_PENDING`). `close()` is for when the wiring that delivers
  * events is torn down: from then on `turnOn()` is refused (`CLOSED`).
+ *
+ * Service updates: `beginOperation()` does the same for an update requested from a service (the hub or
+ * the settings store), from the call until its promise settles, including the time it waits in the
+ * service's own queue. While any is pending, `turnOn()` is refused (`OPERATION_PENDING`). The two
+ * counts are separate: `pendingOperations` counts service updates called and not yet settled;
+ * `pendingWrites` counts storage write calls started and not yet settled. Neither is a lock, and
+ * neither says anything about other processes.
  */
 export function createAccessGate(options) {
   const { root, pinnedManifestSha256, sourceFromFiles, readSource, respond, transport, undecidedEvents } = options;
+  const t2Check = options.t2Check ?? "SOURCE_ONLY";
+  if (!T2_CHECKS.includes(t2Check)) throw new TypeError('t2Check must be "SOURCE_ONLY" or "REVERIFY_STORAGE"');
   const readManifestBytes = options.readManifestBytes ?? (() => readFileSync(MANIFEST_PATH));
   // What T0 and T1 verify against the pinned manifest: by default the data folder at `root`. A test
   // whose services write to another store passes a verifier for that store instead.
@@ -223,12 +249,15 @@ export function createAccessGate(options) {
   let reason = "INITIAL";
   /** Storage writes that have started and not yet settled. A count: several can overlap. */
   let pendingWrites = 0;
+  /** Service updates called and not yet settled, including those still waiting in a service queue. */
+  let pendingOperations = 0;
   let closed = false;
 
   const off = (code) => {
     binding = null;
     epoch += 1;
-    reason = code;
+    // Nothing reopens a closed gate, so its reason stays CLOSED.
+    reason = closed ? "CLOSED" : code;
   };
 
   /**
@@ -251,6 +280,26 @@ export function createAccessGate(options) {
     });
   }
 
+  /**
+   * A service update was called. Access turns OFF now, before the update can reach the service's
+   * queue, and `turnOn()` is refused until every called update has ended its token. The storage
+   * writes it makes are counted separately: their settling does not end it. `end()` counts only once.
+   */
+  function beginOperation(name) {
+    if (typeof name !== "string" || name === "") throw new TypeError("missing operation name");
+    pendingOperations += 1;
+    off("OPERATION_STARTED");
+    let settled = false;
+    return Object.freeze({
+      end() {
+        if (settled) return;
+        settled = true;
+        pendingOperations -= 1;
+        off("OPERATION_SETTLED");
+      },
+    });
+  }
+
   function loadManifest() {
     const bytes = readManifestBytes();
     return { id: sha256(bytes), value: JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) };
@@ -264,7 +313,9 @@ export function createAccessGate(options) {
       return Object.freeze({ access: "OFF", code });
     };
     if (closed) return fail("CLOSED");
-    // A write in progress may still change the data: nothing verified now would hold.
+    // An update still waiting in a service queue, or a write in progress, may still change the data:
+    // nothing verified now would hold.
+    if (pendingOperations > 0) return fail("OPERATION_PENDING");
     if (pendingWrites > 0) return fail("WRITE_PENDING");
     let manifest;
     let files;
@@ -370,6 +421,37 @@ export function createAccessGate(options) {
       // The read itself may have raised an event (RF-F01-GATE-IR01-02).
       if (binding !== bound || !current()) return refuse("CHANGED_DURING_CHECK");
       if (digest !== bound.sourceDigest || digest !== checkedDigest) return stop("SOURCE_CHANGED");
+      return handOver();
+    }
+
+    // The candidate T2 (`t2Check: "REVERIFY_STORAGE"`).
+    function sendReverified() {
+      if (state !== "VERIFIED") return outOfOrder();
+      if (closed) return refuse("CLOSED");
+      if (pendingOperations > 0 || pendingWrites > 0) return refuse("UPDATE_PENDING");
+      if (binding === null) return refuse("ACCESS_OFF");
+      if (!current()) return refuse("EPOCH_MISMATCH");
+      const bound = binding;
+      // Verifying the store and reading the source can run other code. Whatever moved the gate in the
+      // meantime invalidates what was checked, so this is asked again after each of them.
+      const moved = () => closed || pendingOperations > 0 || pendingWrites > 0 || binding !== bound || !current();
+      let digest;
+      try {
+        const manifest = loadManifest();
+        if (manifest.id !== pinnedManifestSha256 || manifest.id !== bound.manifestId) return stop("MANIFEST_CHANGED");
+        const verified = verifyStorage(manifest.value);
+        if (moved()) return refuse("CHANGED_DURING_CHECK");
+        if (!verified.ok) return stop("VERIFICATION_FAILED");
+        digest = snapshotSource(readSource()).digest;
+      } catch {
+        return stop("CHECK_FAILED");
+      }
+      if (moved()) return refuse("CHANGED_DURING_CHECK");
+      if (digest !== bound.sourceDigest || digest !== checkedDigest) return stop("SOURCE_CHANGED");
+      return handOver();
+    }
+
+    function handOver() {
       const text = payload;
       payload = null;
       checkedDigest = null;
@@ -378,7 +460,7 @@ export function createAccessGate(options) {
       return SENT;
     }
 
-    return Object.freeze({ verify, send, state: () => state });
+    return Object.freeze({ verify, send: t2Check === "REVERIFY_STORAGE" ? sendReverified : send, state: () => state });
   }
 
   function handle(request) {
@@ -397,7 +479,9 @@ export function createAccessGate(options) {
     },
     notify,
     beginWrite,
+    beginOperation,
     pendingWrites: () => pendingWrites,
+    pendingOperations: () => pendingOperations,
     receive,
     handle,
     status: () => Object.freeze({ access: binding === null ? "OFF" : "ON", epoch, reason }),

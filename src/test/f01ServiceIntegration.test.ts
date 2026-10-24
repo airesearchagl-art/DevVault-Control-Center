@@ -1,50 +1,40 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
-import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  OFF_EVENTS,
-  REFUSAL_CODES,
-  UNDECIDED_EVENTS,
-  createAccessGate,
-  createRecordingTransport,
-  snapshotSource,
-  sourceDigest,
-  type AccessGate,
-  type AccessGateOptions,
-  type RecordingTransport,
-  type StageResult,
-  type Ticket,
-} from "../../scripts/lib/f01-access-gate-harness.mjs";
-import {
-  DATA_ROOT,
-  FIXTURE,
-  FIXTURE_DIR,
-  SENTINELS,
-  TEMP_COPY_PREFIX,
-  readManifest,
-  verifyDataRoot,
-  type VerifyResult,
-} from "../../scripts/lib/f01-synthetic-fixture.mjs";
-import { appReducer, initialAppState, type AppState } from "../app/appState";
+import { OFF_EVENTS, UNDECIDED_EVENTS, snapshotSource, sourceDigest } from "../../scripts/lib/f01-access-gate-harness.mjs";
+import { FIXTURE, SENTINELS, readManifest, verifyDataRoot } from "../../scripts/lib/f01-synthetic-fixture.mjs";
 import { controlReadSourceFrom } from "../app/controlReadSource";
-import { CONTROL_READ_CONTRACT, type ControlReadSource } from "../domain/controlRead/contract";
-import { readControl } from "../domain/controlRead/readControl";
-import type { ProjectFormInput } from "../domain/project";
+import { CONTROL_READ_CONTRACT } from "../domain/controlRead/contract";
 import { emptyReviewForm } from "../domain/review";
-import { loadAll } from "../services/persistence";
 import { createLocaleStore, loadSettings } from "../services/settings";
 import { PROJECTS_TARGET, StorageError, reviewTarget, type StorageBackend } from "../services/storage";
 import { MemoryStorage } from "./memoryStorage";
+import { observeStorage, storageEventOf, verifyMemoryStorage } from "./f01ServiceWiring";
 import {
-  HeldStorage,
-  SyntheticApp,
-  observeStorage,
-  storageEventOf,
-  verifyMemoryStorage,
-  wireServices,
-  type ServiceWiring,
-} from "./f01ServiceWiring";
+  CODEX_PATH,
+  NEW_REVIEW_ID,
+  OPERATION_NAMES,
+  REVIEW_DIR,
+  SNAPSHOT_REQUEST,
+  baseline,
+  deferred,
+  editProject,
+  expectRefused,
+  expected,
+  findings,
+  flush,
+  materialize,
+  memoryFindings,
+  onRig,
+  releasePath,
+  removeTemps,
+  request,
+  rig,
+  sourceFromVerified,
+  until,
+  verifiedTicket,
+  writesIn,
+  type Rig,
+} from "./f01GateRig";
 
 /**
  * F01 access gate wired to DVCC's real services (DVCC-F01-SERVICE-INTEGRATION-01,
@@ -55,204 +45,11 @@ import {
  * fixture. Events reach the gate through the test-only wiring in `f01ServiceWiring.ts`, from actual
  * service calls; the tests never call `notify` for the scenarios themselves. Writes can be held in
  * progress (`HeldStorage`) and released in any order; no timer, no sleep. Disk is used only for
- * `dvcc-f01-*` temp copies written from the in-memory store.
+ * `dvcc-f01-*` temp copies written from the in-memory store. The set-up is shared with
+ * `f01CandidateComplete.test.ts` (`f01GateRig.ts`); these tests use the storage-only wiring.
  */
 
-/** SHA-256 of fixtures/f01-synthetic/v1/manifest.json (the same pin as the other F01 tests). */
-const MANIFEST_SHA256 = "9c7696259730769f353fbd458b44cb83bf45ed4c56fa2b415c8f32e2bc43d23d";
-const NOW = "2026-10-20T02:00:00.000Z";
-const NEW_REVIEW_ID = "rv-20261020-synth2";
-/** A fictional path, stored as a string only: nothing looks for it or starts it. */
-const CODEX_PATH = "X:\\SENTINEL_CODEX\\codex.exe";
-const REVIEW_DIR = `reviews/${FIXTURE.reviewId}`;
-const ENV = { now: () => "2026-10-20T01:00:00.000Z", newSnapshotId: () => "snap-f0100000-0000-4000-8000-000000000001" };
-const OPERATIONS = {
-  get_control_snapshot: { project_id: FIXTURE.projectId },
-  get_project_state: { project_id: FIXTURE.projectId },
-  get_review_state: { review_session_id: FIXTURE.reviewId },
-} as const;
-type Operation = keyof typeof OPERATIONS;
-const OPERATION_NAMES = Object.keys(OPERATIONS) as Operation[];
-
-const request = (operation: Operation): Record<string, unknown> => ({
-  contract: CONTROL_READ_CONTRACT,
-  version: 1,
-  operation,
-  ...OPERATIONS[operation],
-});
-const SNAPSHOT_REQUEST = request("get_control_snapshot");
-const expected = (operation: Operation): unknown =>
-  JSON.parse(readFileSync(path.join(FIXTURE_DIR, "expected", `${operation}.json`), "utf8"));
-
-/** The committed fixture's bytes, verified against the pinned manifest (read-only). */
-const BASELINE: ReadonlyMap<string, string> = (() => {
-  const result = verifyDataRoot(DATA_ROOT, readManifest());
-  if (!result.ok) throw new Error("committed fixture rejected");
-  const decoder = new TextDecoder("utf-8", { fatal: true });
-  return new Map([...result.files].map(([rel, bytes]) => [rel, decoder.decode(bytes)]));
-})();
-const baseline = (rel: string): string => {
-  const text = BASELINE.get(rel);
-  if (text === undefined) throw new Error(`not in the fixture: ${rel}`);
-  return text;
-};
-
-async function sourceFromVerified(files: Map<string, Buffer>): Promise<ControlReadSource> {
-  const memory = new MemoryStorage();
-  const decoder = new TextDecoder("utf-8", { fatal: true });
-  for (const [rel, bytes] of files) memory.files.set(rel, decoder.decode(bytes));
-  const data = await loadAll(memory);
-  return controlReadSourceFrom(appReducer(initialAppState, { type: "loaded", storage: await memory.info(), data }));
-}
-
-const temps: string[] = [];
-
-afterEach(() => {
-  for (const dir of temps.splice(0)) rmSync(dir, { recursive: true, force: true });
-});
-
-/** Writes the in-memory store out to a new `dvcc-f01-*` temp folder, byte for byte. */
-function materialize(memory: MemoryStorage): string {
-  const dir = mkdtempSync(path.join(os.tmpdir(), TEMP_COPY_PREFIX));
-  temps.push(dir);
-  for (const [rel, text] of memory.files) {
-    const file = path.join(dir, ...rel.split("/"));
-    mkdirSync(path.dirname(file), { recursive: true });
-    writeFileSync(file, text, "utf8");
-  }
-  return dir;
-}
-
-const findings = (result: VerifyResult): string[] => result.findings.map(({ code, path: rel }) => `${code} ${rel}`);
-const memoryFindings = (memory: MemoryStorage): string[] => findings(verifyMemoryStorage(memory, readManifest()));
-
-/** Records what the wiring reports, then forwards it to the real gate. */
-function recordingGate(gate: AccessGate, log: string[]): AccessGate {
-  return {
-    ...gate,
-    notify(event) {
-      log.push(`notify ${event}`);
-      gate.notify(event);
-    },
-    beginWrite(event) {
-      log.push(`begin ${event}`);
-      const token = gate.beginWrite(event);
-      return {
-        end() {
-          log.push(`end ${event}`);
-          token.end();
-        },
-      };
-    },
-  };
-}
-
-interface Rig {
-  memory: MemoryStorage;
-  held: HeldStorage;
-  app: SyntheticApp;
-  gate: AccessGate;
-  wiring: ServiceWiring;
-  transport: RecordingTransport;
-  /** Every response T1 built; only the transport ever receives one. */
-  responses: unknown[];
-  /** What the wiring reported to the gate after start-up. */
-  log: string[];
-}
-
-/** `undecided` is required: each test states whether undecided events turn access OFF. */
-async function rig(undecided: "OFF" | "KEEP", overrides: Partial<AccessGateOptions<unknown>> = {}): Promise<Rig> {
-  const memory = new MemoryStorage();
-  for (const [rel, text] of BASELINE) memory.files.set(rel, text);
-  const held = new HeldStorage(memory);
-  const app = new SyntheticApp(initialAppState);
-  const transport = createRecordingTransport();
-  const responses: unknown[] = [];
-  const log: string[] = [];
-  const gate = createAccessGate<unknown>({
-    verifyStorage: (manifest) => verifyMemoryStorage(memory, manifest),
-    pinnedManifestSha256: MANIFEST_SHA256,
-    sourceFromFiles: sourceFromVerified,
-    readSource: () => controlReadSourceFrom(app.state),
-    respond: (req, source) => {
-      const response = readControl(req, source as ControlReadSource, ENV);
-      responses.push(response);
-      return response;
-    },
-    transport,
-    undecidedEvents: undecided,
-    ...overrides,
-  });
-  const wiring = wireServices(held, recordingGate(gate, log), app, { now: () => NOW, newReviewId: () => NEW_REVIEW_ID });
-  await wiring.reload();
-  await wiring.loadSettings();
-  log.length = 0;
-  return { memory, held, app, gate, wiring, transport, responses, log };
-}
-
-async function onRig(undecided: "OFF" | "KEEP", overrides: Partial<AccessGateOptions<unknown>> = {}): Promise<Rig> {
-  const r = await rig(undecided, overrides);
-  expect(await r.gate.turnOn()).toEqual({ access: "ON" });
-  return r;
-}
-
-function projectInput(state: AppState, nextAction: string): ProjectFormInput {
-  const project = state.projects[0];
-  return {
-    projectId: project.projectId,
-    displayName: project.displayName,
-    repositoryUrl: project.repositoryUrl ?? "",
-    localRoot: project.localRoot ?? "",
-    developmentIde: project.developmentIde ?? "",
-    nextAction,
-    notes: project.notes,
-  };
-}
-
-const editProject = (r: Rig) => r.wiring.hub.editProject(FIXTURE.projectId, projectInput(r.app.state, "SENTINEL_PROJECT_NEXT_ACTION_EDITED"));
-
-/** A refusal is exactly `{ status, code }`: no response, no message, no path. */
-function expectRefused(result: StageResult, code: string): void {
-  expect(result).toEqual({ status: "REFUSED", code });
-  expect(Object.keys(result).sort()).toEqual(["code", "status"]);
-  expect(REFUSAL_CODES).toContain(code);
-}
-
-function verifiedTicket(r: Rig, operation: Operation = "get_control_snapshot"): Ticket {
-  const ticket = r.gate.receive(request(operation));
-  expect(ticket.verify()).toEqual({ status: "VERIFIED" });
-  expect(Object.keys(ticket).sort()).toEqual(["send", "state", "verify"]);
-  return ticket;
-}
-
-/** Lets pending promise callbacks run, a bounded number of turns. Not a timer. */
-async function until(condition: () => boolean, what: string): Promise<void> {
-  for (let i = 0; i < 500; i += 1) {
-    if (condition()) return;
-    await Promise.resolve();
-  }
-  throw new Error(`not reached: ${what}`);
-}
-
-async function flush(): Promise<void> {
-  for (let i = 0; i < 500; i += 1) await Promise.resolve();
-}
-
-function releasePath(r: Rig, file: string): void {
-  const index = r.held.waiting.findIndex((call) => call.path === file);
-  if (index < 0) throw new Error(`no held write to ${file}`);
-  r.held.release(index);
-}
-
-function deferred(): { promise: Promise<void>; resolve: () => void } {
-  let resolve = (): void => undefined;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}
-
-const writesIn = (log: readonly string[]): string[] => log.filter((entry) => entry.startsWith("begin ") || entry.startsWith("end "));
+afterEach(removeTemps);
 
 describe("A: the real services reach the gate through the test-only wiring", () => {
   it("starts OFF; after the real reload and settings load, an explicit T0 verifies the in-memory store and turns ON", async () => {

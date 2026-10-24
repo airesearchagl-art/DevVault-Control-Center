@@ -7,6 +7,10 @@ export declare const UNDECIDED_EVENTS: readonly string[];
 export declare const TURN_ON_FAILURE_CODES: readonly TurnOnFailureCode[];
 export declare const REFUSAL_CODES: readonly RefusalCode[];
 export declare const SOURCE_KEYS: readonly string[];
+export declare const T2_CHECKS: readonly T2Check[];
+
+/** `SOURCE_ONLY` is the original T2 and the default; `REVERIFY_STORAGE` is a candidate for comparison. */
+export type T2Check = "SOURCE_ONLY" | "REVERIFY_STORAGE";
 
 export type TurnOnFailureCode =
   | "MANIFEST_NOT_PINNED"
@@ -14,6 +18,7 @@ export type TurnOnFailureCode =
   | "SOURCE_NOT_VERIFIED"
   | "CHANGED_DURING_CHECK"
   | "CHECK_FAILED"
+  | "OPERATION_PENDING"
   | "WRITE_PENDING"
   | "CLOSED";
 
@@ -25,7 +30,11 @@ export type RefusalCode =
   | "SOURCE_CHANGED"
   | "CHANGED_DURING_CHECK"
   | "CHECK_FAILED"
-  | "OUT_OF_ORDER";
+  | "OUT_OF_ORDER"
+  /** Candidate T2 only. */
+  | "CLOSED"
+  /** Candidate T2 only. */
+  | "UPDATE_PENDING";
 
 export type OffReason =
   | "INITIAL"
@@ -36,6 +45,8 @@ export type OffReason =
   | "REVERIFY"
   | "WRITE_STARTED"
   | "WRITE_SETTLED"
+  | "OPERATION_STARTED"
+  | "OPERATION_SETTLED"
   | TurnOnFailureCode
   | RefusalCode;
 
@@ -87,21 +98,30 @@ export interface AccessGateOptions<S = unknown> {
   respond: (request: unknown, source: unknown) => unknown;
   transport: Transport;
   undecidedEvents: "OFF" | "KEEP";
+  /** What T2 checks; `SOURCE_ONLY` when left out. */
+  t2Check?: T2Check;
   readManifestBytes?: () => Buffer;
 }
 
-export interface WriteToken {
-  /** The write settled (either way). Counts once, however often it is called. */
+export interface PendingToken {
+  /** The write or update settled (either way). Counts once, however often it is called. */
   end(): void;
 }
+
+export type WriteToken = PendingToken;
 
 export interface AccessGate {
   turnOn(): Promise<TurnOnResult>;
   turnOff(): void;
   close(): void;
   notify(event: string): void;
-  beginWrite(event: string): WriteToken;
+  beginWrite(event: string): PendingToken;
+  /** A service update was called; its token ends when the update's promise settles. */
+  beginOperation(name: string): PendingToken;
+  /** Storage write calls started and not yet settled. */
   pendingWrites(): number;
+  /** Service updates called and not yet settled, including those waiting in a service queue. */
+  pendingOperations(): number;
   receive(request: unknown): Ticket;
   handle(request: unknown): StageResult;
   status(): { readonly access: "ON" | "OFF"; readonly epoch: number; readonly reason: OffReason | null };
