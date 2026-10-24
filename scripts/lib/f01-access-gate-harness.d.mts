@@ -1,5 +1,7 @@
 // Types for f01-access-gate-harness.mjs, so the product test suite can import it under `strict`.
 
+import type { VerifyResult } from "./f01-synthetic-fixture.mjs";
+
 export declare const OFF_EVENTS: readonly string[];
 export declare const UNDECIDED_EVENTS: readonly string[];
 export declare const TURN_ON_FAILURE_CODES: readonly TurnOnFailureCode[];
@@ -11,7 +13,9 @@ export type TurnOnFailureCode =
   | "VERIFICATION_FAILED"
   | "SOURCE_NOT_VERIFIED"
   | "CHANGED_DURING_CHECK"
-  | "CHECK_FAILED";
+  | "CHECK_FAILED"
+  | "WRITE_PENDING"
+  | "CLOSED";
 
 export type RefusalCode =
   | "ACCESS_OFF"
@@ -30,6 +34,8 @@ export type OffReason =
   | "UNKNOWN_EVENT"
   | "HUMAN_OFF"
   | "REVERIFY"
+  | "WRITE_STARTED"
+  | "WRITE_SETTLED"
   | TurnOnFailureCode
   | RefusalCode;
 
@@ -71,7 +77,10 @@ export interface Binding {
 }
 
 export interface AccessGateOptions<S = unknown> {
-  root: string;
+  /** The data folder T0 / T1 verify; required unless `verifyStorage` is given. */
+  root?: string;
+  /** Verifies the store the services write to against the pinned manifest (default: `root` on disk). */
+  verifyStorage?: (manifest: unknown) => VerifyResult;
   pinnedManifestSha256: string;
   sourceFromFiles: (files: Map<string, Buffer>) => S | Promise<S>;
   readSource: () => S;
@@ -81,10 +90,18 @@ export interface AccessGateOptions<S = unknown> {
   readManifestBytes?: () => Buffer;
 }
 
+export interface WriteToken {
+  /** The write settled (either way). Counts once, however often it is called. */
+  end(): void;
+}
+
 export interface AccessGate {
   turnOn(): Promise<TurnOnResult>;
   turnOff(): void;
+  close(): void;
   notify(event: string): void;
+  beginWrite(event: string): WriteToken;
+  pendingWrites(): number;
   receive(request: unknown): Ticket;
   handle(request: unknown): StageResult;
   status(): { readonly access: "ON" | "OFF"; readonly epoch: number; readonly reason: OffReason | null };

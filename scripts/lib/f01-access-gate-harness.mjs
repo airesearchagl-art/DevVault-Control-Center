@@ -4,7 +4,8 @@
 // storage changes) and §6.6 (T0 / T1 / T2), exercised only against the synthetic fixture. Nothing in
 // the product imports this file and it has no CLI. Sending is a recording stand-in: it counts calls
 // and keeps the payloads in memory, and nothing leaves the process. Events reach the gate only through
-// `notify`, called by the tests; the harness does not hook into the application or watch any folder.
+// `notify` and `beginWrite`, called by the tests or by test-only wiring (src/test/f01ServiceWiring.ts);
+// the harness itself does not hook into the application or watch any folder.
 //
 // SHA-256 comes from Node's built-in crypto for this harness only. It decides nothing about the
 // application's SHA-256 implementation (HD-06).
@@ -63,6 +64,8 @@ export const TURN_ON_FAILURE_CODES = Object.freeze([
   "SOURCE_NOT_VERIFIED",
   "CHANGED_DURING_CHECK",
   "CHECK_FAILED",
+  "WRITE_PENDING",
+  "CLOSED",
 ]);
 
 /** Why a request was refused. The caller gets only this code, never the response. */
@@ -188,14 +191,23 @@ const refusal = (code) => Object.freeze({ status: "REFUSED", code });
  * again with the same data. A refusal of an out-of-date ticket does not turn access OFF again: it
  * says nothing about the current data. Any failed or throwing check does. Nothing turns access back ON
  * except `turnOn()`. A refused ticket gives the caller a fixed code and never the response.
+ *
+ * Storage writes: `beginWrite()` turns access OFF as a write starts and returns a token whose `end()`
+ * the caller invokes when the write settles, whether it succeeded or failed. While any write is
+ * pending, `turnOn()` is refused (`WRITE_PENDING`). `close()` is for when the wiring that delivers
+ * events is torn down: from then on `turnOn()` is refused (`CLOSED`).
  */
 export function createAccessGate(options) {
   const { root, pinnedManifestSha256, sourceFromFiles, readSource, respond, transport, undecidedEvents } = options;
   const readManifestBytes = options.readManifestBytes ?? (() => readFileSync(MANIFEST_PATH));
+  // What T0 and T1 verify against the pinned manifest: by default the data folder at `root`. A test
+  // whose services write to another store passes a verifier for that store instead.
+  if (options.verifyStorage === undefined && typeof root !== "string") throw new TypeError("missing root");
+  const verifyStorage = options.verifyStorage ?? ((manifest) => verifyDataRoot(root, manifest));
   if (typeof pinnedManifestSha256 !== "string" || !/^[0-9a-f]{64}$/.test(pinnedManifestSha256)) {
     throw new TypeError("pinnedManifestSha256 must be a lowercase SHA-256");
   }
-  for (const fn of [sourceFromFiles, readSource, respond, readManifestBytes]) {
+  for (const fn of [sourceFromFiles, readSource, respond, readManifestBytes, verifyStorage]) {
     if (typeof fn !== "function") throw new TypeError("missing function option");
   }
   if (transport === null || typeof transport !== "object" || typeof transport.send !== "function") {
@@ -209,12 +221,35 @@ export function createAccessGate(options) {
   /** `{ manifestId, sourceDigest, epoch }` while access is ON, otherwise `null`. */
   let binding = null;
   let reason = "INITIAL";
+  /** Storage writes that have started and not yet settled. A count: several can overlap. */
+  let pendingWrites = 0;
+  let closed = false;
 
   const off = (code) => {
     binding = null;
     epoch += 1;
     reason = code;
   };
+
+  /**
+   * A storage write is starting. Access turns OFF now, before the write can change anything, and
+   * `turnOn()` is refused until every started write has called `end()` on its token. `end()` turns
+   * access OFF again (the write may have changed the data) and counts only once, however often it is
+   * called.
+   */
+  function beginWrite(event) {
+    pendingWrites += 1;
+    off(OFF_EVENTS.includes(event) ? "WRITE_STARTED" : "UNKNOWN_EVENT");
+    let settled = false;
+    return Object.freeze({
+      end() {
+        if (settled) return;
+        settled = true;
+        pendingWrites -= 1;
+        off("WRITE_SETTLED");
+      },
+    });
+  }
 
   function loadManifest() {
     const bytes = readManifestBytes();
@@ -228,12 +263,15 @@ export function createAccessGate(options) {
       off(code);
       return Object.freeze({ access: "OFF", code });
     };
+    if (closed) return fail("CLOSED");
+    // A write in progress may still change the data: nothing verified now would hold.
+    if (pendingWrites > 0) return fail("WRITE_PENDING");
     let manifest;
     let files;
     try {
       manifest = loadManifest();
       if (manifest.id !== pinnedManifestSha256) return fail("MANIFEST_NOT_PINNED");
-      const result = verifyDataRoot(root, manifest.value);
+      const result = verifyStorage(manifest.value);
       if (!result.ok) return fail("VERIFICATION_FAILED");
       files = result.files;
     } catch {
@@ -302,7 +340,7 @@ export function createAccessGate(options) {
       try {
         const manifest = loadManifest();
         if (manifest.id !== bound.manifestId) return stop("MANIFEST_CHANGED");
-        if (!verifyDataRoot(root, manifest.value).ok) return stop("VERIFICATION_FAILED");
+        if (!verifyStorage(manifest.value).ok) return stop("VERIFICATION_FAILED");
         const snapshot = snapshotSource(readSource());
         if (binding !== bound || !current()) return refuse("CHANGED_DURING_CHECK");
         if (snapshot.digest !== bound.sourceDigest) return stop("SOURCE_CHANGED");
@@ -352,7 +390,14 @@ export function createAccessGate(options) {
   return Object.freeze({
     turnOn,
     turnOff: () => off("HUMAN_OFF"),
+    /** The wiring is gone, so events can no longer arrive: access stays OFF for good. */
+    close: () => {
+      closed = true;
+      off("CLOSED");
+    },
     notify,
+    beginWrite,
+    pendingWrites: () => pendingWrites,
     receive,
     handle,
     status: () => Object.freeze({ access: binding === null ? "OFF" : "ON", epoch, reason }),
